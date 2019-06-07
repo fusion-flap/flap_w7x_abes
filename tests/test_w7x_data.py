@@ -6,26 +6,32 @@ Created on Fri May 10 18:50:28 2019
 """
 
 import matplotlib.pyplot as plt
+import os
 
 import flap
 import flap_w7x_abes
 
 flap_w7x_abes.register()
 
-flap.config.read(file_name="w7x_config.cfg")
-
 def test_W7X_data():
+    flap.delete_data_object('*')
     print("\n------- test data read with W7-X ABES data --------")
-#    dp = 'c:/Data/W7-X_ABES/'
+    print("***** Reading 39 channels (1-40, omitting 32) in time interval 3-4 s.")
     d=flap.get_data('W7X_ABES',exp_id='20181018.008',name=['ABES-[1-31]','ABES-[33-40]'],options={'Scaling':'Volt'},\
                     object_name='ABES',coordinates={'Time':[3,4]})
     print("**** Storage contents")
-#    flap.list_data_objects()
-#    flap.slice_data('ABES',slicing={'Time':flap.Intervals(3.1,3.11)},summing={'Time':'Mean'})
-#    flap.list_data_objects()
+    flap.list_data_objects()
     plt.close('all')
+    print("**** Plotting ABES-20")
     flap.plot('ABES',slicing={'Signal name':'ABES-20'},axes='Time')
     plt.figure()
+    print("**** Plotting mean signal in 3.26-3.28s time interval.")
     flap.plot('ABES',slicing={'Time':flap.Intervals(3.26,3.28)},summing={'Time':'Mean'},axes='Channel')
+
+
+# Reading configuration file in the test directory
+thisdir = os.path.dirname(os.path.realpath(__file__))
+fn = os.path.join(thisdir,"w7x_config.cfg")
+flap.config.read(file_name=fn)
 
 test_W7X_data()
