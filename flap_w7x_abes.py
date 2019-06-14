@@ -8,11 +8,14 @@ This is the flap module for W7-X alkali BES diagnostic
 """
 
 import os.path
-import flap
 from decimal import *
 import numpy as np
 import copy
 import h5py
+
+import flap
+from .spatcal import *
+
 
 
 if (flap.VERBOSE):
@@ -767,8 +770,35 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
     return d
 
 
-def add_coordinate(data_object, new_coordinates, options=None):
-    raise NotImplementedError("Coordinate conversions not implemented yet.")
+def add_coordinate(data_object,
+                   coordinates,
+                   exp_id=None,
+                   options=None):
+    '''
+    Routine for adding spatial data to W7-X ABES measurements
+    data_object - the object to which the coordinate should be added
+    coordinates - a list of coordinate names to be added
+                 available: "Device x", "Device y", "Device z", "Device R", "Device Z", "Beam axis"
+    options - a dictionary of options
+              available: 'spatcal_dir' - the location of calibration data
+    '''
+
+    if exp_id is None:
+        spatcal = ShotSpatCal(data_object.exp_id, options=options)
+    else:
+        spatcal = ShotSpatCal(exp_id, options=options)
+
+    # getting the dimension of the channel coordinate, this should be the same as the spatial coordinate
+    data_coord_list = np.array([coord.unit.name for coord in data_object.coordinates])
+    channel_coordinate_dim = data_object.coordinates[np.where(data_coord_list == 'Channel')[0][0]].dimension_list
+    channel_names = data_object.coordinates[np.where(data_coord_list == 'Channel')[0][0]].values
+
+    for coord_name in coordinates:
+        coord_object = spatcal.create_coordinate_object(channel_coordinate_dim, coord_name,
+                                                         channel_names=channel_names)
+        data_object.add_coordinate_object(coord_object)
+
+    return data_object
 
 def register():
     flap.register_data_source('W7X_ABES', get_data_func=w7x_abes_get_data, add_coord_func=add_coordinate)
