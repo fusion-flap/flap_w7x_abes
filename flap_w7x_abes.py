@@ -14,6 +14,7 @@ import numpy as np
 import copy
 import h5py
 
+import flap
 
 if (flap.VERBOSE):
     print("Importing flap_w7x-abes")
@@ -517,6 +518,8 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
         datapath_base = _options['Datapath']
     except (KeyError, TypeError):
         datapath_base = 'data'
+    if (type(exp_id) is not str):
+        raise ValueError("exp_id should be a string of format yyyymmdd.xxx")
     datapath = os.path.join(datapath_base,exp_id)
     xmlfile = os.path.join(datapath, exp_id + '_config.xml')
     xml = flap.FlapXml()
