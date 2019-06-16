@@ -14,7 +14,7 @@ import copy
 import h5py
 
 import flap
-from .spatcal import *
+#from .spatcal import *
 
 if (flap.VERBOSE):
     print("Importing flap_w7x-abes")
