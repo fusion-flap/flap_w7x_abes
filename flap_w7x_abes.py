@@ -225,8 +225,8 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
         try:
             fname = os.path.join(calibration_path,fn)
             f = h5py.File(fname, 'r')
-        except OsError as e:
-            raise e
+        except Exception as e:
+            raise OSError("Error reading calibration from {:s}: {:s}".format(fname,str(e)))
         try:
             calfac.append(copy.deepcopy(np.array(f['Calibration_factors'])))
             calfac_err.append(copy.deepcopy(np.array(f['Calibration_factor_errors'])))
