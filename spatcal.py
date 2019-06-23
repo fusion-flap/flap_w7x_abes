@@ -24,7 +24,8 @@ class ShotSpatCal(flap.DataObject):
         else:
             spatcal_dir ='./'
         filename = shotID + '_spat.cal'
-        with h5py.File(spatcal_dir+filename, "r", libver='earliest') as h5File: 
+        fn = os.path.join(spatcal_dir,filename)
+        with h5py.File(fn, "r", libver='earliest') as h5File: 
             channel_names = np.array(h5File['/Channels'].value)
             fibres = h5File["/Fibres"].value
             self.calibration = h5File["/Calibration"].value[0].decode("utf-8") 

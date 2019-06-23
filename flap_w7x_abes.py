@@ -14,7 +14,7 @@ import copy
 import h5py
 
 import flap
-#from .spatcal import *
+from .spatcal import *
 
 if (flap.VERBOSE):
     print("Importing flap_w7x-abes")
@@ -782,16 +782,18 @@ def add_coordinate(data_object,
     options - a dictionary of options
               available: 'spatcal_dir' - the location of calibration data
     '''
+    default_options = {'spatcal_dir':''}
+    _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
 
     if exp_id is None:
-        spatcal = ShotSpatCal(data_object.exp_id, options=options)
+        spatcal = ShotSpatCal(data_object.exp_id, options=_options)
     else:
-        spatcal = ShotSpatCal(exp_id, options=options)
+        spatcal = ShotSpatCal(exp_id, options=_options)
 
     # getting the dimension of the channel coordinate, this should be the same as the spatial coordinate
     data_coord_list = np.array([coord.unit.name for coord in data_object.coordinates])
-    channel_coordinate_dim = data_object.coordinates[np.where(data_coord_list == 'Channel')[0][0]].dimension_list
-    channel_names = data_object.coordinates[np.where(data_coord_list == 'Channel')[0][0]].values
+    channel_coordinate_dim = data_object.get_coordinate_object('Signal name').dimension_list[0]
+    channel_names = data_object.get_coordinate_object('Signal name').values
 
     for coord_name in coordinates:
         coord_object = spatcal.create_coordinate_object(channel_coordinate_dim, coord_name,
