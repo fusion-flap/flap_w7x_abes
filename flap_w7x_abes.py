@@ -35,63 +35,105 @@ def abes_get_config(xml):
             retval['Date'] = xml.head.attrib['Date']
         except KeyError:
             raise ValueError("Invalid config file head format.")
-    try:
+    if (retval['version'] != '1.0'):    
         retval['TriggerTime'] = Decimal(xml.get_element('System','TriggerTime')['Value'])
-        retval['APDCAM_state'] = int(xml.get_element('APDCAM','State')['Value'])
-        if (retval['APDCAM_state'] is 1):
-            ADCDiv = Decimal(xml.get_element('APDCAM', 'ADCDiv')['Value'])
-            ADCMult = Decimal(xml.get_element('APDCAM', 'ADCMult')['Value'])
-            retval['APDCAM_f_ADC'] = Decimal(20e6) * ADCMult / ADCDiv
-            samplediv = Decimal(xml.get_element('APDCAM', 'Samplediv')['Value'])
-            retval['APDCAM_f_sample'] = retval['APDCAM_f_ADC'] / samplediv
-            retval['APDCAM_sampletime'] = Decimal(1.) / retval['APDCAM_f_sample']
-            retval['APDCAM_samplenumber'] = int(xml.get_element('APDCAM', 'SampleNumber')['Value'])
-            retval['APDCAM_bits'] = int(xml.get_element('APDCAM', 'Bits')['Value'])
-            trigger = Decimal(xml.get_element('APDCAM', 'Trigger')['Value'])
-            if (trigger < 0):
-                trigger = Decimal(0)
-            retval['APDCAM_starttime'] = trigger + retval['TriggerTime']
-            mask1 = int(xml.get_element('APDCAM', 'ChannelMask1')['Value'],16)
-            mask2 = int(xml.get_element('APDCAM', 'ChannelMask2')['Value'],16)
-            mask3 = int(xml.get_element('APDCAM', 'ChannelMask3')['Value'],16)
-            mask4 = int(xml.get_element('APDCAM', 'ChannelMask4')['Value'],16)
-            chmask = mask1 + (mask2 << 32) + (mask3 << 64) + (mask4 << 96)
-            retval['APDCAM_chmask'] = chmask
-            retval['APDCAM_bias1'] = float(xml.get_element('APDCAM','DetectorBias1')['Value'])
-            retval['APDCAM_bias2'] = float(xml.get_element('APDCAM','DetectorBias2')['Value'])
-            retval['APDCAM_det_temp'] = float(xml.get_element('APDCAM','DetectorTemp')['Value'])
-            s = int(xml.get_element('APDCAM','ClockSource')['Value'])
-            if (s == 1):
-                retval['APDCAM_clock_source'] = 'External'
-            else:
-                retval['APDCAM_clock_source'] = 'Internal'
-        chopmode = int(xml.get_element('Chopper','Mode')['Value'])
-        clk = xml.get_element('Chopper','BaseClockFrequency')
-        clk_freq = Decimal(clk['Value'])
-        if (clk['Unit'] == 'Hz'):
-            pass
-        elif (clk['Unit'] == 'kHz'):
-            clk_freq = clk_freq * Decimal(1000)
-        elif (clk['Unit'] == 'MHz'):
-            clk_freq = clk_freq * Decimal(1E6)
+    else:
+        retval['TriggerTime'] = Decimal(xml.get_element('System','SystemTrigger')['Value'])
+    retval['APDCAM_state'] = int(xml.get_element('APDCAM','State')['Value'])
+    if (retval['APDCAM_state'] is 1):
+        ADCDiv = Decimal(xml.get_element('APDCAM', 'ADCDiv')['Value'])
+        ADCMult = Decimal(xml.get_element('APDCAM', 'ADCMult')['Value'])
+        retval['APDCAM_f_ADC'] = Decimal(20e6) * ADCMult / ADCDiv
+        samplediv = Decimal(xml.get_element('APDCAM', 'Samplediv')['Value'])
+        retval['APDCAM_f_sample'] = retval['APDCAM_f_ADC'] / samplediv
+        retval['APDCAM_sampletime'] = Decimal(1.) / retval['APDCAM_f_sample']
+        retval['APDCAM_samplenumber'] = int(xml.get_element('APDCAM', 'SampleNumber')['Value'])
+        retval['APDCAM_bits'] = int(xml.get_element('APDCAM', 'Bits')['Value'])
+        trigger = Decimal(xml.get_element('APDCAM', 'Trigger')['Value'])
+        if (trigger < 0):
+            trigger = Decimal(0)
+        retval['APDCAM_starttime'] = trigger + retval['TriggerTime']
+        mask1 = int(xml.get_element('APDCAM', 'ChannelMask1')['Value'],16)
+        mask2 = int(xml.get_element('APDCAM', 'ChannelMask2')['Value'],16)
+        mask3 = int(xml.get_element('APDCAM', 'ChannelMask3')['Value'],16)
+        mask4 = int(xml.get_element('APDCAM', 'ChannelMask4')['Value'],16)
+        chmask = mask1 + (mask2 << 32) + (mask3 << 64) + (mask4 << 96)
+        retval['APDCAM_chmask'] = chmask
+        retval['APDCAM_bias1'] = float(xml.get_element('APDCAM','DetectorBias1')['Value'])
+        retval['APDCAM_bias2'] = float(xml.get_element('APDCAM','DetectorBias2')['Value'])
+        retval['APDCAM_det_temp'] = float(xml.get_element('APDCAM','DetectorTemp')['Value'])
+        if (retval['version'] != '1.0'):  
+            try:
+                s = int(xml.get_element('APDCAM','SystemClockSource')['Value'])
+            except:
+                s = 0
         else:
-            raise ValueError("Unknown chopper clock frequency unit.")
-        retval['Chopper clock'] = clk_freq
+            s = int(xml.get_element('System','SystemClockSource')['Value'])
+        if (s == 1):
+            retval['APDCAM_clock_source'] = 'External'
+        else:
+            retval['APDCAM_clock_source'] = 'Internal'
+
+    chopmode = int(xml.get_element('Chopper','Mode')['Value'])
+    clk = xml.get_element('Chopper','BaseClockFrequency')
+    clk_freq = Decimal(clk['Value'])
+    if (clk['Unit'] == 'Hz'):
+        pass
+    elif (clk['Unit'] == 'kHz'):
+        clk_freq = clk_freq * Decimal(1000)
+    elif (clk['Unit'] == 'MHz'):
+        clk_freq = clk_freq * Decimal(1E6)
+    else:
+        raise ValueError("Unknown chopper clock frequency unit.")
+    retval['Chopper clock'] = clk_freq
+    if (chopmode == 1):
+        retval['Chopper mode'] = 'Camera'
+        retval['CMOS exptime'] = Decimal(xml.get_element('CMOS','Exptime')['Value'])
+        retval['CMOS frametime'] = Decimal(xml.get_element('CMOS','Frametime')['Value'])
+        retval['CMOS frame number'] = int(xml.get_element('CMOS','FrameNumber')['Value'])
+    else:
+        retval['Chopper mode'] = 'Timed'
+    if (retval['version'] != '1.0'):    
         sch = xml.get_element('Chopper','SchemeFileContents')['Value']
-        sch = sch.replace("\n","")
-        sch = sch.split('<NL>')
-        retval['Chopper scheme'] = sch
-        if (chopmode == 1):
-            retval['Chopper mode'] = 'Camera'
-            retval['CMOS exptime'] = Decimal(xml.get_element('CMOS','Exptime')['Value'])
-            retval['CMOS frametime'] = Decimal(xml.get_element('CMOS','Frametime')['Value'])
-            retval['CMOS frame number'] = int(xml.get_element('CMOS','FrameNumber')['Value'])
-        else:
-            retval['Chopper mode'] = 'Timed'
-            retval['Chopper period'] = Decimal(xml.get_element('Chopper','PeriodTime')['Value']) \
-                                         /Decimal(1000000)
-    except ValueError as e:
-        raise e
+        retval['Chopper period'] = Decimal(xml.get_element('Chopper','PeriodTime')['Value']) \
+                             /Decimal(1000000)
+    else:
+        pol_enable = int(xml.get_element('Chopper','PolEnable')['Value'])
+        tor_enable = int(xml.get_element('Chopper','TorEnable')['Value'])
+        if ((tor_enable == 1) and (pol_enable == 1)):
+            raise ValueError("Toroidal and Poloidal chopper is enabled at the same time. Cannot handle this.")
+        sch = ""
+        if (tor_enable == 1):
+            if (int(xml.get_element('Chopper','TorStartTimeCLK')['Value'] )!= 0) :
+                raise ValueError("Toroidal chopper start time not 0, cannot handle.")
+            retval['Chopper period'] = (int(xml.get_element('Chopper','TorOnTimeCLK')['Value']) 
+                                       + int(xml.get_element('Chopper','TorOffTimeCLK')['Value'])) / clk_freq
+            if (retval['Chopper mode'] == 'Camera'):
+                sch = "[General] <NL>Name = Cam_Chop <NL>[Frame 1] <NL>Chopper = 1 <NL>Deflection = 0 <NL>[Frame 2] <NL>Chopper = 0 <NL>Deflection = 0" 
+            else:
+                period = int(xml.get_element('Chopper','TorOnTimeCLK')['Value']) + int(xml.get_element('Chopper','TorOnTimeCLK')['Value'])
+                phase1 = float(xml.get_element('Chopper','TorOnTimeCLK')['Value']) / float(period) * 100
+                phase2 = float(xml.get_element('Chopper','TorOffTimeCLK')['Value']) / float(period) * 100
+                sch = "[General] <NL>Name=Simple fast <NL>"
+                sch += "[Phase 1] <NL>Length = "+str(int(round(phase1)))+" <NL>Chopper = 0 <NL>Deflection = 0 <NL>"
+                sch += "[Phase 2] <NL>Length = "+str(int(round(phase2)))+" <NL>Chopper = 1 <NL>Deflection = 0 <NL>"
+        if (pol_enable == 1):
+            if (int(xml.get_element('Chopper','PolStartTimeCLK')['Value']) != 0) :
+                raise ValueError("Poloidal chopper start time not 0, cannot handle.")
+            retval['Chopper period'] = (int(xml.get_element('Chopper','PolOnTimeCLK'))['Value'] 
+                                       + int(xml.get_element('Chopper','PolOffTimeCLK')['Value'])) / clk_freq
+            if (retval['Chopper mode'] == 'Camera'):
+                sch = "[General] <NL>Name = Cam_Chop <NL>[Frame 1] <NL>Chopper = 0 <NL>Deflection = 1 <NL>[Frame 2] <NL>Chopper = 0 <NL>Deflection = 0" 
+            else:
+                period = int(xml.get_element('Chopper','PolOnTimeCLK')['Value']) + int(xml.get_element('Chopper','PolOnTimeCLK')['Value'])
+                phase1 = float(xml.get_element('Chopper','PolOnTimeCLK')['Value']) / float(period) * 100
+                phase2 = float(xml.get_element('Chopper','PolOffTimeCLK')['Value']) / float(period) *100
+                sch = "[General] <NL>Name=Simple fast <NL>"
+                sch += "[Phase 1] <NL>Length = "+str(int(round(phase1)))+" <NL>Chopper = 0 <NL>Deflection = 0 <NL>"
+                sch += "[Phase 2] <NL>Length = "+str(int(round(phase2)))+" <NL>Chopper = 0 <NL>Deflection = 1 <NL>"
+    sch.replace("\n","")
+    sch = sch.split('<NL>')
+    retval['Chopper scheme'] = sch
     ch_list = []
     fibre_list = []
     det_type_list = []
@@ -470,10 +512,6 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
     return d
 
 
-
-
-
-
 def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, coordinates=None):
     """ Data read function for the W7-X Alkali BES diagnostic
     data_name: ABES-xxx, Rx, Lx, ... (string) depending on configuration file
@@ -490,7 +528,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
     options:
         'Scaling':  'Digit'
                     'Volt'
-        'Offset timmerange': Time range for offset subtraction
+        'Offset timerange': Time range for offset subtraction
         'Datapath': Data path (string)
         'Calibration': True/False do/don't do amplitude calibration of the data
         'Calib. path': Calibration directory name
@@ -559,12 +597,17 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
             if (coord.unit.name is 'Time'):
                 if (coord.mode.equidistant):
                     read_range = [float(coord.c_range[0]),float(coord.c_range[1])]
+                    if (read_range[1] <= read_range[0]):
+                        raise ValueError("Invalid read timerange.")
                 else:
                     raise NotImplementedError("Non-equidistant Time axis is not implemented yet.")
                 break
             if coord.unit.name is 'Sample':
                 if (coord.mode.equidistant):
                     read_samplerange = coord.c_range
+                    if (read_samplerange[1] <= read_samplerange[0]):
+                        raise ValueError("Invalid read samplerange.")
+
                 else:
                     raise \
                         NotImplementedError("Non-equidistant Sample axis is not implemented yet.")
