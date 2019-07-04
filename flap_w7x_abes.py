@@ -95,8 +95,9 @@ def abes_get_config(xml):
         retval['Chopper mode'] = 'Timed'
     if (retval['version'] != '1.0'):    
         sch = xml.get_element('Chopper','SchemeFileContents')['Value']
-        retval['Chopper period'] = Decimal(xml.get_element('Chopper','PeriodTime')['Value']) \
-                             /Decimal(1000000)
+        if (chopmode == 0):
+            retval['Chopper period'] = Decimal(xml.get_element('Chopper','PeriodTime')['Value']) \
+                                         /Decimal(1000000)
     else:
         pol_enable = int(xml.get_element('Chopper','PolEnable')['Value'])
         tor_enable = int(xml.get_element('Chopper','TorEnable')['Value'])
