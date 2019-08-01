@@ -513,7 +513,7 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
     return d
 
 
-def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, coordinates=None):
+def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, coordinates=None, data_source=None):
     """ Data read function for the W7-X Alkali BES diagnostic
     data_name: ABES-xxx, Rx, Lx, ... (string) depending on configuration file
                Chopper_times : To read the chopper state (will return intervals in Time and Sample ccoordinate)
@@ -846,5 +846,5 @@ def add_coordinate(data_object,
 
     return data_object
 
-def register():
+def register(data_source=None):
     flap.register_data_source('W7X_ABES', get_data_func=w7x_abes_get_data, add_coord_func=add_coordinate)
