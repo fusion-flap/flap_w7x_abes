@@ -12,6 +12,7 @@ from decimal import *
 import numpy as np
 import copy
 import h5py
+import matplotlib.pyplot as plt
 
 import flap
 from .spatcal import *
@@ -846,5 +847,106 @@ def add_coordinate(data_object,
 
     return data_object
 
+def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]',on_options=None, off_options=None,test=None):
+    """ Calculate signals in beam on and beam/off phases of the measurement and
+        correct the beam-on phases with the beam-off. The result is "ABES" and "ABES_back" data object
+        in the FLAP storage.
+        INPUT:
+            exp_id: exp_id (no default)
+            timerange: Time range to process. Default is all times.
+            signals: List of measurement signals. Default is ABES-[1-40]
+            on_options: Options for the  for the get_data function when beam_on is read
+            off_options: Options for the get_data function when beam_off is read
+            test: Plot test plots if True
+    """
+    
+    flap.get_data('W7X_ABES',
+                  exp_id=exp_id,
+                  coordinates={'Time':timerange},
+                  name=signals,
+                  object_name='ABES'
+                  )
+    o = copy.deepcopy(on_options)
+    o.update({'State':{'Chop': 0, 'Defl': 0}})  
+    d_beam_on=flap.get_data('W7X_ABES',
+                            exp_id=exp_id,
+                            name='Chopper_time',
+                            coordinates={'Time':timerange},
+                            options=o,\
+                            object_name='Beam_on',
+                            )
+    o = copy.deepcopy(off_options)
+    o.update({'State':{'Chop': 1, 'Defl': 0}})  
+    d_beam_off=flap.get_data('W7X_ABES',
+                             exp_id=exp_id,
+                             name='Chopper_time',
+                             coordinates={'Time':timerange},
+                             options=o,\
+                             object_name='Beam_off',
+                             )
+    if (test):
+        plt.close('all')
+        flap.plot('ABES',axes='Time',plot_options={'marker':'o'})
+#        flap.plot('ABES',axes='Time',plot_type='scatter')
+        d_beam_on.plot(plot_type='scatter',axes=['Time',2],options={'Force':True,'All':True})
+        d_beam_off.plot(plot_type='scatter',axes=['Time',0.1],options={'Force':True,'All':True})
+    d = flap.slice_data('ABES',slicing={'Sample':d_beam_on},summing={'Rel. Sample in int(Sample)':'Mean'})
+    try:
+        # Trying to get Time coordinate. If not present regenerating it
+        d.get_coordinate_object('Time')
+    except ValueError:
+        ct = d.get_coordinate_object('Start Time in int(Sample)')
+        c_shift = d.get_coordinate_object('Rel. Time in int(Sample)')
+        if (c_shift.dimension_list != []):
+            raise ValueError("Rel Time in int(Sample) is not constant.")
+        if (not ct.mode.equidistant):
+            raise ValueError("Non-equidistant chopper?")
+        try:
+            ct.start += c_shift.values[0]
+        except IndexError:
+            ct.start += c_shift.values
+        ct.unit.name='Time'
+    flap.add_data_object(d,'ABES_on')
+    d = flap.slice_data('ABES',slicing={'Sample':d_beam_off},summing={'Rel. Sample in int(Sample)':'Mean'})
+    try:
+        # Trying to get Time coordinate. If not present regenerating it
+        d.get_coordinate_object('Time')
+    except ValueError:
+        ct = d.get_coordinate_object('Start Time in int(Sample)')
+        c_shift = d.get_coordinate_object('Rel. Time in int(Sample)')
+        if (c_shift.dimension_list != []):
+            raise ValueError("Rel. Time in int(Sample) is not constant.")
+        if (not ct.mode.equidistant):
+            raise ValueError("Non-equidistant chopper?")
+        try:
+            ct.start += c_shift.values[0]
+        except IndexError:
+            ct.start += c_shift.values
+        ct.unit.name='Time'
+    flap.add_data_object(d,'ABES_off')
+    flap.slice_data('ABES_off',slicing={'Time':flap.get_data_object('ABES_on')},options={'Inter':'Linear'},output_name='ABES_back')
+    # Ensuring that only those samples are kept which also have a background
+#    flap.slice_data('ABES_on',slicing={'Start Sample in int(Sample)':flap.get_data_object('ABES_off_resampled')},options={'Inter':'Linear'},output_name='ABES_on')
+    
+    if (test):
+        plt.figure()
+        flap.plot('ABES')
+        flap.plot('ABES_on',plot_type='scatter')
+        flap.plot('ABES_on')
+        flap.plot('ABES_off',plot_type='scatter')
+        flap.plot('ABES_off')
+        flap.plot('ABES_back',plot_type='scatter')
+     
+    d=flap.get_data_object('ABES_on')
+    d_back = flap.get_data_object('ABES_back')
+    d.data -= d_back.data
+    flap.add_data_object(d,'ABES')
+    flap.delete_data_object('ABES_on')
+    flap.delete_data_object('ABES_off')
+    if (test):
+        plt.figure()
+        flap.plot('ABES',axes='Time')
+            
 def register(data_source=None):
     flap.register_data_source('W7X_ABES', get_data_func=w7x_abes_get_data, add_coord_func=add_coordinate)
+
