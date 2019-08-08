@@ -23,4 +23,10 @@ flap_w7x_abes.proc_chopsignals(exp_id='20181017.024',
                                on_options={'Start':2.5,'End':0}, 
                                off_options={'Start':2.5,'End':0},
                                test=True)
+flap.list_data_objects()
+flap_w7x_abes.proc_chopsignals(exp_id='20181017.024',
+                               on_options={'Start':2.5,'End':0}, 
+                               off_options={'Start':2.5,'End':0},
+                               test=False)
+flap.list_data_objects()
    
