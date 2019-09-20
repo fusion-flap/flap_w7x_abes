@@ -41,7 +41,7 @@ class ShotSpatCal(flap.DataObject):
             self.beam_plane_vector = h5File["/Beam_plane_vector"].value
         
         if 'Channels' in options.keys():
-            channels = options['Channels']
+            channels = [bytes(channel, "utf-8") for channel in options["Channels"]]
         else:
             channels=[bytes('ABES-'+str(index), 'utf-8') for index in range(1,41)]
 
