@@ -596,8 +596,6 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
         for coord in _coordinates:
             if (type(coord) is not flap.Coordinate):
                 raise TypeError("Coordinate description should be flap.Coordinate.")
-            if ((coord is None) or (coord.c_range is None)):
-                continue
             if (coord.unit.name is 'Time'):
                 if (coord.mode.equidistant):
                     read_range = [float(coord.c_range[0]),float(coord.c_range[1])]
@@ -829,7 +827,7 @@ def add_coordinate(data_object,
     options - a dictionary of options
               available: 'spatcal_dir' - the location of calibration data
     '''
-    default_options = {'spatcal_dir':''}
+    default_options = {'spatcal_dir':'', "Channels":''}
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
 
     if exp_id is None:
@@ -839,8 +837,12 @@ def add_coordinate(data_object,
 
     # getting the dimension of the channel coordinate, this should be the same as the spatial coordinate
     data_coord_list = np.array([coord.unit.name for coord in data_object.coordinates])
-    channel_coordinate_dim = data_object.get_coordinate_object('Signal name').dimension_list[0]
-    channel_names = data_object.get_coordinate_object('Signal name').values
+    if 'Channel' in data_coord_list:
+        channel_coordinate_dim = data_object.get_coordinate_object('Channel').dimension_list[0]
+        channel_names = data_object.get_coordinate_object('Channel').values
+    else:     
+        channel_coordinate_dim = data_object.get_coordinate_object('Signal name').dimension_list[0]
+        channel_names = data_object.get_coordinate_object('Signal name').values
 
     for coord_name in coordinates:
         coord_object = spatcal.create_coordinate_object(channel_coordinate_dim, coord_name,
@@ -849,48 +851,6 @@ def add_coordinate(data_object,
 
     return data_object
 
-def regenerate_time_sample(d):
-    """ Regenerate Time and Sample coordinate after chopper slicing aon Sample coordinate
-        and averaging for chopper interval.
-    """
-    try:
-        # Trying to get Time coordinate. If not present regenerating it
-        d.get_coordinate_object('Time')
-    except ValueError:
-        ct = d.get_coordinate_object('Start Time in int(Sample)')
-        c_shift = d.get_coordinate_object('Rel. Time in int(Sample)')
-        if (c_shift.dimension_list != []):
-            raise ValueError("Rel Time in int(Sample) is not constant.")
-        if (not ct.mode.equidistant):
-            raise ValueError("Non-equidistant chopper?")
-        try:
-            ct.start += c_shift.values[0]
-        except IndexError:
-            ct.start += c_shift.values
-        ct.unit.name='Time'
-        d.del_coordinate('Rel. Time in int(Sample)')
-    try:
-        # Trying to get Sample coordinate. If not present regenerating it
-        d.get_coordinate_object('Sample')
-    except ValueError:
-        ct = d.get_coordinate_object('Start Sample in int(Sample)')
-        c_shift = d.get_coordinate_object('Rel. Sample in int(Sample)')
-        if (c_shift.dimension_list != []):
-            raise ValueError("Rel Sample in int(Sample) is not constant.")
-        if (not ct.mode.equidistant):
-            raise ValueError("Non-equidistant chopper?")
-        try:
-            ct.start += c_shift.values[0]
-        except IndexError:
-            ct.start += c_shift.values
-        ct.unit.name='Sample'
-        d.del_coordinate('Rel. Sample in int(Sample)')
-    try:
-        d.del_coordinate('Interval(Sample)')
-        d.del_coordinate('Interval(Sample) sample index')
-    except ValueError:
-        pass
-        
 def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]',on_options=None, off_options=None,test=None):
     """ Calculate signals in beam on and beam/off phases of the measurement and
         correct the beam-on phases with the beam-off. The result is "ABES" and "ABES_back" data object
@@ -903,7 +863,7 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]',on_options
             off_options: Options for the get_data function when beam_off is read
             test: Plot test plots if True
     """
-
+    
     flap.get_data('W7X_ABES',
                   exp_id=exp_id,
                   coordinates={'Time':timerange},
@@ -935,11 +895,38 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]',on_options
         d_beam_on.plot(plot_type='scatter',axes=['Time',2],options={'Force':True,'All':True})
         d_beam_off.plot(plot_type='scatter',axes=['Time',0.1],options={'Force':True,'All':True})
     d = flap.slice_data('ABES',slicing={'Sample':d_beam_on},summing={'Rel. Sample in int(Sample)':'Mean'})
-    regenerate_time_sample(d)    
-    
+    try:
+        # Trying to get Time coordinate. If not present regenerating it
+        d.get_coordinate_object('Time')
+    except ValueError:
+        ct = d.get_coordinate_object('Start Time in int(Sample)')
+        c_shift = d.get_coordinate_object('Rel. Time in int(Sample)')
+        if (c_shift.dimension_list != []):
+            raise ValueError("Rel Time in int(Sample) is not constant.")
+        if (not ct.mode.equidistant):
+            raise ValueError("Non-equidistant chopper?")
+        try:
+            ct.start += c_shift.values[0]
+        except IndexError:
+            ct.start += c_shift.values
+        ct.unit.name='Time'
     flap.add_data_object(d,'ABES_on')
     d = flap.slice_data('ABES',slicing={'Sample':d_beam_off},summing={'Rel. Sample in int(Sample)':'Mean'})
-    regenerate_time_sample(d)    
+    try:
+        # Trying to get Time coordinate. If not present regenerating it
+        d.get_coordinate_object('Time')
+    except ValueError:
+        ct = d.get_coordinate_object('Start Time in int(Sample)')
+        c_shift = d.get_coordinate_object('Rel. Time in int(Sample)')
+        if (c_shift.dimension_list != []):
+            raise ValueError("Rel. Time in int(Sample) is not constant.")
+        if (not ct.mode.equidistant):
+            raise ValueError("Non-equidistant chopper?")
+        try:
+            ct.start += c_shift.values[0]
+        except IndexError:
+            ct.start += c_shift.values
+        ct.unit.name='Time'
     flap.add_data_object(d,'ABES_off')
     flap.slice_data('ABES_off',slicing={'Time':flap.get_data_object('ABES_on')},options={'Inter':'Linear'},output_name='ABES_back')
     # Ensuring that only those samples are kept which also have a background
@@ -958,7 +945,8 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]',on_options
     d_back = flap.get_data_object('ABES_back')
     d.data -= d_back.data
     flap.add_data_object(d,'ABES')
-    flap.delete_data_object(['ABES_on','ABES_off','Beam_on','Beam_off'],exp_id=exp_id)
+    flap.delete_data_object('ABES_on')
+    flap.delete_data_object('ABES_off')
     if (test):
         plt.figure()
         flap.plot('ABES',axes='Time')
