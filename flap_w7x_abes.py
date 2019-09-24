@@ -896,7 +896,8 @@ def regenerate_time_sample(d):
     except ValueError:
         pass
         
-def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]',on_options=None, off_options=None,test=None):
+def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_options=None,
+                             off_options=None, test=None):
     """ Calculate signals in beam on and beam/off phases of the measurement and
         correct the beam-on phases with the beam-off. The result is "ABES" and "ABES_back" data object
         in the FLAP storage.
@@ -967,6 +968,70 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]',on_options
     if (test):
         plt.figure()
         flap.plot('ABES',axes='Time')
+
+def proc_chopsignals_dataobject(dataobject, on_options=None, off_options=None, ontest=None, timerange=None, test=False):
+    """ Calculates and returns signals in beam on and beam/off phases of the measurement and
+        correct the beam-on phases with the beam-off. 
+        in the FLAP storage.
+        INPUT:
+            dataobject: the dataobject containing all the signals of the 
+            timerange: Time range to process. Default is all times.
+            signals: List of measurement signals. Default is ABES-[1-40]
+            on_options: Options for the  for the get_data function when beam_on is read
+            off_options: Options for the get_data function when beam_off is read
+            test: Plot test plots if True
+        OUTPUT:
+            dataobject with the background corrected data
+    """
+
+    o = copy.deepcopy(on_options)
+    o.update({'State':{'Chop': 0, 'Defl': 0}}) 
+    d_beam_on = flap.get_data('W7X_ABES',
+                              exp_id=dataobject.exp_id,
+                              name='Chopper_time',
+                              coordinates={'Time':timerange},
+                              options=o,
+                              object_name='Beam_on')
+    o = copy.deepcopy(off_options)
+    o.update({'State':{'Chop': 1, 'Defl': 0}})  
+    d_beam_off=flap.get_data('W7X_ABES',
+                             exp_id=dataobject.exp_id,
+                             name='Chopper_time',
+                             coordinates={'Time':timerange},
+                             options=o,\
+                             object_name='Beam_off',
+                             )
+    if (test):
+        plt.close('all')
+        dataobject.plot(axes='Time')
+        d_beam_on.plot(plot_type='scatter',axes=['Time',2],options={'Force':True,'All':True})
+        d_beam_off.plot(plot_type='scatter',axes=['Time',0.1],options={'Force':True,'All':True})
+    dataobject_beam_on = dataobject.slice_data(slicing={'Sample':d_beam_on}, summing={'Rel. Sample in int(Sample)':'Mean'})
+    regenerate_time_sample(dataobject_beam_on)    
+    
+    dataobject_beam_off = dataobject.slice_data(slicing={'Sample':d_beam_off},
+                                                summing={'Rel. Sample in int(Sample)':'Mean'})
+    regenerate_time_sample(dataobject_beam_off)    
+    dataobject_background = dataobject_beam_off.slice_data(slicing={'Time':dataobject_beam_on},
+                                                           options={'Inter':'Linear'})
+    # Ensuring that only those samples are kept which also have a background
+#    flap.slice_data('ABES_on',slicing={'Start Sample in int(Sample)':flap.get_data_object('ABES_off_resampled')},options={'Inter':'Linear'},output_name='ABES_on')
+    
+    if (test):
+        plt.figure()
+        dataobject.plot()
+        dataobject_beam_on.plot(plot_type='scatter')
+        dataobject_beam_off.plot(plot_type='scatter')
+        dataobject_background.plot(plot_type='scatter')
+
+    dataobject_beam_on.data -= dataobject_beam_off.data
+
+    if (test):
+        plt.figure()
+        dataobject_beam_on.plot(axes='Time')
+    
+    return dataobject_beam_on
+    
             
 def register(data_source=None):
     flap.register_data_source('W7X_ABES', get_data_func=w7x_abes_get_data, add_coord_func=add_coordinate)
