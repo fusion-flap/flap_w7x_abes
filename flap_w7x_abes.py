@@ -831,7 +831,6 @@ def add_coordinate(data_object,
     '''
     default_options = {'spatcal_dir':'', "Channels":''}
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
-    print(_options.keys())
 
     if exp_id is None:
         spatcal = ShotSpatCal(data_object.exp_id, options=_options)
@@ -963,6 +962,7 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_option
                       object_name='ABES'
                       )
         d = flap.slice_data('ABES',slicing={'Sample':d_beam_on})
+        
         if options['Average Chopping Period'] is True:
             d = d.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
             regenerate_time_sample(d)
@@ -992,6 +992,14 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_option
         d_back = flap.get_data_object('ABES_back')
         d.data -= d_back.data.reshape(np.shape(d.data))
         flap.add_data_object(d,'ABES')
+        
+        # error approximation
+        d_beam_off = flap.get_data_object('ABES_off')
+        beam_off_data = d_beam_off.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
+        beam_off_data = beam_off_data.slice_data(slicing={'Time':d_beam_off},options={'Inter':'Linear'})
+        background_error = np.average((d_beam_off.data-beam_off_data.data.reshape(np.shape(d_beam_off.data)))**2, axis=0)\
+                           *len(beam_off_data.data)/(len(beam_off_data.data)-1)
+
         flap.delete_data_object(['ABES_on','ABES_off','Beam_on','Beam_off'],exp_id=exp_id)
         if (test):
             plt.figure()
@@ -1002,10 +1010,22 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_option
         # in this case the passed dataobject is used and the only the copper data is obtained from file
         dataobject_beam_on = dataobject.slice_data(slicing={'Sample': d_beam_on})
         if options['Average Chopping Period'] is True:
+            #calculating the error of the beam on part
+            reltime = dataobject_beam_on.get_coordinate_object('Rel. Sample in int(Sample)').dimension_list
+            if len(reltime)>1:
+                raise NotImplementedError('The error approximation for the data only works if the Rel. Sample only' +
+                                          'changes along onedimension')
+            reltime_size = dataobject_beam_on.data.shape[reltime[0]]
+            average = np.zeros(dataobject_beam_on.data.shape) + np.mean(dataobject_beam_on.data, axis=reltime[0])
+            beam_on_error = np.sum((dataobject_beam_on.data-average)**2, axis = reltime[0])/(reltime_size-1)
+            #the averaged density profile:
             dataobject_beam_on = dataobject_beam_on.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
+            dataobject_beam_on.error = np.sqrt(beam_on_error)
             regenerate_time_sample(dataobject_beam_on)
+            #estimating of beam on error
         else:
             add_absolute_time(dataobject_beam_on)
+            dataobject_beam_on.error = np.zeros(dataobject_beam_on.data.shape)
 
         dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off},
                                                     summing={'Rel. Sample in int(Sample)': 'Mean'})
@@ -1013,6 +1033,21 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_option
         dataobject_background = dataobject_beam_off.slice_data(slicing={'Time': dataobject_beam_on},
                                                                options={'Inter': 'Linear'})
         dataobject_beam_on.data -= dataobject_background.data.reshape(np.shape(dataobject_beam_on.data))
+        
+        # calculating the error for the beam off part
+        dataobject_beam_off_error = copy.deepcopy(dataobject_beam_off)
+        dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off})
+        reltime = dataobject_beam_off.get_coordinate_object('Rel. Sample in int(Sample)').dimension_list
+        if len(reltime)>1:
+                raise NotImplementedError('The error approximation for the data only works if the Rel. Sample only' +
+                                          'changes along onedimension')
+        reltime_size = dataobject_beam_off.data.shape[reltime[0]]
+        average = np.zeros(dataobject_beam_off.data.shape) + np.mean(dataobject_beam_off.data, axis=reltime[0])
+        beam_off_error = np.sum((dataobject_beam_off.data-average)**2, axis = reltime[0])/(reltime_size-1)
+        dataobject_beam_off_error.data = np.sqrt(beam_off_error)
+        background_error = dataobject_beam_off_error.slice_data(slicing={'Time': dataobject_beam_on}, options={'Inter': 'Linear'})
+        background_error = background_error.data.reshape(np.shape(dataobject_beam_on.data))
+        dataobject_beam_on.error = np.asarray(np.sqrt(dataobject_beam_on.error**2 + background_error**2))
 
         return dataobject_beam_on
     
@@ -1067,7 +1102,6 @@ def get_pearson_matrix(dataobject, options={}):
     # Creating the matrix for the calculation of the correlation
     # Getting the channel dimension:
     data_coord_list = np.array([coord.unit.name for coord in dataobject.coordinates])
-    print(data_coord_list)
     if 'Channel' in data_coord_list:
         ch_coord = 'Channel'
         channel_coordinate_dim = dataobject.get_coordinate_object('Channel').dimension_list[0]
@@ -1090,12 +1124,22 @@ def get_pearson_matrix(dataobject, options={}):
     # Calculating the correlation matrix
     pearson_matrix = np.corrcoef(corrcoeff_input)
 
-    channel_coord = flap.Coordinate(name=ch_coord, unit='', values=channel_names, shape=np.shape(channel_names),
-                                    mode=flap.CoordinateMode(equidistant=False), dimension_list=[0, 1])
+#    channel_coord = flap.Coordinate(name=ch_coord, unit='', values=channel_names, shape=np.shape(channel_names),
+#                                    mode=flap.CoordinateMode(equidistant=False), dimension_list=[0, 1])
+    coordinates = []
+    #adding all spatial coordinates that are in the original dataobject
+    for coord in data_coord_list:
+        if dataobject.get_coordinate_object(coord).dimension_list[0] == channel_coordinate_dim:
+            coordinates = coordinates + [dataobject.get_coordinate_object(coord)]
+            other_axis = copy.deepcopy(dataobject.get_coordinate_object(coord))
+            other_axis.dimension_list = [1]
+            other_axis.unit.name = other_axis.unit.name + ' 2'
+            coordinates = coordinates + [other_axis]
+
 
     pearson_dataobject = flap.DataObject(data_array=np.asarray(pearson_matrix),
                                          data_unit=flap.Unit(name='Correlation', unit='1'),
-                                         coordinates=[channel_coord], exp_id=dataobject.exp_id,
+                                         coordinates=coordinates, exp_id=dataobject.exp_id,
                                          data_title='Pearson Correlation Matrix', data_shape=pearson_matrix.shape,
                                          error=None)
 
