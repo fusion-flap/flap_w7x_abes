@@ -866,12 +866,25 @@ def regenerate_time_sample(d):
         if (c_shift.dimension_list != []):
             raise ValueError("Rel Time in int(Sample) is not constant.")
         if (not ct.mode.equidistant):
-            raise ValueError("Non-equidistant chopper?")
-        try:
-            ct.start += c_shift.values[0]
-        except IndexError:
-            ct.start += c_shift.values
+            try:
+                ct.values += c_shift.values[0]
+            except IndexError:
+                ct.values += c_shift.values
+            #check if new coordinate is equidistant
+            if len(ct.dimension_list) == 1:
+                steps = ct.values[1:]-ct.values[:-1]
+                accuracy = np.max(steps)/np.min(steps)
+                if accuracy-1 < 1e-10:
+                    ct.start = ct.values[0]
+                    ct.step = np.mean(steps)
+                    ct.mode.equidistant = True
+        else:
+            try:
+                ct.start += c_shift.values[0]
+            except IndexError:
+                ct.start += c_shift.values
         ct.unit.name='Time'
+        
         d.del_coordinate('Rel. Time in int(Sample)')
     try:
         # Trying to get Sample coordinate. If not present regenerating it
@@ -882,11 +895,23 @@ def regenerate_time_sample(d):
         if (c_shift.dimension_list != []):
             raise ValueError("Rel Sample in int(Sample) is not constant.")
         if (not ct.mode.equidistant):
-            raise ValueError("Non-equidistant chopper?")
-        try:
-            ct.start += c_shift.values[0]
-        except IndexError:
-            ct.start += c_shift.values
+            try:
+                ct.values += c_shift.values[0]
+            except IndexError:
+                ct.values += c_shift.values
+            #check if new coordinate is equidistant
+            if len(ct.dimension_list) == 1:
+                steps = ct.values[1:]-ct.values[:-1]
+                accuracy = np.max(steps)/np.min(steps)
+                if accuracy-1 < 1e-10:
+                    ct.start = ct.values[0]
+                    ct.step = np.mean(steps)
+                    ct.mode.equidistant = True
+        else:
+            try:
+                ct.start += c_shift.values[0]
+            except IndexError:
+                ct.start += c_shift.values
         ct.unit.name='Sample'
         d.del_coordinate('Rel. Sample in int(Sample)')
     try:
@@ -1016,7 +1041,7 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_option
                 raise NotImplementedError('The error approximation for the data only works if the Rel. Sample only' +
                                           'changes along onedimension')
             reltime_size = dataobject_beam_on.data.shape[reltime[0]]
-            average = np.zeros(dataobject_beam_on.data.shape) + np.mean(dataobject_beam_on.data, axis=reltime[0])
+            average = np.mean(dataobject_beam_on.data, axis=reltime[0], keepdims=True)
             beam_on_error = np.sum((dataobject_beam_on.data-average)**2, axis = reltime[0])/(reltime_size-1)
             #the averaged density profile:
             dataobject_beam_on = dataobject_beam_on.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
@@ -1026,14 +1051,14 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_option
         else:
             add_absolute_time(dataobject_beam_on)
             dataobject_beam_on.error = np.zeros(dataobject_beam_on.data.shape)
-
-        dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off},
-                                                    summing={'Rel. Sample in int(Sample)': 'Mean'})
+        
+        dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off}, options={'Partial intervals':False})
+        dataobject_beam_off = dataobject_beam_off.slice_data(summing={'Rel. Sample in int(Sample)': 'Mean'})
         regenerate_time_sample(dataobject_beam_off)
         dataobject_background = dataobject_beam_off.slice_data(slicing={'Time': dataobject_beam_on},
                                                                options={'Inter': 'Linear'})
         dataobject_beam_on.data -= dataobject_background.data.reshape(np.shape(dataobject_beam_on.data))
-        
+
         # calculating the error for the beam off part
         dataobject_beam_off_error = copy.deepcopy(dataobject_beam_off)
         dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off})
@@ -1042,7 +1067,7 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_option
                 raise NotImplementedError('The error approximation for the data only works if the Rel. Sample only' +
                                           'changes along onedimension')
         reltime_size = dataobject_beam_off.data.shape[reltime[0]]
-        average = np.zeros(dataobject_beam_off.data.shape) + np.mean(dataobject_beam_off.data, axis=reltime[0])
+        average = np.mean(dataobject_beam_off.data, axis=reltime[0], keepdims=True)
         beam_off_error = np.sum((dataobject_beam_off.data-average)**2, axis = reltime[0])/(reltime_size-1)
         dataobject_beam_off_error.data = np.sqrt(beam_off_error)
         background_error = dataobject_beam_off_error.slice_data(slicing={'Time': dataobject_beam_on}, options={'Inter': 'Linear'})
