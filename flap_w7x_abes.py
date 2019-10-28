@@ -1015,15 +1015,16 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_option
          
         d=flap.get_data_object('ABES_on')
         d_back = flap.get_data_object('ABES_back')
-        d.data -= d_back.data.reshape(np.shape(d.data))
+        d.data -= d_back.data
         flap.add_data_object(d,'ABES')
         
-        # error approximation
-        d_beam_off = flap.get_data_object('ABES_off')
-        beam_off_data = d_beam_off.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
-        beam_off_data = beam_off_data.slice_data(slicing={'Time':d_beam_off},options={'Inter':'Linear'})
-        background_error = np.average((d_beam_off.data-beam_off_data.data.reshape(np.shape(d_beam_off.data)))**2, axis=0)\
-                           *len(beam_off_data.data)/(len(beam_off_data.data)-1)
+#        # error approximation
+#        d_beam_off = flap.get_data_object('ABES_off')
+##        beam_off_data = d_beam_off.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
+##        regenerate_time_sample(beam_off_data)
+#        beam_off_data = beam_off_data.slice_data(slicing={'Time':d_beam_off},options={'Inter':'Linear'})
+#        background_error = np.average((d_beam_off.data-beam_off_data.data.reshape(np.shape(d_beam_off.data)))**2, axis=0)\
+#                           *len(beam_off_data.data)/(len(beam_off_data.data)-1)
 
         flap.delete_data_object(['ABES_on','ABES_off','Beam_on','Beam_off'],exp_id=exp_id)
         if (test):
