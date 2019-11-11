@@ -1149,7 +1149,7 @@ def get_pearson_matrix(dataobject, options={}):
 
     # Calculating the correlation matrix
     pearson_matrix = np.corrcoef(corrcoeff_input)
-
+    pearson_matrix[np.isnan(pearson_matrix)] = 0
 #    channel_coord = flap.Coordinate(name=ch_coord, unit='', values=channel_names, shape=np.shape(channel_names),
 #                                    mode=flap.CoordinateMode(equidistant=False), dimension_list=[0, 1])
     coordinates = []
