@@ -829,7 +829,7 @@ def add_coordinate(data_object,
     options - a dictionary of options
               available: 'spatcal_dir' - the location of calibration data
     '''
-    default_options = {'spatcal_dir':''}
+    default_options = {'spatcal_dir':'', "Channels":''}
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
 
     if exp_id is None:
@@ -839,8 +839,12 @@ def add_coordinate(data_object,
 
     # getting the dimension of the channel coordinate, this should be the same as the spatial coordinate
     data_coord_list = np.array([coord.unit.name for coord in data_object.coordinates])
-    channel_coordinate_dim = data_object.get_coordinate_object('Signal name').dimension_list[0]
-    channel_names = data_object.get_coordinate_object('Signal name').values
+    if 'Channel' in data_coord_list:
+        channel_coordinate_dim = data_object.get_coordinate_object('Channel').dimension_list[0]
+        channel_names = data_object.get_coordinate_object('Channel').values
+    else:     
+        channel_coordinate_dim = data_object.get_coordinate_object('Signal name').dimension_list[0]
+        channel_names = data_object.get_coordinate_object('Signal name').values
 
     for coord_name in coordinates:
         coord_object = spatcal.create_coordinate_object(channel_coordinate_dim, coord_name,
@@ -862,12 +866,25 @@ def regenerate_time_sample(d):
         if (c_shift.dimension_list != []):
             raise ValueError("Rel Time in int(Sample) is not constant.")
         if (not ct.mode.equidistant):
-            raise ValueError("Non-equidistant chopper?")
-        try:
-            ct.start += c_shift.values[0]
-        except IndexError:
-            ct.start += c_shift.values
+            try:
+                ct.values += c_shift.values[0]
+            except IndexError:
+                ct.values += c_shift.values
+            #check if new coordinate is equidistant
+            if len(ct.dimension_list) == 1:
+                steps = ct.values[1:]-ct.values[:-1]
+                accuracy = np.max(steps)/np.min(steps)
+                if accuracy-1 < 1e-10:
+                    ct.start = ct.values[0]
+                    ct.step = np.mean(steps)
+                    ct.mode.equidistant = True
+        else:
+            try:
+                ct.start += c_shift.values[0]
+            except IndexError:
+                ct.start += c_shift.values
         ct.unit.name='Time'
+        
         d.del_coordinate('Rel. Time in int(Sample)')
     try:
         # Trying to get Sample coordinate. If not present regenerating it
@@ -878,11 +895,23 @@ def regenerate_time_sample(d):
         if (c_shift.dimension_list != []):
             raise ValueError("Rel Sample in int(Sample) is not constant.")
         if (not ct.mode.equidistant):
-            raise ValueError("Non-equidistant chopper?")
-        try:
-            ct.start += c_shift.values[0]
-        except IndexError:
-            ct.start += c_shift.values
+            try:
+                ct.values += c_shift.values[0]
+            except IndexError:
+                ct.values += c_shift.values
+            #check if new coordinate is equidistant
+            if len(ct.dimension_list) == 1:
+                steps = ct.values[1:]-ct.values[:-1]
+                accuracy = np.max(steps)/np.min(steps)
+                if accuracy-1 < 1e-10:
+                    ct.start = ct.values[0]
+                    ct.step = np.mean(steps)
+                    ct.mode.equidistant = True
+        else:
+            try:
+                ct.start += c_shift.values[0]
+            except IndexError:
+                ct.start += c_shift.values
         ct.unit.name='Sample'
         d.del_coordinate('Rel. Sample in int(Sample)')
     try:
@@ -891,25 +920,38 @@ def regenerate_time_sample(d):
     except ValueError:
         pass
         
-def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]',on_options=None, off_options=None,test=None):
+def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_options=None,
+                             off_options=None, test=None, dataobject=None, options={}):
     """ Calculate signals in beam on and beam/off phases of the measurement and
         correct the beam-on phases with the beam-off. The result is "ABES" and "ABES_back" data object
         in the FLAP storage.
         INPUT:
-            exp_id: exp_id (no default)
+            There are two modes of this function:
+                The first one obtains the data directly from a measurement file
+                    exp_id: exp_id (no default)
+                    signals: List of measurement signals. Default is ABES-[1-40]
+                The second one takes a dataobject as an input
+                    dataobject: the input dataobject file
             timerange: Time range to process. Default is all times.
-            signals: List of measurement signals. Default is ABES-[1-40]
             on_options: Options for the  for the get_data function when beam_on is read
             off_options: Options for the get_data function when beam_off is read
             test: Plot test plots if True
+            options:
+                Average Chopping Period: Whether the data should be averaged for a single chopper time period. Per 
+                                         default this is True. If this option is False then all measurement time points
+                                         of the beam on state is saved. This could be useful if slow beam chopping is
+                                         used and the background signal is reasonably constant relative to the analyzed
+                                         process.
+        OUTPUT: The background subtracted A-BES data
     """
+    options_default = {'Average Chopping Period': True}
+    options = {**options_default, **options}
 
-    flap.get_data('W7X_ABES',
-                  exp_id=exp_id,
-                  coordinates={'Time':timerange},
-                  name=signals,
-                  object_name='ABES'
-                  )
+
+    # Obtaining the chopper data
+    if dataobject is not None:
+        exp_id = dataobject.exp_id
+        
     o = copy.deepcopy(on_options)
     o.update({'State':{'Chop': 0, 'Defl': 0}})  
     d_beam_on=flap.get_data('W7X_ABES',
@@ -928,41 +970,206 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]',on_options
                              options=o,\
                              object_name='Beam_off',
                              )
-    if (test):
-        plt.close('all')
-        flap.plot('ABES',axes='Time',plot_options={'marker':'o'},options={'All':True})
-#        flap.plot('ABES',axes='Time',plot_type='scatter')
-        d_beam_on.plot(plot_type='scatter',axes=['Time',0.25],options={'Force':True,'All':True})
-        d_beam_off.plot(plot_type='scatter',axes=['Time',0.1],options={'Force':True,'All':True})
-    d = flap.slice_data('ABES',slicing={'Sample':d_beam_on},summing={'Rel. Sample in int(Sample)':'Mean'})
-    regenerate_time_sample(d)    
-    
-    flap.add_data_object(d,'ABES_on')
-    d = flap.slice_data('ABES',slicing={'Sample':d_beam_off},summing={'Rel. Sample in int(Sample)':'Mean'})
-    regenerate_time_sample(d)    
-    flap.add_data_object(d,'ABES_off')
-    flap.slice_data('ABES_off',slicing={'Time':flap.get_data_object('ABES_on')},options={'Inter':'Linear'},output_name='ABES_back')
-    # Ensuring that only those samples are kept which also have a background
-#    flap.slice_data('ABES_on',slicing={'Start Sample in int(Sample)':flap.get_data_object('ABES_off_resampled')},options={'Inter':'Linear'},output_name='ABES_on')
-    
-    if (test):
-        plt.figure()
-        flap.plot('ABES')
-        flap.plot('ABES_on',plot_type='scatter')
-        flap.plot('ABES_on')
-        flap.plot('ABES_off',plot_type='scatter')
-        flap.plot('ABES_off')
-        flap.plot('ABES_back',plot_type='scatter')
-     
-    d=flap.get_data_object('ABES_on')
-    d_back = flap.get_data_object('ABES_back')
-    d.data -= d_back.data
-    flap.add_data_object(d,'ABES')
-    flap.delete_data_object(['ABES_on','ABES_off','Beam_on','Beam_off'],exp_id=exp_id)
-    if (test):
-        plt.figure()
-        flap.plot('ABES',axes='Time')
+
+    # Background subtraction
+    if dataobject is None:
+        # in this case the flap storage is used for obtaining the data by experiment ID
+        flap.get_data('W7X_ABES',
+                      exp_id=exp_id,
+                      coordinates={'Time':timerange},
+                      name=signals,
+                      object_name='ABES'
+                      )
+        if (test):
+            plt.close('all')
+            flap.plot('ABES', axes='Time', plot_options={'marker': 'o'})
+            d_beam_on.plot(plot_type='scatter', axes=['Time', 2], options={'Force': True,'All': True})
+            d_beam_off.plot(plot_type='scatter', axes=['Time', 0.1], options={'Force': True,'All': True})
+        d = flap.slice_data('ABES',slicing={'Sample':d_beam_on})
+        
+        if options['Average Chopping Period'] is True:
+            d = d.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
+            regenerate_time_sample(d)
+        else:
+            add_absolute_time(d)
+
+        flap.add_data_object(d,'ABES_on')
+        
+        d = flap.slice_data('ABES',slicing={'Sample':d_beam_off})
+        d = d.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
+        regenerate_time_sample(d)    
+        flap.add_data_object(d,'ABES_off')
+        flap.slice_data('ABES_off',slicing={'Time':flap.get_data_object('ABES_on')},options={'Inter':'Linear'},output_name='ABES_back')
+        # Ensuring that only those samples are kept which also have a background
+        #    flap.slice_data('ABES_on',slicing={'Start Sample in int(Sample)':flap.get_data_object('ABES_off_resampled')},options={'Inter':'Linear'},output_name='ABES_on')
+        
+        if (test):
+            plt.figure()
+            flap.plot('ABES')
+            flap.plot('ABES_on',plot_type='scatter')
+            flap.plot('ABES_on')
+            flap.plot('ABES_off',plot_type='scatter')
+            flap.plot('ABES_off')
+            flap.plot('ABES_back',plot_type='scatter')
+         
+        d=flap.get_data_object('ABES_on')
+        d_back = flap.get_data_object('ABES_back')
+        d.data -= d_back.data
+        flap.add_data_object(d,'ABES')
+        
+#        # error approximation
+#        d_beam_off = flap.get_data_object('ABES_off')
+##        beam_off_data = d_beam_off.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
+##        regenerate_time_sample(beam_off_data)
+#        beam_off_data = beam_off_data.slice_data(slicing={'Time':d_beam_off},options={'Inter':'Linear'})
+#        background_error = np.average((d_beam_off.data-beam_off_data.data.reshape(np.shape(d_beam_off.data)))**2, axis=0)\
+#                           *len(beam_off_data.data)/(len(beam_off_data.data)-1)
+
+        flap.delete_data_object(['ABES_on','ABES_off','Beam_on','Beam_off'],exp_id=exp_id)
+        if (test):
+            plt.figure()
+            flap.plot('ABES',axes='Time')
             
+        return d
+    else:
+        # in this case the passed dataobject is used and the only the copper data is obtained from file
+        dataobject_beam_on = dataobject.slice_data(slicing={'Sample': d_beam_on})
+        if options['Average Chopping Period'] is True:
+            #calculating the error of the beam on part
+            reltime = dataobject_beam_on.get_coordinate_object('Rel. Sample in int(Sample)').dimension_list
+            if len(reltime)>1:
+                raise NotImplementedError('The error approximation for the data only works if the Rel. Sample only' +
+                                          'changes along onedimension')
+            reltime_size = dataobject_beam_on.data.shape[reltime[0]]
+            average = np.mean(dataobject_beam_on.data, axis=reltime[0], keepdims=True)
+            beam_on_error = np.sum((dataobject_beam_on.data-average)**2, axis = reltime[0])/(reltime_size-1)
+            #the averaged density profile:
+            dataobject_beam_on = dataobject_beam_on.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
+            dataobject_beam_on.error = np.sqrt(beam_on_error)
+            regenerate_time_sample(dataobject_beam_on)
+            #estimating of beam on error
+        else:
+            add_absolute_time(dataobject_beam_on)
+            dataobject_beam_on.error = np.zeros(dataobject_beam_on.data.shape)
+        
+        dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off}, options={'Partial intervals':False})
+        dataobject_beam_off = dataobject_beam_off.slice_data(summing={'Rel. Sample in int(Sample)': 'Mean'})
+        regenerate_time_sample(dataobject_beam_off)
+        dataobject_background = dataobject_beam_off.slice_data(slicing={'Time': dataobject_beam_on},
+                                                               options={'Inter': 'Linear'})
+        dataobject_beam_on.data -= dataobject_background.data.reshape(np.shape(dataobject_beam_on.data))
+
+        # calculating the error for the beam off part
+        dataobject_beam_off_error = copy.deepcopy(dataobject_beam_off)
+        dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off})
+        reltime = dataobject_beam_off.get_coordinate_object('Rel. Sample in int(Sample)').dimension_list
+        if len(reltime)>1:
+                raise NotImplementedError('The error approximation for the data only works if the Rel. Sample only' +
+                                          'changes along onedimension')
+        reltime_size = dataobject_beam_off.data.shape[reltime[0]]
+        average = np.mean(dataobject_beam_off.data, axis=reltime[0], keepdims=True)
+        beam_off_error = np.sum((dataobject_beam_off.data-average)**2, axis = reltime[0])/(reltime_size-1)
+        dataobject_beam_off_error.data = np.sqrt(beam_off_error)
+        background_error = dataobject_beam_off_error.slice_data(slicing={'Time': dataobject_beam_on}, options={'Inter': 'Linear'})
+        background_error = background_error.data.reshape(np.shape(dataobject_beam_on.data))
+        dataobject_beam_on.error = np.asarray(np.sqrt(dataobject_beam_on.error**2 + background_error**2))
+
+        return dataobject_beam_on
+    
+def add_absolute_time(dataobject):
+    """ Creates a coordinate 'Time' to the input dataobject from proc_chopsignals. This can be used for slicing the
+            data
+        INPUT:
+            d - dataobject, with coordinates Start Time in int(Sample) and Rek. Time in int(Sample)
+        OUTPUT: None, the coordinate is added to the original dataobject
+    """
+    # Finding the coordinates for the dataobject
+    coords = [coord.unit.name for coord in dataobject.coordinates]
+    coord_index = 0
+    dimension_list_time = []
+    for coordinate in coords:
+        # will need to set for the time index
+        if coordinate == 'Start Time in int(Sample)':
+            dimension_list_time = list(dataobject.coordinates[coord_index].dimension_list)+dimension_list_time
+        elif coordinate == 'Rel. Time in int(Sample)':
+            dimension_list_time = list(dataobject.coordinates[coord_index].dimension_list)+dimension_list_time
+        coord_index = coord_index+1
+    dimension_list_time = list(np.unique(np.asarray(dimension_list_time)))
+
+    name = 'Time'
+    time_coord_value = dataobject.coordinate('Start Time in int(Sample)')[0] +\
+                       dataobject.coordinate('Rel. Time in int(Sample)')[0]
+    time_coord = flap.Coordinate(name=name, unit='Second', values=time_coord_value, shape=np.shape(time_coord_value),
+                 mode=flap.CoordinateMode(equidistant=False), dimension_list=dimension_list_time)
+    dataobject.add_coordinate_object(time_coord)
+
+def get_pearson_matrix(dataobject, options={}):
+    """ This function calculates and adds the pearson matrix for the channels of the backgorund corrected
+        A-BES dataobject.
+        INPUT:
+            dataobject: The background corrected A-BES data, should have only a Channel/Signal name dimension 
+            and a 'Time' dimension.
+            options:
+                "Time Window": If defined, it is the time window for which the fluctuations should be analzed to
+                calculate the Pearson matrix. If undefined, then the whole time interval of datobject is used
+        OUTPUT:
+            The Pearson matrix as a dataobject which is the size number_of_channels*number_of_channels
+    """
+    options_default = {'Time Window': None}
+    options = {**options_default, **options}
+    if options['Time Window'] is None:
+        options['Time Window'] = np.array([np.min(dataobject.coordinate('Time')[0]),
+                                           np.max(dataobject.coordinate('Time')[0])])
+    
+    dataobject = copy.deepcopy(dataobject) # so that the original one is not accidentally overwritten
+    dataobject.error = None
+    
+    # Creating the matrix for the calculation of the correlation
+    # Getting the channel dimension:
+    data_coord_list = np.array([coord.unit.name for coord in dataobject.coordinates])
+    if 'Channel' in data_coord_list:
+        ch_coord = 'Channel'
+        channel_coordinate_dim = dataobject.get_coordinate_object('Channel').dimension_list[0]
+        channel_names = np.unique(dataobject.get_coordinate_object('Channel').values)
+    else:
+        ch_coord = 'Signal name'
+        channel_coordinate_dim = dataobject.get_coordinate_object('Signal name').dimension_list[0]
+        channel_names = np.unique(dataobject.get_coordinate_object('Signal name').values)
+    
+    # Slicing along the channels and flattening the data
+    channel_id = 0
+    for channel in channel_names:
+        channel_data = dataobject.slice_data(slicing={ch_coord: channel}).data
+        channel_data = channel_data.flatten()
+        if channel_id == 0:
+            corrcoeff_input = np.zeros([len(channel_names), len(channel_data)])
+        corrcoeff_input[channel_id, :] = channel_data
+        channel_id += 1
+
+    # Calculating the correlation matrix
+    pearson_matrix = np.corrcoef(corrcoeff_input)
+
+#    channel_coord = flap.Coordinate(name=ch_coord, unit='', values=channel_names, shape=np.shape(channel_names),
+#                                    mode=flap.CoordinateMode(equidistant=False), dimension_list=[0, 1])
+    coordinates = []
+    #adding all spatial coordinates that are in the original dataobject
+    for coord in data_coord_list:
+        if dataobject.get_coordinate_object(coord).dimension_list[0] == channel_coordinate_dim:
+            coordinates = coordinates + [dataobject.get_coordinate_object(coord)]
+            other_axis = copy.deepcopy(dataobject.get_coordinate_object(coord))
+            other_axis.dimension_list = [1]
+            other_axis.unit.name = other_axis.unit.name + ' 2'
+            coordinates = coordinates + [other_axis]
+
+
+    pearson_dataobject = flap.DataObject(data_array=np.asarray(pearson_matrix),
+                                         data_unit=flap.Unit(name='Correlation', unit='1'),
+                                         coordinates=coordinates, exp_id=dataobject.exp_id,
+                                         data_title='Pearson Correlation Matrix', data_shape=pearson_matrix.shape,
+                                         error=None)
+
+    return pearson_dataobject
+    
 def register(data_source=None):
     flap.register_data_source('W7X_ABES', get_data_func=w7x_abes_get_data, add_coord_func=add_coordinate)
 
