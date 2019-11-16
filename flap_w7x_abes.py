@@ -930,9 +930,9 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]',on_options
                              )
     if (test):
         plt.close('all')
-        flap.plot('ABES',axes='Time',plot_options={'marker':'o'})
+        flap.plot('ABES',axes='Time',plot_options={'marker':'o'},options={'All':True})
 #        flap.plot('ABES',axes='Time',plot_type='scatter')
-        d_beam_on.plot(plot_type='scatter',axes=['Time',2],options={'Force':True,'All':True})
+        d_beam_on.plot(plot_type='scatter',axes=['Time',0.25],options={'Force':True,'All':True})
         d_beam_off.plot(plot_type='scatter',axes=['Time',0.1],options={'Force':True,'All':True})
     d = flap.slice_data('ABES',slicing={'Sample':d_beam_on},summing={'Rel. Sample in int(Sample)':'Mean'})
     regenerate_time_sample(d)    
