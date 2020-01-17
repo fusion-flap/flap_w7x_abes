@@ -15,7 +15,7 @@ import h5py
 import matplotlib.pyplot as plt
 
 import flap
-from .spatcal import *
+from . import spatcal
 
 if (flap.VERBOSE):
     print("Importing flap_w7x-abes")
@@ -181,7 +181,7 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
     """ Do calibration of the data if it is requested in options
     """
     try:
-        calib = options['Calibration']
+        calib = options['Amplitude calibration']
     except KeyError:
         calib = False
     if (type(calib) is not bool):
@@ -191,12 +191,12 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
         return data_arr
 
     try:
-        calibration_path = options['Calib. path']
+        calibration_path = options['Amplitude calib. path']
     except KeyError:
         calibration_path = 'cal'
 
-    if (options['Calib. file'] is not None):
-        calibration_file = options['Calib. file']
+    if (options['Amplitude calib. file'] is not None):
+        calibration_file = options['Amplitude calib. file']
         index_start = [0]
         index_stop = [data_arr.size[1]]
         cal_files = [calibration_file]
@@ -544,13 +544,14 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
     default_options = {'Datapath':'data',
                        'Scaling':'Digit',
                        'Offset timerange': None,
-                       'Calibration': False,
-                       'Calib. path': 'cal',
-                       'Calib. file': None,
+                       'Amplitude calibration': False,
+                       'Amplitude calib. path': 'cal',
+                       'Amplitude calib. file': None,
                        'Phase' : None,
                        'State' : None,
                        'Start delay': 0,
-                       'End delay': 0
+                       'End delay': 0,
+                       'Spatial calibration': False
                        }
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
 
@@ -814,6 +815,10 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                         data_title=data_title,
                         info={'Options':_options},
                         data_source="W7X_ABES")
+    if options['Spatial calibration'] is True:
+        # Getting the spatial calibration
+        d = add_coordinate(d, ['Device R', 'Beam axis'],
+                           options={"spatcal_dir": flap.config.get("Module W7X_ABES","Spatial calibration directory")})
     return d
 
 
@@ -833,21 +838,21 @@ def add_coordinate(data_object,
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
 
     if exp_id is None:
-        spatcal = ShotSpatCal(data_object.exp_id, options=_options)
+        exp_spatcal = spatcal.ShotSpatCal(data_object.exp_id, options=_options)
     else:
-        spatcal = ShotSpatCal(exp_id, options=_options)
+        exp_spatcal = spatcal.ShotSpatCal(exp_id, options=_options)
 
     # getting the dimension of the channel coordinate, this should be the same as the spatial coordinate
     data_coord_list = np.array([coord.unit.name for coord in data_object.coordinates])
-    if 'Channel' in data_coord_list:
-        channel_coordinate_dim = data_object.get_coordinate_object('Channel').dimension_list[0]
-        channel_names = data_object.get_coordinate_object('Channel').values
-    else:     
+    if 'Signal name' in data_coord_list:
         channel_coordinate_dim = data_object.get_coordinate_object('Signal name').dimension_list[0]
         channel_names = data_object.get_coordinate_object('Signal name').values
+    else:     
+        channel_coordinate_dim = data_object.get_coordinate_object('Channel').dimension_list[0]
+        channel_names = data_object.get_coordinate_object('Channel').values
 
     for coord_name in coordinates:
-        coord_object = spatcal.create_coordinate_object(channel_coordinate_dim, coord_name,
+        coord_object = exp_spatcal.create_coordinate_object(channel_coordinate_dim, coord_name,
                                                          channel_names=channel_names)
         data_object.add_coordinate_object(coord_object)
 
@@ -866,6 +871,8 @@ def regenerate_time_sample(d):
         if (c_shift.dimension_list != []):
             raise ValueError("Rel Time in int(Sample) is not constant.")
         if (not ct.mode.equidistant):
+            if c_shift.values == None:
+                c_shift.values = c_shift.start
             try:
                 ct.values += c_shift.values[0]
             except IndexError:
@@ -895,6 +902,8 @@ def regenerate_time_sample(d):
         if (c_shift.dimension_list != []):
             raise ValueError("Rel Sample in int(Sample) is not constant.")
         if (not ct.mode.equidistant):
+            if c_shift.values == None:
+                c_shift.values = c_shift.start
             try:
                 ct.values += c_shift.values[0]
             except IndexError:
@@ -919,8 +928,8 @@ def regenerate_time_sample(d):
         d.del_coordinate('Interval(Sample) sample index')
     except ValueError:
         pass
-        
-def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_options=None,
+
+def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_options=None,
                              off_options=None, test=None, dataobject=None, options={}):
     """ Calculate signals in beam on and beam/off phases of the measurement and
         correct the beam-on phases with the beam-off. The result is "ABES" and "ABES_back" data object
@@ -952,7 +961,11 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_option
     if dataobject is not None:
         exp_id = dataobject.exp_id
     o = copy.deepcopy(on_options)
-    o.update({'State':{'Chop': 0, 'Defl': 0}})  
+    if 'W7X_ABES' not in flap.list_data_sources():
+        register()
+    o.update({'State':{'Chop': 0, 'Defl': 0}})
+    if timerange is None:
+        timerange = [np.min(dataobject.coordinate('Time')), np.max(dataobject.coordinate('Time'))]
     d_beam_on=flap.get_data('W7X_ABES',
                             exp_id=exp_id,
                             name='Chopper_time',
@@ -961,18 +974,23 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_option
                             object_name='Beam_on',
                             )
     o = copy.deepcopy(off_options)
-    o.update({'State':{'Chop': 1, 'Defl': 0}})  
+    o.update({'State':{'Chop': 1, 'Defl': 0}})
     d_beam_off=flap.get_data('W7X_ABES',
-                             exp_id=exp_id,
-                             name='Chopper_time',
-                             coordinates={'Time':timerange},
-                             options=o,\
-                             object_name='Beam_off',
-                             )
+                            exp_id=exp_id,
+                            name='Chopper_time',
+                            coordinates={'Time':timerange},
+                            options=o,\
+                            object_name='Beam_off',
+                            )
 
     if (test):
+        from matplotlib import pyplot as plt
         plt.close('all')
-        flap.plot('ABES', axes='Time', plot_options={'marker': 'o'})
+        if dataobject is None:
+            flap.plot('ABES', axes='Time', plot_options={'marker': 'o'})
+        else:
+            temp = dataobject.slice_data(slicing={'Signal name':'ABES-20'})
+            temp.plot(axes='Time', plot_options={'marker': 'o'})
 #        flap.plot('ABES',axes='Time',plot_type='scatter')
         d_beam_on.plot(plot_type='scatter', axes=['Time', 2], options={'Force': True,'All': True})
         d_beam_off.plot(plot_type='scatter', axes=['Time', 0.1], options={'Force': True,'All': True})
@@ -1035,48 +1053,142 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_option
     else:
         # in this case the passed dataobject is used and the only the copper data is obtained from file
         dataobject_beam_on = dataobject.slice_data(slicing={'Sample': d_beam_on})
-        if options['Average Chopping Period'] is True:
-            #calculating the error of the beam on part
-            reltime = dataobject_beam_on.get_coordinate_object('Rel. Sample in int(Sample)').dimension_list
-            if len(reltime)>1:
-                raise NotImplementedError('The error approximation for the data only works if the Rel. Sample only' +
-                                          'changes along onedimension')
-            reltime_size = dataobject_beam_on.data.shape[reltime[0]]
-            average = np.mean(dataobject_beam_on.data, axis=reltime[0], keepdims=True)
-            beam_on_error = np.sum((dataobject_beam_on.data-average)**2, axis = reltime[0])/(reltime_size-1)
-            #the averaged density profile:
-            dataobject_beam_on = dataobject_beam_on.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
-            dataobject_beam_on.error = np.sqrt(beam_on_error)
-            regenerate_time_sample(dataobject_beam_on)
-            #estimating of beam on error
-        else:
-            add_absolute_time(dataobject_beam_on)
-            dataobject_beam_on.error = np.zeros(dataobject_beam_on.data.shape)
-        
+        # For dataobject_beam_on.data the 0 dimension is along a constant 'Start Time in int(Time)' and 
+        # "Rel. Time in int(Time)" varies. For dimension 1 it is 'Start Time in int(Time)' that varies
+        dataobject_beam_on = process_chopped_dataobject(dataobject_beam_on, options=options)
+    
         dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off}, options={'Partial intervals':False})
-        dataobject_beam_off = dataobject_beam_off.slice_data(summing={'Rel. Sample in int(Sample)': 'Mean'})
-        regenerate_time_sample(dataobject_beam_off)
+        dataobject_beam_off = process_chopped_dataobject(dataobject_beam_off, options={'Average Chopping Period': True})
+    
         dataobject_background = dataobject_beam_off.slice_data(slicing={'Time': dataobject_beam_on},
                                                                options={'Inter': 'Linear'})
+        if (test):
+            from matplotlib import pyplot as plt
+            plt.figure()
+            plt.scatter(dataobject_beam_on.get_coordinate_object("Time").values, dataobject_beam_on.data)
+            plt.scatter(dataobject_beam_off.get_coordinate_object("Time").values, dataobject_beam_off.data)
+            plt.plot(dataobject.coordinate("Time")[0], dataobject.data)            
+        
         dataobject_beam_on.data -= dataobject_background.data.reshape(np.shape(dataobject_beam_on.data))
-
+    
         # calculating the error for the beam off part
         dataobject_beam_off_error = copy.deepcopy(dataobject_beam_off)
-        dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off})
-        reltime = dataobject_beam_off.get_coordinate_object('Rel. Sample in int(Sample)').dimension_list
-        if len(reltime)>1:
-                raise NotImplementedError('The error approximation for the data only works if the Rel. Sample only' +
-                                          'changes along onedimension')
-        reltime_size = dataobject_beam_off.data.shape[reltime[0]]
-        average = np.mean(dataobject_beam_off.data, axis=reltime[0], keepdims=True)
-        beam_off_error = np.sum((dataobject_beam_off.data-average)**2, axis = reltime[0])/(reltime_size-1)
-        dataobject_beam_off_error.data = np.sqrt(beam_off_error)
+        dataobject_beam_off_error.data = np.sqrt(dataobject_beam_off.error)
         background_error = dataobject_beam_off_error.slice_data(slicing={'Time': dataobject_beam_on}, options={'Inter': 'Linear'})
         background_error = background_error.data.reshape(np.shape(dataobject_beam_on.data))
         dataobject_beam_on.error = np.asarray(np.sqrt(dataobject_beam_on.error**2 + background_error**2))
-
-        return dataobject_beam_on
     
+        if (test):
+            plt.plot(dataobject_beam_on.get_coordinate_object("Time").values,
+                     dataobject_beam_on.data)
+    
+        return dataobject_beam_on
+
+def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_options=None,
+                     off_options=None, test=None, dataobject=None, options={}):
+    """ Calculate signals in beam on and beam/off phases of the measurement and
+        correct the beam-on phases with the beam-off. Further information in the comments of 
+        proc_chopsignals_single
+    """
+    
+    # checking, whether dataobject has the data for multiple channels
+    naming_conventions = ["Channel", "Signal name", "Device R", "Beam axis"]
+    channel_naming = []
+    for name in naming_conventions:
+        if name in dataobject.coordinate_names():
+            channel_naming.append(name)
+    
+    if len(channel_naming)==0:
+       processed_data = proc_chopsignals_single(dataobject=dataobject, timerange=timerange,
+                                          test=test, on_options=on_options,
+                                          off_options=off_options,  options=options)
+    else:
+        channels = dataobject.get_coordinate_object(channel_naming[0]).values
+        for channel in channels:
+            channel_data = dataobject.slice_data(slicing={channel_naming[0]: channel})
+            if not ("processed_data" in locals()):
+                processed_data = proc_chopsignals_single(dataobject=channel_data,
+                                                         timerange=timerange,
+                                                         test=test, on_options=on_options,
+                                                         off_options=off_options,  options=options)
+            else:
+                partial_processed_data = proc_chopsignals_single(dataobject=channel_data, timerange=timerange,
+                                          test=test, on_options=on_options,
+                                          off_options=off_options,  options=options)
+                if len(processed_data.data.shape) == 1:
+                    processed_data.data=np.stack((processed_data.data, partial_processed_data.data), axis=1)
+                    processed_data.error=np.stack((processed_data.error, partial_processed_data.error), axis=1)
+                else:
+                    processed_data.data=np.hstack((processed_data.data, np.expand_dims(partial_processed_data.data, axis=1)))
+                    processed_data.error=np.hstack((processed_data.error, np.expand_dims(partial_processed_data.error, axis=1)))
+
+#                del partial_processed_data
+#                gc.collect()
+        processed_data.shape = processed_data.data.shape
+        # adding the channel coordinates
+        channel_dimension = dataobject.get_coordinate_object(channel_naming[0]).dimension_list
+        for coordinate in dataobject.coordinates:
+            if coordinate.dimension_list == channel_dimension:
+                naming_coord = copy.deepcopy(coordinate)
+                naming_coord.dimension_list = [1]
+                processed_data.add_coordinate_object(naming_coord)
+    return processed_data
+
+def process_chopped_dataobject(dataobject, options={}):
+    ''' Processes the input channel data dataobject which has been already
+    sliced with a chopper dataobject. It flattens the data and adds the proper
+    Time coordinate. If requested it only averages the data over the chopping
+    time periods.
+    dataobject - the channel data sliced with a chopper DataObject
+    options 'Average Chopping Period' - boolean,  whether to average the date
+                                        over a chopping interval
+    '''
+    options_default = {'Average Chopping Period': True}
+    options = {**options_default, **options}
+    if options['Average Chopping Period'] is True:
+        #calculating the error of the beam on part
+        reltime_coord = dataobject.get_coordinate_object("Rel. Time in int(Sample)")
+        reltime_size = dataobject.data.shape[reltime_coord.dimension_list[0]]
+        average = np.nanmean(dataobject.data, axis=reltime_coord.dimension_list[0], keepdims=True)
+        beam_on_error = np.nansum((dataobject.data-average)**2, axis = reltime_coord.dimension_list[0])/(reltime_size-1)
+        dataobject.get_coordinate_object("Rel. Time in int(Sample)").dimension_list=[]
+        dataobject.get_coordinate_object("Rel. Sample in int(Sample)").dimension_list=[]
+
+        #the averaged density profile - #flap is currently not capable of doing this correctly
+        # need to set up a time coordinate correctly
+        regenerate_time_sample(dataobject)
+        times = copy.deepcopy(dataobject.coordinate("Time")[0])[0]
+        dataobject.coordinates = [dataobject.get_coordinate_object("Time")]
+
+        #taking the average over the Rel.Time in int(Time) coordinate
+        dataobject.data = average[0]
+        dataobject.shape = dataobject.data.shape
+        dataobject.error = np.sqrt(beam_on_error)
+    else:
+        add_absolute_time(dataobject)
+        times = copy.deepcopy(dataobject.coordinate("Time")[0]).flatten()
+        dataobject.data = dataobject.data.flatten()
+        times = times[np.logical_not(np.isnan(dataobject.data))] # removing nans due to the padding of the slicer
+        dataobject.data = dataobject.data[np.logical_not(np.isnan(dataobject.data))]
+        dataobject.shape = dataobject.data.shape
+        dataobject.error = np.zeros(dataobject.data.shape)
+        dataobject.coordinates = [dataobject.get_coordinate_object("Time")]
+
+    dataobject.get_coordinate_object("Time").values = times
+    dataobject.get_coordinate_object("Time").shape = times.shape
+    dataobject.get_coordinate_object("Time").dimension_list = [0]
+    dataobject.get_coordinate_object("Time").mode.equidistant = False
+    dataobject.get_coordinate_object("Time").start=None
+    dataobject.get_coordinate_object("Time").step=None
+    
+    #ordering the data along the time coordinate
+    time_data = np.asarray(sorted(zip(dataobject.get_coordinate_object("Time").values,
+                                      dataobject.data)))
+    dataobject.get_coordinate_object("Time").values = time_data[:,0]
+    dataobject.data = time_data[:,1]
+    
+    return dataobject
+
 def add_absolute_time(dataobject):
     """ Creates a coordinate 'Time' to the input dataobject from proc_chopsignals. This can be used for slicing the
             data
@@ -1121,10 +1233,10 @@ def get_pearson_matrix(dataobject, options={}):
     if options['Time Window'] is None:
         options['Time Window'] = np.array([np.min(dataobject.coordinate('Time')[0]),
                                            np.max(dataobject.coordinate('Time')[0])])
-    
+
     dataobject = copy.deepcopy(dataobject) # so that the original one is not accidentally overwritten
     dataobject.error = None
-    
+
     # Creating the matrix for the calculation of the correlation
     # Getting the channel dimension:
     data_coord_list = np.array([coord.unit.name for coord in dataobject.coordinates])
@@ -1136,7 +1248,7 @@ def get_pearson_matrix(dataobject, options={}):
         ch_coord = 'Signal name'
         channel_coordinate_dim = dataobject.get_coordinate_object('Signal name').dimension_list[0]
         channel_names = np.unique(dataobject.get_coordinate_object('Signal name').values)
-    
+
     # Slicing along the channels and flattening the data
     channel_id = 0
     for channel in channel_names:

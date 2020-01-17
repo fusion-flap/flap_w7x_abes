@@ -75,7 +75,7 @@ class ShotSpatCal(flap.DataObject):
             data = np.zeros(len(channel_names))
             index = 0
             for channel in channel_names:
-                data[index] = (self.data[coord_name])[np.where(self.data["Channel name"] == bytes(channel, 'utf-8'))[0][0]]
+                data[index] = (self.data[coord_name])[np.where(self.data["Channel name"] == bytes(str(channel), 'utf-8'))[0][0]]
                 index = index+1
         else:
             data = self.data[coord_name]
