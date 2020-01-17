@@ -25,6 +25,7 @@ flap_w7x_abes.proc_chopsignals(exp_id='20181017.024',
                                test=True)
 flap.list_data_objects()
 flap_w7x_abes.proc_chopsignals(exp_id='20181017.024',
+                               timerange=[2,2.1],
                                on_options={'Start':2.5,'End':0}, 
                                off_options={'Start':2.5,'End':0},
                                test=False)

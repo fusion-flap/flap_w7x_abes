@@ -960,6 +960,7 @@ def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_opti
     # Obtaining the chopper data
     if dataobject is not None:
         exp_id = dataobject.exp_id
+        
     o = copy.deepcopy(on_options)
     if 'W7X_ABES' not in flap.list_data_sources():
         register()
@@ -983,6 +984,7 @@ def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_opti
                             object_name='Beam_off',
                             )
 
+<<<<<<< HEAD
     if (test):
         from matplotlib import pyplot as plt
         plt.close('all')
@@ -995,6 +997,8 @@ def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_opti
         d_beam_on.plot(plot_type='scatter', axes=['Time', 2], options={'Force': True,'All': True})
         d_beam_off.plot(plot_type='scatter', axes=['Time', 0.1], options={'Force': True,'All': True})
 
+=======
+>>>>>>> a8799f7d6f673dab3d23a4dbb23ddadde63ccaba
     # Background subtraction
     if dataobject is None:
         # in this case the flap storage is used for obtaining the data by experiment ID
@@ -1004,6 +1008,11 @@ def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_opti
                       name=signals,
                       object_name='ABES'
                       )
+        if (test):
+            plt.close('all')
+            flap.plot('ABES', axes='Time', plot_options={'marker': 'o'})
+            d_beam_on.plot(plot_type='scatter', axes=['Time', 2], options={'Force': True,'All': True})
+            d_beam_off.plot(plot_type='scatter', axes=['Time', 0.1], options={'Force': True,'All': True})
         d = flap.slice_data('ABES',slicing={'Sample':d_beam_on})
         
         if options['Average Chopping Period'] is True:
