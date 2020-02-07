@@ -9,10 +9,14 @@ This is the flap module for W7-X alkali BES diagnostic
 
 import os.path
 from decimal import *
+import gc
+import psutil
 import numpy as np
 import copy
 import h5py
 import matplotlib.pyplot as plt
+import multiprocessing as mp
+from functools import partial
 
 import flap
 from . import spatcal
@@ -202,47 +206,43 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
         cal_files = [calibration_file]
     else:
         fn = os.path.join(calibration_path, exp_id + '.cal')
-        try:
-            infile = open(fn, 'r', encoding='ascii')
-        except Exception as e:
-            raise e
-        # These lists will contain the information from the cal file
-        index_start = []
-        index_stop = []
-        cal_files = []
-        cal_factors = []
-        for line in infile:
-            line = line.split()
-            if (len(line) == 1):
-                index_start = [0]
-                index_stop = [data_arr.shape[0]]
-                cal_files = [line[0]]
-            else:
-                try:
-                    cal_timerange = [float(line[1]), float(line[2])]()
-                except (IndexError, ValueError):
-                    infile.close()
-                    raise ValueError("Invalid shot calibration file: "+fn)
-                if ((read_range[0] > cal_timerange[1]) or   \
-                    (read_range[1] < cal_timerange[0])):
-                    # The validity of this calibration is outside the data range
-                    continue
-                if (cal_timerange[0] > read_range[0]) :
-                    s = float(cal_timerange[0] - read_range[0])  \
-                        / (read_range[1] - read_range[0]) \
-                        * data_arr.shape[0]
+        with open(fn, 'r', encoding='ascii') as infile:
+            # These lists will contain the information from the cal file
+            index_start = []
+            index_stop = []
+            cal_files = []
+            cal_factors = []
+            for line in infile:
+                line = line.split()
+                if (len(line) == 1):
+                    index_start = [0]
+                    index_stop = [data_arr.shape[0]]
+                    cal_files = [line[0]]
                 else:
-                    s = 0
-                if (cal_timerange[1] < read_range[1]) :
-                    e = float(cal_timerange[1] - read_range[0]) \
-                        / (read_range[1] - read_range[0])  \
-                        * data_arr.shape[0]
-                else:
-                    e = data_arr.shape[0]
-                index_start.append(s)
-                index_stop.append(e)
-                cal_files.append(line[0])
-        infile.close()
+                    try:
+                        cal_timerange = [float(line[1]), float(line[2])]()
+                    except (IndexError, ValueError):
+                        infile.close()
+                        raise ValueError("Invalid shot calibration file: "+fn)
+                    if ((read_range[0] > cal_timerange[1]) or   \
+                        (read_range[1] < cal_timerange[0])):
+                        # The validity of this calibration is outside the data range
+                        continue
+                    if (cal_timerange[0] > read_range[0]) :
+                        s = float(cal_timerange[0] - read_range[0])  \
+                            / (read_range[1] - read_range[0]) \
+                            * data_arr.shape[0]
+                    else:
+                        s = 0
+                    if (cal_timerange[1] < read_range[1]) :
+                        e = float(cal_timerange[1] - read_range[0]) \
+                            / (read_range[1] - read_range[0])  \
+                            * data_arr.shape[0]
+                    else:
+                        e = data_arr.shape[0]
+                    index_start.append(s)
+                    index_stop.append(e)
+                    cal_files.append(line[0])
     #Sorting the validity intervals according to the start index
     z = zip(index_start,index_stop,cal_files)
     z = list(z)
@@ -278,6 +278,7 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
         except Exception as e:
             raise e
         f.close()
+
     # Doing the calibration
     if (data_arr.dtype.kind != 'f'):
         data_arr = float(data_arr)
@@ -299,6 +300,75 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
             else:
                 data_arr[index_start[i]:index_stop[i]] /= calfac[i][i_cal]
     return data_arr
+
+def calculate_amplitude_calibration(shotID, options={}):
+    
+    options_default={'Time window': None,
+                     'Sample window': None,
+                     'Amplitude calib. path': flap.config.get('Module W7X_ABES', 'Amplitude calib. path'),
+                     'Overwrite': False,
+                     'Partial intervals': False,
+                     'Chop delay': read_chopshift(shotID),
+                     'Plot': False}
+    options = {**options_default, **options}
+    options['Amplitude calibration'] = False
+    chop_delay = copy.deepcopy(options['Chop delay'])
+    plot_data = options['Plot']
+    del options['Chop delay']
+    del options['Plot']
+    
+    filename = os.path.join(options['Amplitude calib. path'], shotID+'.cld')
+    if os.path.exists(filename) is True and options['Overwrite'] is False:
+            raise ValueError('Calibration data ('+filename+") already exists. To overwrite, set options['Overwrite']=True.")
+    del options['Overwrite']
+
+    if ('Time window' is not None):
+        del options['Sample window']
+        data_range = copy.deepcopy(options['Time window'])
+        del options['Time window']
+        light_profile = w7x_abes_get_data(exp_id=shotID, data_name='ABES-*', options=options,
+                                        coordinates=[flap.Coordinate(name='Time',c_range=data_range)])
+    elif ('Sample window' is not None):
+        del options['Time window']
+        data_range = copy.deepcopy(options['Sample window'])
+        del options['Sample window']
+        light_profile = w7x_abes_get_data(exp_id=shotID, data_name='ABES-*', options=options,
+                                        coordinates=[flap.Coordinate(name='Sample',c_range=data_range)])
+    else:
+        raise ValueError('A "Sample window" or a "Time window" vector of length 2 should be given in'+
+                         ' the options dictionary.')
+
+    # Removing the background
+    beam_on = proc_chopsignals(dataobject=light_profile,
+                       on_options={'Start delay': chop_delay[0], 'End delay': chop_delay[1], 'Partial intervals':options['Partial intervals']},
+                       off_options={'Start delay': chop_delay[0], 'End delay': chop_delay[1],  'Partial intervals':options['Partial intervals']},
+                       options=options, test=False)
+    del light_profile
+    beam_on = beam_on.slice_data(summing={'Time': 'Mean'})
+    if plot_data is True:
+        beam_on.plot(axes='Channel')
+    
+    # Getting and formatting the relevant data
+    channel_names = beam_on.get_coordinate_object('Signal name').values
+    calfac = beam_on.data
+#    calfac = [cf.encode('ascii') for cf in calfac]
+    calfac_err = beam_on.error
+#    calfac_err = [cfe.encode('ascii') for cfe in calfac_err]
+    sorted_cal = np.asarray(sorted(zip(channel_names, calfac, calfac_err)))
+    calfac = np.asarray(sorted_cal[:,1]).astype(float)
+    calfac_err = sorted_cal[:,2].astype(float)
+    channel_names = sorted_cal[:,0]
+    channel_names = [(ch_name+' ').encode('ascii') if len(ch_name)<7 else ch_name.encode('ascii') for ch_name in channel_names]
+    
+    # Saving the calibration data
+    with h5py.File(filename+'new', 'w', libver='earliest') as f:
+        f.create_dataset('Calibration_factors', data=calfac, dtype=float)
+        f.create_dataset('Calibration_factor_errors', data=calfac_err, dtype=float)
+        f.create_dataset('Channels', data=channel_names)
+        if os.path.exists(filename) is True:
+            os.remove(filename)
+    
+    os.rename(filename+'new', filename)
 
 def process_chopper_setup(config):
     sch = config['Chopper scheme']
@@ -479,7 +549,6 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
         n_period = int(round(config['APDCAM_samplenumber'] /  (period_time_clk * chop_clk_in_sample)))
 
     mode = flap.CoordinateMode(equidistant=True, range_symmetric=False)
-
     c_time = copy.deepcopy(flap.Coordinate(name='Time',
                                            unit='Second',
                                            mode=mode,
@@ -501,8 +570,9 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
                                              step=round(period_time_clk*chop_clk_in_sample) ,
                                              value_ranges=[0,round((stop_clk-start_clk) * chop_clk_in_sample)
                                                            + stop_delay_sample - start_delay_sample],
-                                             dimension_list=[0]
-                                             ))
+                                           dimension_list=[0]
+                                           ))
+
 
     d = copy.deepcopy(flap.DataObject(data_shape=[n_period],
                         data_unit=flap.Unit(name='Interval', unit='n.a.'),
@@ -510,6 +580,7 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
                         data_source = 'W7X_ABES',
                         exp_id = config['ShotID']
                         ))
+
 
     return d
 
@@ -540,7 +611,6 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
     """
     if (exp_id is None):
         raise ValueError('exp_id should be set for W7X ABES.')
-
     default_options = {'Datapath':'data',
                        'Scaling':'Digit',
                        'Offset timerange': None,
@@ -551,7 +621,8 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                        'State' : None,
                        'Start delay': 0,
                        'End delay': 0,
-                       'Spatial calibration': False
+                       'Spatial calibration': False,
+                       'Partial intervals': False
                        }
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
 
@@ -587,6 +658,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
         chspec = data_name
 
     # Finding read_range (timerange) and read_samplerange
+
     read_range = None
     read_samplerange = None
     if (coordinates is not None):
@@ -641,7 +713,6 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
         chopper_signal = True
     except ValueError:
         chopper_signal = False
-
     if (chopper_signal):
         if (len(chspec) != 1):
             raise ValueError("Chopper_time should be read separately from data.")
@@ -693,15 +764,12 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
         offset_data = np.empty(len(ADC_proc), dtype='int16')
         for i_ch in range(len(ADC_proc)):
             fn = os.path.join(datapath, "Channel_{:03d}.dat".format(ADC_proc[i_ch] - 1))
-            try:
-                f = open(fn,"rb")
-            except OSError:
-                raise OSError("Error opening file: " + fn)
-            try:
-                f.seek(int(offset_samplerange[0]) * 2, os.SEEK_SET)
-                d = np.fromfile(f, dtype=np.int16, count=int(offset_samplerange[1]-offset_samplerange[0])+1)
-            except Exception:
-                raise IOError("Error reading from file: " + fn)
+            with open(fn,"rb") as f:
+                try:
+                    f.seek(int(offset_samplerange[0]) * 2, os.SEEK_SET)
+                    d = np.fromfile(f, dtype=np.int16, count=int(offset_samplerange[1]-offset_samplerange[0])+1)
+                except Exception:
+                    raise IOError("Error reading from file: " + fn)
             offset_data[i_ch] = np.int16(np.mean(d))
         if (scale_to_volts):
             offset_data = ((2 ** config['APDCAM_bits'] - 1) - offset_data) \
@@ -715,44 +783,43 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
     if (no_data is False):
         if (len(ADC_proc) is not 1):
             data_arr = np.empty((ndata, len(ADC_proc)), dtype=dtype)
+            if ndata*len(ADC_proc)*32 > psutil.virtual_memory().available:
+                del data_arr
+                raise MemoryError("Note enough memory for reading data")
+
         for i in range(len(ADC_proc)):
             fn = os.path.join(datapath, "Channel_{:03d}.dat".format(ADC_proc[i] - 1))
-            try:
-                f = open(fn,"rb")
-            except OSError:
-                raise OSError("Error opening file: " + fn)
-
-            try:
-                f.seek(int(read_samplerange[0]) * 2, os.SEEK_SET)
-            except Exception:
-                raise IOError("Error reading from file: " + fn)
-
-            if (len(ADC_proc) is 1):
+            with open(fn,"rb") as f:
                 try:
-                    data_arr = np.fromfile(f, dtype=np.int16, count=ndata)
+                    f.seek(int(read_samplerange[0]) * 2, os.SEEK_SET)
                 except Exception:
                     raise IOError("Error reading from file: " + fn)
-                if (scale_to_volts):
-                    data_arr = ((2 ** config['APDCAM_bits'] - 1) - data_arr) \
-                                / (2. ** config['APDCAM_bits'] - 1) * 2
+    
+                if (len(ADC_proc) is 1):
+                    try:
+                        data_arr = np.fromfile(f, dtype=np.int16, count=ndata)
+                    except Exception:
+                        raise IOError("Error reading from file: " + fn)
+                    if (scale_to_volts):
+                        data_arr = ((2 ** config['APDCAM_bits'] - 1) - data_arr) \
+                                    / (2. ** config['APDCAM_bits'] - 1) * 2
+                    else:
+                        data_arr = (2 ** config['APDCAM_bits'] - 1) - data_arr
+                    if (offset_timerange is not None):
+                            data_arr -= offset_data[i]
                 else:
-                    data_arr = (2 ** config['APDCAM_bits'] - 1) - data_arr
-                if (offset_timerange is not None):
-                        data_arr -= offset_data[i]
-            else:
-                try:
-                    d = np.fromfile(f, dtype=np.int16, count=ndata)
-                except Exception:
-                    raise IOError("Error reading from file: " + fn)
-                if (scale_to_volts):
-                    d = ((2 ** config['APDCAM_bits'] - 1) - d) \
-                                / (2. ** config['APDCAM_bits'] - 1) * 2
-                else:
-                    d = (2 ** config['APDCAM_bits'] - 1) - d
-                if (offset_timerange is not None):
-                        d -= offset_data[i]
-                data_arr[:,i] = d
-        f.close
+                    try:
+                        d = np.fromfile(f, dtype=np.int16, count=ndata)
+                    except Exception:
+                        raise IOError("Error reading from file: " + fn)
+                    if (scale_to_volts):
+                        d = ((2 ** config['APDCAM_bits'] - 1) - d) \
+                                    / (2. ** config['APDCAM_bits'] - 1) * 2
+                    else:
+                        d = (2 ** config['APDCAM_bits'] - 1) - d
+                    if (offset_timerange is not None):
+                            d -= offset_data[i]
+                    data_arr[:,i] = d
 
         try:
             data_arr = calibrate(data_arr, signal_proc, read_range, exp_id=exp_id, options=_options)
@@ -815,7 +882,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                         data_title=data_title,
                         info={'Options':_options},
                         data_source="W7X_ABES")
-    if options['Spatial calibration'] is True:
+    if _options['Spatial calibration'] is True:
         # Getting the spatial calibration
         d = add_coordinate(d, ['Device R', 'Beam axis'],
                            options={"spatcal_dir": flap.config.get("Module W7X_ABES","Spatial calibration directory")})
@@ -890,6 +957,8 @@ def regenerate_time_sample(d):
                 ct.start += c_shift.values[0]
             except IndexError:
                 ct.start += c_shift.values
+            except TypeError:
+                pass
         ct.unit.name='Time'
         
         d.del_coordinate('Rel. Time in int(Sample)')
@@ -921,6 +990,8 @@ def regenerate_time_sample(d):
                 ct.start += c_shift.values[0]
             except IndexError:
                 ct.start += c_shift.values
+            except TypeError:
+                pass
         ct.unit.name='Sample'
         d.del_coordinate('Rel. Sample in int(Sample)')
     try:
@@ -929,8 +1000,8 @@ def regenerate_time_sample(d):
     except ValueError:
         pass
 
-def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_options=None,
-                             off_options=None, test=None, dataobject=None, options={}):
+def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals='ABES-1', on_options=None,
+                             off_options=None, test=None, options={}):
     """ Calculate signals in beam on and beam/off phases of the measurement and
         correct the beam-on phases with the beam-off. The result is "ABES" and "ABES_back" data object
         in the FLAP storage.
@@ -956,17 +1027,18 @@ def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_opti
     options_default = {'Average Chopping Period': True}
     options = {**options_default, **options}
 
-
     # Obtaining the chopper data
     if dataobject is not None:
         exp_id = dataobject.exp_id
-        
+
     o = copy.deepcopy(on_options)
     if 'W7X_ABES' not in flap.list_data_sources():
         register()
     o.update({'State':{'Chop': 0, 'Defl': 0}})
+
     if timerange is None:
-        timerange = [np.min(dataobject.coordinate('Time')), np.max(dataobject.coordinate('Time'))]
+        timerange = [np.min(dataobject.coordinate('Time')[0]), np.max(dataobject.coordinate('Time')[0])]
+        
     d_beam_on=flap.get_data('W7X_ABES',
                             exp_id=exp_id,
                             name='Chopper_time',
@@ -983,22 +1055,17 @@ def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_opti
                             options=o,\
                             object_name='Beam_off',
                             )
-
-<<<<<<< HEAD
     if (test):
         from matplotlib import pyplot as plt
         plt.close('all')
         if dataobject is None:
             flap.plot('ABES', axes='Time', plot_options={'marker': 'o'})
         else:
-            temp = dataobject.slice_data(slicing={'Signal name':'ABES-20'})
-            temp.plot(axes='Time', plot_options={'marker': 'o'})
+            dataobject.plot(axes='Time', plot_options={'marker': 'o'})
 #        flap.plot('ABES',axes='Time',plot_type='scatter')
         d_beam_on.plot(plot_type='scatter', axes=['Time', 2], options={'Force': True,'All': True})
         d_beam_off.plot(plot_type='scatter', axes=['Time', 0.1], options={'Force': True,'All': True})
 
-=======
->>>>>>> a8799f7d6f673dab3d23a4dbb23ddadde63ccaba
     # Background subtraction
     if dataobject is None:
         # in this case the flap storage is used for obtaining the data by experiment ID
@@ -1019,7 +1086,7 @@ def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_opti
             d = d.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
             regenerate_time_sample(d)
         else:
-            add_absolute_time(d)
+            add_absolute_time_sample(d)
 
         flap.add_data_object(d,'ABES_on')
         
@@ -1043,8 +1110,8 @@ def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_opti
         d=flap.get_data_object('ABES_on')
         d_back = flap.get_data_object('ABES_back')
         d.data -= d_back.data
-        flap.add_data_object(d,'ABES')
-        
+#        flap.add_data_object(d,'ABES')
+
 #        # error approximation
 #        d_beam_off = flap.get_data_object('ABES_off')
 ##        beam_off_data = d_beam_off.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
@@ -1054,19 +1121,26 @@ def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_opti
 #                           *len(beam_off_data.data)/(len(beam_off_data.data)-1)
 
         flap.delete_data_object(['ABES_on','ABES_off','Beam_on','Beam_off'],exp_id=exp_id)
+        try:
+            flap.delete_data_object('ABES')
+        except:
+            pass
+        gc.collect()
         if (test):
             plt.figure()
-            flap.plot('ABES',axes='Time')
+            d.plot(axes='Time')
             
         return d
     else:
         # in this case the passed dataobject is used and the only the copper data is obtained from file
         dataobject_beam_on = dataobject.slice_data(slicing={'Sample': d_beam_on})
+
         # For dataobject_beam_on.data the 0 dimension is along a constant 'Start Time in int(Time)' and 
         # "Rel. Time in int(Time)" varies. For dimension 1 it is 'Start Time in int(Time)' that varies
         dataobject_beam_on = process_chopped_dataobject(dataobject_beam_on, options=options)
-    
-        dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off}, options={'Partial intervals':False})
+
+
+        dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off}, options={'Partial intervals':True})
         dataobject_beam_off = process_chopped_dataobject(dataobject_beam_off, options={'Average Chopping Period': True})
     
         dataobject_background = dataobject_beam_off.slice_data(slicing={'Time': dataobject_beam_on},
@@ -1076,7 +1150,7 @@ def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_opti
             plt.figure()
             plt.scatter(dataobject_beam_on.get_coordinate_object("Time").values, dataobject_beam_on.data)
             plt.scatter(dataobject_beam_off.get_coordinate_object("Time").values, dataobject_beam_off.data)
-            plt.plot(dataobject.coordinate("Time")[0], dataobject.data)            
+            plt.plot(dataobject.coordinate("Time")[0], dataobject.data)
         
         dataobject_beam_on.data -= dataobject_background.data.reshape(np.shape(dataobject_beam_on.data))
     
@@ -1093,8 +1167,8 @@ def proc_chopsignals_single(exp_id=None,timerange=None,signals='ABES-1', on_opti
     
         return dataobject_beam_on
 
-def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_options=None,
-                     off_options=None, test=None, dataobject=None, options={}):
+def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,signals='ABES-[1-40]', on_options=None,
+                     off_options=None, test=None, options={}):
     """ Calculate signals in beam on and beam/off phases of the measurement and
         correct the beam-on phases with the beam-off. Further information in the comments of 
         proc_chopsignals_single
@@ -1112,27 +1186,37 @@ def proc_chopsignals(exp_id=None,timerange=None,signals='ABES-[1-40]', on_option
                                           test=test, on_options=on_options,
                                           off_options=off_options,  options=options)
     else:
+        # The channels are processed in parallel
+        partial_proc_func = partial(proc_chopsignals_single, timerange=timerange,test=test, on_options=on_options,
+                                    off_options=off_options,  options=options)
         channels = dataobject.get_coordinate_object(channel_naming[0]).values
-        for channel in channels:
-            channel_data = dataobject.slice_data(slicing={channel_naming[0]: channel})
-            if not ("processed_data" in locals()):
-                processed_data = proc_chopsignals_single(dataobject=channel_data,
-                                                         timerange=timerange,
-                                                         test=test, on_options=on_options,
-                                                         off_options=off_options,  options=options)
-            else:
-                partial_processed_data = proc_chopsignals_single(dataobject=channel_data, timerange=timerange,
-                                          test=test, on_options=on_options,
-                                          off_options=off_options,  options=options)
-                if len(processed_data.data.shape) == 1:
-                    processed_data.data=np.stack((processed_data.data, partial_processed_data.data), axis=1)
-                    processed_data.error=np.stack((processed_data.error, partial_processed_data.error), axis=1)
-                else:
-                    processed_data.data=np.hstack((processed_data.data, np.expand_dims(partial_processed_data.data, axis=1)))
-                    processed_data.error=np.hstack((processed_data.error, np.expand_dims(partial_processed_data.error, axis=1)))
+        num_of_channels = len(channels)
+        divide_to = 10
+        results =[]
+        for index in range(divide_to+1):
+            with mp.Pool(int((mp.cpu_count()+1)/2)) as pool:
+                curr_channels=channels[index*int(1+num_of_channels/divide_to):(index+1)*int(1+num_of_channels/divide_to)]
+                channel_data = [dataobject.slice_data(slicing={channel_naming[0]: channel}) for channel
+                                                               in curr_channels]
+                del curr_channels
+                gc.collect()
+                results = results + pool.map(partial_proc_func, channel_data)
 
-#                del partial_processed_data
-#                gc.collect()
+        for channel_processed_data in results:
+            if not ("processed_data" in locals()):
+                processed_data = channel_processed_data
+            else:
+                if len(processed_data.data.shape) == 1:
+                    processed_data.data=np.stack((processed_data.data, channel_processed_data.data), axis=1)
+                    processed_data.error=np.stack((processed_data.error, channel_processed_data.error), axis=1)
+                else:
+                    processed_data.data=np.hstack((processed_data.data, np.expand_dims(channel_processed_data.data, axis=1)))
+                    processed_data.error=np.hstack((processed_data.error, np.expand_dims(channel_processed_data.error, axis=1)))
+
+        del results
+        del channel_data
+        gc.collect()
+
         processed_data.shape = processed_data.data.shape
         # adding the channel coordinates
         channel_dimension = dataobject.get_coordinate_object(channel_naming[0]).dimension_list
@@ -1167,21 +1251,24 @@ def process_chopped_dataobject(dataobject, options={}):
         # need to set up a time coordinate correctly
         regenerate_time_sample(dataobject)
         times = copy.deepcopy(dataobject.coordinate("Time")[0])[0]
-        dataobject.coordinates = [dataobject.get_coordinate_object("Time")]
+        samples = copy.deepcopy(dataobject.coordinate("Sample")[0])[0]
+        dataobject.coordinates = [dataobject.get_coordinate_object("Time"), dataobject.get_coordinate_object("Sample")]
 
         #taking the average over the Rel.Time in int(Time) coordinate
         dataobject.data = average[0]
         dataobject.shape = dataobject.data.shape
         dataobject.error = np.sqrt(beam_on_error)
     else:
-        add_absolute_time(dataobject)
+        add_absolute_time_sample(dataobject)
         times = copy.deepcopy(dataobject.coordinate("Time")[0]).flatten()
+        samples = copy.deepcopy(dataobject.coordinate("Sample")[0]).flatten()
         dataobject.data = dataobject.data.flatten()
         times = times[np.logical_not(np.isnan(dataobject.data))] # removing nans due to the padding of the slicer
+        samples = samples[np.logical_not(np.isnan(dataobject.data))] # removing nans due to the padding of the slicer
         dataobject.data = dataobject.data[np.logical_not(np.isnan(dataobject.data))]
         dataobject.shape = dataobject.data.shape
         dataobject.error = np.zeros(dataobject.data.shape)
-        dataobject.coordinates = [dataobject.get_coordinate_object("Time")]
+        dataobject.coordinates = [dataobject.get_coordinate_object("Time"), dataobject.get_coordinate_object("Sample")]
 
     dataobject.get_coordinate_object("Time").values = times
     dataobject.get_coordinate_object("Time").shape = times.shape
@@ -1190,15 +1277,25 @@ def process_chopped_dataobject(dataobject, options={}):
     dataobject.get_coordinate_object("Time").start=None
     dataobject.get_coordinate_object("Time").step=None
     
+    dataobject.get_coordinate_object("Sample").values = samples
+    dataobject.get_coordinate_object("Sample").shape = times.shape
+    dataobject.get_coordinate_object("Sample").dimension_list = [0]
+    dataobject.get_coordinate_object("Sample").mode.equidistant = False
+    dataobject.get_coordinate_object("Sample").start=None
+    dataobject.get_coordinate_object("Sample").step=None
+    
     #ordering the data along the time coordinate
     time_data = np.asarray(sorted(zip(dataobject.get_coordinate_object("Time").values,
+                                      dataobject.get_coordinate_object("Sample").values,
                                       dataobject.data)))
+
     dataobject.get_coordinate_object("Time").values = time_data[:,0]
-    dataobject.data = time_data[:,1]
+    dataobject.get_coordinate_object("Sample").values = time_data[:,1]
+    dataobject.data = time_data[:,2]
     
     return dataobject
 
-def add_absolute_time(dataobject):
+def add_absolute_time_sample(dataobject):
     """ Creates a coordinate 'Time' to the input dataobject from proc_chopsignals. This can be used for slicing the
             data
         INPUT:
@@ -1223,7 +1320,13 @@ def add_absolute_time(dataobject):
                        dataobject.coordinate('Rel. Time in int(Sample)')[0]
     time_coord = flap.Coordinate(name=name, unit='Second', values=time_coord_value, shape=np.shape(time_coord_value),
                  mode=flap.CoordinateMode(equidistant=False), dimension_list=dimension_list_time)
+    name = 'Sample'
+    sample_coord_value = dataobject.coordinate('Start Sample in int(Sample)')[0] +\
+                       dataobject.coordinate('Rel. Sample in int(Sample)')[0]
+    sample_coord = flap.Coordinate(name=name, unit='n.a.', values=sample_coord_value, shape=np.shape(sample_coord_value),
+                 mode=flap.CoordinateMode(equidistant=False), dimension_list=dimension_list_time)
     dataobject.add_coordinate_object(time_coord)
+    dataobject.add_coordinate_object(sample_coord)
 
 def get_pearson_matrix(dataobject, options={}):
     """ This function calculates and adds the pearson matrix for the channels of the backgorund corrected
@@ -1291,6 +1394,24 @@ def get_pearson_matrix(dataobject, options={}):
                                          error=None)
 
     return pearson_dataobject
+
+def read_chopshift(shotID):
+    "Reads by how much the chopping has to be shifted to align the data"
+    location = os.path.dirname(os.path.realpath(__file__))
+    location = os.path.join(location, 'w7x_chop_shift')
+    with open(location, "r", encoding='utf-8') as f:
+        lines = list(f)
+        chopshift={}
+        for line in lines[1:]:
+            data = line.split('\t')
+            chopshift[data[0]] = np.asarray([float(data[1]), float(data[-1].split('\n')[0])])
+        if shotID in chopshift:
+            delay = chopshift[shotID]
+        else:
+            delay = np.asarray([flap.config.get("Module W7X_ABES","Start delay"),
+                                flap.config.get("Module W7X_ABES","End delay")])
+        return delay
+
     
 def register(data_source=None):
     flap.register_data_source('W7X_ABES', get_data_func=w7x_abes_get_data, add_coord_func=add_coordinate)
