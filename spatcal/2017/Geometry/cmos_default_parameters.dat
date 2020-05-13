@@ -1,0 +1,11 @@
+beamline 700,1,750,1000
+beamwidth 75
+search_width 250
+#beamwidth 50
+#search_width 150
+groupname w7x
+cut_along horizontal
+cut_coordinate 500
+search_yrange 300,650
+shotnumber_multi 1000.D
+

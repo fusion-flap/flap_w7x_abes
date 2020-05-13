@@ -1,0 +1,9 @@
+This file describes the ray angles on the filter
+First line is reference view directions in radians
+Second line is alpha1 at ref angles in degrees
+Third line is alpha2 at ref angles  in degrees
+Fourth line is delta_alpha at ref_angles in degrees
+-0.142857 0 0.142857
+0 0 0
+0 0 0
+3 2.2 3

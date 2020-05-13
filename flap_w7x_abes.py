@@ -908,6 +908,7 @@ def add_coordinate(data_object,
         exp_spatcal = spatcal.ShotSpatCal(data_object.exp_id, options=_options)
     else:
         exp_spatcal = spatcal.ShotSpatCal(exp_id, options=_options)
+    exp_spatcal.read(options=options)
 
     # getting the dimension of the channel coordinate, this should be the same as the spatial coordinate
     data_coord_list = np.array([coord.unit.name for coord in data_object.coordinates])
