@@ -108,3 +108,6 @@ venv.bak/
 
 # junk
 *.lock*
+
+# images
+*.png
