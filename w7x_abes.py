@@ -286,7 +286,20 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
             raise e
         f.close()
 
+    signal_coord = flap.Coordinate(name='Signal name',
+                                   unit='n.a.',
+                                   mode=flap.CoordinateMode(equidistant=False),
+                                   shape=len(calfac_err[0]),
+                                   values=np.array([chan.decode('utf-8').split(' ')[0] for chan in cal_channels[0]]),
+                                   dimension_list=[0])
+    calfac_err_dataobject = flap.DataObject(data_array=calfac_err[0]/calfac[0],
+                                            exp_id=exp_id,
+                                            data_shape=calfac_err[0].shape,
+                                            coordinates = [signal_coord],
+                                            data_title = 'Relative calibration factor error')
+
     # Doing the calibration
+    data_err = np.zeros(data_arr.shape)
     if (data_arr.dtype.kind != 'f'):
         data_arr = float(data_arr)
     for i in range(len(index_start)):
@@ -304,9 +317,11 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
                     raise ValueError("No calibration data for signal "+signal_proc[i_ch])
             if (data_arr.ndim == 2):
                 data_arr[index_start[i]:index_stop[i], i_ch] /= calfac[i][i_cal]
+                data_err[index_start[i]:index_stop[i], i_ch] = data_arr[index_start[i]:index_stop[i], i_ch] / calfac[i][i_cal] * calfac_err[i][i_cal]
             else:
                 data_arr[index_start[i]:index_stop[i]] /= calfac[i][i_cal]
-    return data_arr
+                data_err[index_start[i]:index_stop[i]] = data_arr[index_start[i]:index_stop[i]] / calfac[i][i_cal] * calfac_err[i][i_cal]
+    return data_arr, data_err, calfac_err_dataobject
 
 def calculate_amplitude_calibration(shotID, options={}):
     
@@ -757,7 +772,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
         offset_timerange = _options['Offset timerange']
     except (NameError, KeyError):
         offset_timerange = None
-        
+
     if (offset_timerange is not None):
         if (type(offset_timerange) is not list):
             raise ValueError("Invalid Offset timerange. Should be list or string.")
@@ -828,7 +843,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                     data_arr[:,i] = d
 
         try:
-            data_arr = calibrate(data_arr, signal_proc, read_range, exp_id=exp_id, options=_options)
+            data_arr, data_err, calfac_err = calibrate(data_arr, signal_proc, read_range, exp_id=exp_id, options=_options)
         except Exception as e:
             raise e
         data_dim = data_arr.ndim    
@@ -881,17 +896,19 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
     data_title = "W7-X ABES data"
     if (data_arr.ndim == 1):
         data_title += " (" + signal_proc[0] + ")"
+
     d = flap.DataObject(data_array=data_arr,
+                        error = data_err,
                         data_unit=data_unit,
                         coordinates=coord,
                         exp_id=exp_id,
                         data_title=data_title,
-                        info={'Options':_options},
+                        info={'Options':_options, 'Calibration factor error': calfac_err},
                         data_source="W7X_ABES")
     if _options['Spatial calibration'] is True:
         # Getting the spatial calibration
         d = add_coordinate(d, ['Device R', 'Beam axis'],
-                           options={"spatcal_dir": flap.config.get("Module W7X_ABES","Spatial calibration directory")})
+                           options={"Shot spatcal dir": flap.config.get("Module W7X_ABES","Spatial calibration directory")})
     return d
 
 
@@ -907,13 +924,14 @@ def add_coordinate(data_object,
     options - a dictionary of options
               available: 'spatcal_dir' - the location of calibration data
     '''
-    default_options = {'spatcal_dir':'', "Channels":''}
+    default_options = {'Shot spatcal dir':'', "Channels":''}
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
 
     if exp_id is None:
         exp_spatcal = spatcal.ShotSpatCal(data_object.exp_id, options=_options)
     else:
         exp_spatcal = spatcal.ShotSpatCal(exp_id, options=_options)
+    exp_spatcal.read(options=_options)
 
     # getting the dimension of the channel coordinate, this should be the same as the spatial coordinate
     data_coord_list = np.array([coord.unit.name for coord in data_object.coordinates])
@@ -1148,6 +1166,7 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         dataobject_beam_on = process_chopped_dataobject(dataobject_beam_on, options=options)
 
         dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off}, options={'Partial intervals':True})
+        dataobject_beam_off.error = None
         dataobject_beam_off = process_chopped_dataobject(dataobject_beam_off, options={'Average Chopping Period': True})
 
         dataobject_background = dataobject_beam_off.slice_data(slicing={'Time': dataobject_beam_on},
@@ -1160,7 +1179,6 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
             plt.scatter(dataobject_beam_off.get_coordinate_object("Time").values, dataobject_beam_off.data, color='red')
             plt.savefig(str(time.time())+'.png')
 #            plt.plot(dataobject.coordinate("Time")[0], dataobject.data, color='blue')
-            
 
         dataobject_beam_on.data -= dataobject_background.data.reshape(np.shape(dataobject_beam_on.data))
 
@@ -1170,6 +1188,17 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         background_error = dataobject_beam_off_error.slice_data(slicing={'Time': dataobject_beam_on}, options={'Inter': 'Linear'})
         background_error = background_error.data.reshape(np.shape(dataobject_beam_on.data))
         dataobject_beam_on.error = np.asarray(np.sqrt(dataobject_beam_on.error**2 + background_error**2))
+
+        #adding the calibration factor error
+        if 'Calibration factor error' in dataobject_beam_on.info:
+            calfac_error = dataobject_beam_on.info['Calibration factor error']
+            if 'Signal name' in dataobject.coordinate_names():
+                calfac_curr = calfac_error.slice_data(slicing =
+                                                      {'Signal name': dataobject.get_coordinate_object('Signal name').values[0]})
+                calfac_curr_errors = dataobject_beam_on.data * calfac_curr.data
+                dataobject_beam_on.error = np.asarray(np.sqrt(dataobject_beam_on.error**2 + calfac_curr_errors**2))
+            else:
+                print('Calibration error not considered')
 
     
         if test is True:
@@ -1184,7 +1213,6 @@ def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,signals='ABES-[
         correct the beam-on phases with the beam-off. Further information in the comments of 
         proc_chopsignals_single
     """
-    
     # checking, whether dataobject has the data for multiple channels
     naming_conventions = ["Channel", "Signal name", "Device R", "Beam axis"]
     channel_naming = []
@@ -1287,14 +1315,14 @@ def process_chopped_dataobject(dataobject, options={}):
     dataobject.get_coordinate_object("Time").mode.equidistant = False
     dataobject.get_coordinate_object("Time").start=None
     dataobject.get_coordinate_object("Time").step=None
-    
+
     dataobject.get_coordinate_object("Sample").values = samples
     dataobject.get_coordinate_object("Sample").shape = times.shape
     dataobject.get_coordinate_object("Sample").dimension_list = [0]
     dataobject.get_coordinate_object("Sample").mode.equidistant = False
     dataobject.get_coordinate_object("Sample").start=None
     dataobject.get_coordinate_object("Sample").step=None
-    
+
     #ordering the data along the time coordinate
     time_data = np.asarray(sorted(zip(dataobject.get_coordinate_object("Time").values,
                                       dataobject.get_coordinate_object("Sample").values,
@@ -1303,7 +1331,7 @@ def process_chopped_dataobject(dataobject, options={}):
     dataobject.get_coordinate_object("Time").values = time_data[:,0]
     dataobject.get_coordinate_object("Sample").values = time_data[:,1]
     dataobject.data = time_data[:,2]
-    
+
     return dataobject
 
 def add_absolute_time_sample(dataobject):

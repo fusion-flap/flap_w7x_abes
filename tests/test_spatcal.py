@@ -15,14 +15,14 @@ if __name__ == '__main__':
 #    a = ShotSpatCal('20180912.040', options={"spatcal_dir": "./tests/"})
 #    channel_names = ['ABES-1', 'ABES-2']
 #    b=a.create_coordinate_object([0], 'Beam axis', channel_names=channel_names)
-    a = flap_w7x_abes.ShotSpatCal('20181016.008')
+    a = flap_w7x_abes.ShotSpatCal('20180918.026')
 #    a = flap_w7x_abes.ShotSpatCal('20171207.024')
 
     
 #    a.lab_calib(options)
     options = {'Get CMOS to machine': False,'Get APDCAM to CMOS': True, 'Spherical symmetry': True}
 #    a.full_calib(options=options)
-#    a.generate_shotdata()
+    a.generate_shotdata()
     import h5py
     old = h5py.File('/media/mvecsei/DATA/data/W7-X/APDCAM/spatcal/20181016.008_spat.cal', 'r')
     new = flap.load('/DATA/repos/flap/modules/flap_w7x_abes/spatcal/20181016.008_spat.cal')
