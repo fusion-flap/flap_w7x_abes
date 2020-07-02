@@ -97,6 +97,8 @@ class ShotSpatCal(flap.DataObject):
         relative_loc = np.zeros(len(channel_names))
         index = 0
         for ch in channels:
+            if type(ch) == bytes:
+                ch = ch.decode('utf-8')
             relative_loc[np.where(channel_names == ch)[0][0]] = index+1
             index = index+1
         relative_loc = [x-1 if x > 0 else len(channel_names) for x in relative_loc]
@@ -236,6 +238,7 @@ class ShotSpatCal(flap.DataObject):
             point_machine_coord = image_x_vector*point_XY[0][0] +\
                                   image_y_vector*point_XY[0][1] +\
                                   midplane_crosspoint
+
             # Getting the cross point of observation point - point_machine_coord line on the z=0 plane
             connecting_vector = obs_point - point_machine_coord
             length_along_vector = -obs_point[2]/connecting_vector[2]
@@ -381,6 +384,9 @@ class CalcCalibration:
                          Calculate micrometer angle: boolean, prints out the angle between the horizontal and vertical
                                                       micrometer
                          Plot - whether to plot the cmos image corresponding to the measurements
+                         Flip horizontally - Looking at the dead pixels, it was found that the 2017-2018 laboratory
+                         calibration CMOS images were flipped horizontally relative to the stellarator images,
+                         this can be corrected by setting this option to True
         OUTPUT: the follwing variables are created
             self.cmos_apdcam_trans_mat - 2*2 linear transformation matrix for calculating the position of the
                                              channels based on the micrometer settings
@@ -392,12 +398,14 @@ class CalcCalibration:
                                                               'spatcal'),
                            'Noise limit': 100,
                            'Calculate micrometer angle': False,
-                           'Plot': True}
+                           'Plot': True,
+                           'Flip horizontally': False}
         options = {**options_default, **options}
 
-        if self.fibre_calib_list == []:
+        if hasattr(self, 'fibre_calib_list') is False:
             self.read_fibre_calib_list(options)
 
+        first_image=True
         for image_params in self.fibre_calib_list:
             if image_params[-1][-3:] == 'bmp':
                 split_filename = image_params[-1].split('.')
@@ -405,6 +413,8 @@ class CalcCalibration:
                 image_params[-1] = '.'.join(split_filename)
             image = plt.imread(os.path.join(options['Spatial calib source dir'], self.calibration_id, image_params[-1]))
             image = np.asarray(image)
+            if options['Flip horizontally'] is True:
+                image = np.fliplr(image)
             # removing the background and the dead pixels
             image = image/np.var(image)
             image = image-np.median(image)
@@ -423,13 +433,19 @@ class CalcCalibration:
                             np.average(np.arange(len(y_weight)), weights=y_weight), color='red')
                 plt.show(block=False)
                 plt.pause(0.01)
+                if first_image == True:
+                    imsum = image/np.max(image)
+                    first_image = False
+                else:
+                    imsum = imsum + image/np.max(image)
+
 
         # Get the transformation matrix with the v and h micrometer
         # Finding the channels with multiple measurements and storing the corresponding data
         channel_meas = np.asarray(self.fibre_calib_list)[:, 0]
         multi_chan_meas_id, chan_count = np.unique(channel_meas, return_counts=True)
         multi_chan_meas_id = multi_chan_meas_id[chan_count > 1]
-        
+               
         # Collecting the data for the channels with multiple measurements
         chan_cent = {}
         for chan in multi_chan_meas_id:
@@ -439,6 +455,14 @@ class CalcCalibration:
                 chan_cent[image_params[0]] += [[image_params[1], image_params[2], image_params[4], image_params[5]]]
             else:
                 chan_cent[image_params[0]] = [[image_params[1], image_params[2], image_params[4], image_params[5]]]
+
+        if options['Plot'] is True:
+            plt.contourf(imsum)
+            for image_params in self.fibre_calib_list:
+                plt.scatter(chan_cent[image_params[0]][0][2],chan_cent[image_params[0]][0][3],
+                            color='red', marker='x')
+            plt.show(block=False)
+            plt.pause(0.01)
 
         # Creating an equation system for obtaining the elements of the transformation matrix
         for chan in multi_chan_meas_id:
@@ -525,6 +549,7 @@ class CalcCalibration:
         # Adding the 'buttons'
         ax = plt.subplot(gs[0])
         buttons = OrderedDict()
+        buttons['Get Obs.\ Angle'] = [True, partial(self.get_obs_angle, points_rzt, options)]
         buttons['Start\nCalibration'] = [True, partial(self.start_calibration, points_rzt, options)]
         buttons['Delete Last\nPoint'] = [True, self.delete_last_selected_point]
         buttons['Add Point'] = [False, None]
@@ -594,6 +619,16 @@ class CalcCalibration:
             self.cmos_to_real, self.real_to_cmos = self.calib_points(points_rzt, options=options)
         else:
             raise NotImplementedError('Spatial calibration with fiducial curves not implemented yet.')
+    
+    def get_obs_angle(self, points_rzt, options={}):
+        ''' Function connected with the Start calibration button. Starts either the point based or the fiducial curve
+        base calibration
+        '''
+        # Reading the location parameters of the observation point
+        if options['Type'] == 'Points':
+            angle = self.calib_angle_points(points_rzt, options=options)
+        else:
+            raise NotImplementedError('Spatial calibration with fiducial curves not implemented yet.')
 
     def calib_points(self, points_rzt, options={}):
         ''' Obtains the calibration data from cmos to machine using a MachineCalibConfig object
@@ -603,7 +638,7 @@ class CalcCalibration:
                      Circular symmetry: Whether circular symmetry of the optical system is assumed
         '''
         options_default = {'Elliptical symmetry': False,
-                           'Circular symmetry': False}
+                           'Circular symmetry': True}
         options = {**options_default, **options}
 
         if options['Circular symmetry'] is True and options['Elliptical symmetry'] is True:
@@ -624,12 +659,13 @@ class CalcCalibration:
             point_xyz = np.asarray([points_rzt[index, 0]*np.cos(points_rzt[index, 2]*np.pi/180),
                                     points_rzt[index, 0]*np.sin(points_rzt[index, 2]*np.pi/180),
                                     points_rzt[index, 1]])
-            point_onplane = self.calibconf.get_proj_to_image_plane(point_xyz)
-
-            # Calculating the XY coordinates - the coordinates in the plane perpendicular to the optical axis
-            perp_to_optax = point_onplane-self.calibconf.midplane_crosspoint
-            point_XY[index, 0] = np.dot(perp_to_optax, self.calibconf.image_x_vector)
-            point_XY[index, 1] = np.dot(perp_to_optax, self.calibconf.image_y_vector)
+            point_XY[index, :] = np.asarray(self.calibconf.get_image_XY_coord(point_xyz))
+#            point_onplane = self.calibconf.get_proj_to_image_plane(point_xyz)
+#
+#            # Calculating the XY coordinates - the coordinates in the plane perpendicular to the optical axis
+#            perp_to_optax = point_onplane-self.calibconf.midplane_crosspoint
+#            point_XY[index, 0] = np.dot(perp_to_optax, self.calibconf.image_x_vector)
+#            point_XY[index, 1] = np.dot(perp_to_optax, self.calibconf.image_y_vector)
 
         real_to_cmos = solve_warp_equation(point_XY, self.points_cmos, options=options)
 
@@ -646,6 +682,26 @@ class CalcCalibration:
         self.add_vector_of_points(cmos_check)
 
         return cmos_to_real, real_to_cmos
+    
+    def calib_angle_points(self, points_rzt, options={}):
+        if points_rzt.shape[0] > self.points_cmos.shape[0]:
+            raise ValueError('Not enough points selected on image')
+        if points_rzt.shape[0] < self.points_cmos.shape[0]:
+            too_many_points_clicked = True
+            while too_many_points_clicked is True:
+                self.delete_last_selected_point()
+                too_many_points_clicked = points_rzt.shape[0] < self.points_cmos.shape[0]
+
+        self.calibconf = MachineCalibConfig(calibration_id=self.calibration_id, options=options)
+        points_xyz = np.zeros(points_rzt.shape)
+        index=0
+        for index in range(points_rzt.shape[0]):
+            points_xyz[index, :] = np.asarray([points_rzt[index, 0]*np.cos(points_rzt[index, 2]*np.pi/180),
+                                    points_rzt[index, 0]*np.sin(points_rzt[index, 2]*np.pi/180),
+                                    points_rzt[index, 1]])
+            index += 1
+        angle = optimize_angle(points_xyz, self.points_cmos, self.calibconf)
+        return angle
 
 
 class MachineCalibConfig:
@@ -688,11 +744,14 @@ class MachineCalibConfig:
             # Getting the vector of the optical axis
             point_on_opt_axis = np.asarray([float(coordval) for coordval in obsdata.readline().rstrip().split(' ')
                                             if coordval != ''])
+                            
             self.opt_axis_norm = point_on_opt_axis - self.obs_point
             self.opt_axis_norm = self.opt_axis_norm/np.linalg.norm(self.opt_axis_norm)
+
             # Getting vector along image x
             self.image_x_vector = np.asarray([float(coordval) for coordval in obsdata.readline().rstrip().split(' ')
                                               if coordval != ''])
+
             self.image_x_vector = self.image_x_vector - self.opt_axis_norm * np.dot(self.image_x_vector,
                                                                                     self.opt_axis_norm)
             self.image_x_vector = self.image_x_vector/np.linalg.norm(self.image_x_vector)
@@ -717,7 +776,7 @@ class MachineCalibConfig:
         # 0 = (x-self.midplane_crosspoint[0])*self.opt_axis_norm[0] +\
         #     (y-self.midplane_crosspoint[1])*self.opt_axis_norm[1] +\
         #     (z-self.midplane_crosspoint[2])*self.opt_axis_norm[2]
-
+        
     def get_proj_to_image_plane(self, point_xyz, obs_point=None, opt_axis_norm=None):
         ''' Calculates the projection of points on the image plane
         Image plane  is perpendicular to the optical axis and and crosses the optical axis at the intersection of the
@@ -731,7 +790,6 @@ class MachineCalibConfig:
         OUTPUT:
             point_onplane . the x,y,z coordinate of the projected point
         '''
-
         if obs_point is not None:
             self.obs_point = obs_point
         if opt_axis_norm is not None:
@@ -747,8 +805,12 @@ class MachineCalibConfig:
         y_onplane = (self.obs_point[1]-point_xyz[1])/(self.obs_point[0]-point_xyz[0])*(x_onplane-point_xyz[0])+point_xyz[1]
         z_onplane = (self.obs_point[2]-point_xyz[2])/(self.obs_point[0]-point_xyz[0])*(x_onplane-point_xyz[0])+point_xyz[2]
         point_onplane = np.array([x_onplane, y_onplane, z_onplane])
+                
+#        dist_from_implane = np.dot(self.midplane_crosspoint-point_xyz, self.opt_axis_norm)
+#        point_onplane = point_xyz+dist_from_implane*self.opt_axis_norm
         # Checking, all of the following should be 0
 #        obs_to_point = point_onplane-self.obs_point
+#        x_onplane, y_onplane, z_onplane = point_onplane
 #        print((x_onplane-self.midplane_crosspoint[0])*self.opt_axis_norm[0]+
 #        (y_onplane-self.midplane_crosspoint[1])*self.opt_axis_norm[1]+
 #        (z_onplane-self.midplane_crosspoint[2])*self.opt_axis_norm[2])
@@ -810,7 +872,7 @@ def solve_warp_equation(source_XY, proj_XY, options={}):
         A set of parameters defining the projection
     '''
     options_default = {'Elliptical symmetry': False,
-                       'Circular symmetry': False}
+                       'Circular symmetry': True}
     options = {**options_default, **options}
 
     source_XY = np.asarray(source_XY)
@@ -831,12 +893,16 @@ def solve_warp_equation(source_XY, proj_XY, options={}):
         K_mat = np.zeros([np.shape(source_XY)[0]*2, 4])
         K_mat[:, 0] = np.concatenate([source_XY[:, 0], -source_XY[:, 1]])
         K_mat[:, 1] = np.concatenate([source_XY[:, 1], source_XY[:, 0]])
+#        K_mat[:, 0] = np.concatenate([source_XY[:, 0], source_XY[:, 1]])
+#        K_mat[:, 1] = np.concatenate([source_XY[:, 1], -source_XY[:, 0]])
         K_mat[:np.shape(source_XY)[0], 2] = 1
         K_mat[np.shape(source_XY)[0]:, 3] = 1
         K_vec = np.concatenate([proj_XY[:, 0], proj_XY[:, 1]])
 
         Kx10, Kx01, Kx00, Ky00 = np.linalg.solve(np.dot(np.transpose(K_mat), K_mat), np.dot(np.transpose(K_mat), K_vec))
         res = np.array([Kx00, Kx10, Kx01, 0, Ky00, Kx01, -Kx10, 0])
+#        res = np.array([Kx00, Kx10, Kx01, 0, Ky00, -Kx01, Kx10, 0])
+
     else:
         K_mat = np.zeros([np.shape(source_XY)[0], 4])
         K_mat[:, 0] = 1
@@ -869,6 +935,121 @@ def get_points_projection(source_XY, proj_vect):
     return proj_XY
 
 
+def optimize_angle(point_xyz, points_cmos, calibconf):
+    calibconf.get_optical_axis_midplane_crosspoint()
+    starting_vect = calibconf.midplane_crosspoint - calibconf.obs_point
+    starting_dist = np.linalg.norm(starting_vect)
+    start_phi = np.arctan(starting_vect[1]/starting_vect[0])
+    start_theta = np.arccos(starting_vect[2]/starting_dist)
+    part_proj_error = partial(projection_error, calibconf, point_xyz, points_cmos)
+    from scipy.optimize import minimize
+    res = minimize(part_proj_error, [start_phi, start_theta, starting_dist])
+    print(res.message)
+    [phi, theta, dist] = res.x
+    location = np.array([dist*np.sin(theta)*np.cos(phi),
+                         dist*np.sin(theta)*np.sin(phi),
+                         dist * np.cos(theta)])
+
+
+def projection_error(calibconf, points_xyz_input, points_cmos_input, opti):
+    [phi, theta, dist] = opti
+    import copy
+    conf = copy.deepcopy(calibconf)
+    points_cmos = copy.deepcopy(points_cmos_input)
+    points_xyz = copy.deepcopy(points_xyz_input)
+    vector_to_obs_point = np.array([dist*np.sin(theta)*np.cos(phi),
+                                    dist*np.sin(theta)*np.sin(phi),
+                                    dist * np.cos(theta)])
+    orig_crosspoint = conf.midplane_crosspoint
+    orig_norm = conf.opt_axis_norm
+    orig_obs_point = conf.obs_point
+    conf.opt_axis_norm = copy.deepcopy(vector_to_obs_point)
+    conf.opt_axis_norm = conf.opt_axis_norm/np.linalg.norm(conf.opt_axis_norm)
+    conf.get_optical_axis_midplane_crosspoint()
+    conf.obs_point = conf.midplane_crosspoint - vector_to_obs_point
+#    if np.linalg.norm(orig_crosspoint-conf.midplane_crosspoint) > 1.:
+#        conf.opt_axis_norm = orig_norm
+#        conf.get_optical_axis_midplane_crosspoint()    
+#        conf.obs_point = orig_obs_point
+
+    # Getting vector along image x
+    conf.image_x_vector = conf.image_x_vector - conf.opt_axis_norm * np.dot(conf.image_x_vector,
+                                                                            conf.opt_axis_norm)
+    conf.image_x_vector = conf.image_x_vector/np.linalg.norm(conf.image_x_vector)
+    conf.image_y_vector = -np.cross(conf.image_x_vector, conf.opt_axis_norm)
+
+    point_XY = np.zeros([points_xyz.shape[0], 2])
+    for index in range(points_xyz.shape[0]):
+            point_XY[index, :] = np.asarray(conf.get_image_XY_coord(points_xyz[index, :]))
+
+    # Fitting to the port circle
+    real_space_circle_points = point_XY[11:,:]
+    [r_real, center_real] = fit_circle(real_space_circle_points)
+    cmos_circle_points = points_cmos[11:,:]
+    [r_cmos, center_cmos] = fit_circle(cmos_circle_points)
+    point_XY[11:15, :] = center_real
+    points_cmos[11:15, :] = center_cmos
+    point_XY = point_XY[:15,:]
+    points_cmos = points_cmos[:15,:]
+    
+    #getting the distance from the first and second selcted point
+    dist = []
+    for point in range(points_cmos.shape[0]):
+        dist += [np.linalg.norm(point_XY-point_XY[point,:], axis=1)]
+    
+    # getting the distance between the CMOS points
+    dist_CMOS = []
+    for point in range(points_cmos.shape[0]):
+        dist_CMOS += [np.linalg.norm(points_cmos-points_cmos[point,:], axis=1)]
+
+    ratio = dist_CMOS[0][2]/dist[0][2]
+    error = 0
+    for point in range(points_cmos.shape[0]):
+        error += np.sum(np.abs(dist[point]*ratio-dist_CMOS[point]))
+
+    print(conf.obs_point)
+    print(conf.midplane_crosspoint)
+
+    return error*np.linalg.norm(orig_crosspoint-conf.midplane_crosspoint)
+
+def fit_circle(points):
+    x = points[:, 0]
+    y = points[:, 1]
+
+    # coordinates of the barycenter
+    x_m = np.mean(x)
+    y_m = np.mean(y)
+
+    # calculation of the reduced coordinates
+    u = x - x_m
+    v = y - y_m
+
+    # linear system defining the center (uc, vc) in reduced coordinates:
+    #    Suu * uc +  Suv * vc = (Suuu + Suvv)/2
+    #    Suv * uc +  Svv * vc = (Suuv + Svvv)/2
+    Suv  = np.sum(u*v)
+    Suu  = np.sum(u**2)
+    Svv  = np.sum(v**2)
+    Suuv = np.sum(u**2 * v)
+    Suvv = np.sum(u * v**2)
+    Suuu = np.sum(u**3)
+    Svvv = np.sum(v**3)
+
+    # Solving the linear system
+    A = np.array([ [ Suu, Suv ], [Suv, Svv]])
+    B = np.array([ Suuu + Suvv, Svvv + Suuv ])/2.0
+    uc, vc = np.linalg.solve(A, B)
+
+    xc_1 = x_m + uc
+    yc_1 = y_m + vc
+
+    # Calcul des distances au centre (xc_1, yc_1)
+    Ri_1     = np.sqrt((x-xc_1)**2 + (y-yc_1)**2)
+    R_1      = np.mean(Ri_1)
+    residu_1 = np.sum((Ri_1-R_1)**2)
+
+    center = np.array([xc_1, yc_1])
+    return R_1, center
 # ----------------------------------------Graphics----------------------------------------------------------------------
 # The following two classes are needed for selecting points if the cmos to machine calibration is called
 class ClickButtonList:

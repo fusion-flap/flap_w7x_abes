@@ -199,7 +199,7 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
         raise ValueError("Invalid calibration setting. Should be True or False.")
 
     if (not calib):
-        return data_arr
+        return data_arr, None, None
 
     try:
         calibration_path = options['Amplitude calib. path']
@@ -368,7 +368,10 @@ def calculate_amplitude_calibration(shotID, options={}):
     del light_profile
     beam_on = beam_on.slice_data(summing={'Time': 'Mean'})
     if plot_data is True:
+        plt.subplot(2,1,1)
         beam_on.plot(axes='Channel')
+        plt.subplot(2,1,2)
+        plt.plot(beam_on.error/beam_on.data)
     
     # Getting and formatting the relevant data
     channel_names = beam_on.get_coordinate_object('Signal name').values
@@ -1192,7 +1195,7 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         #adding the calibration factor error
         if 'Calibration factor error' in dataobject_beam_on.info:
             calfac_error = dataobject_beam_on.info['Calibration factor error']
-            if 'Signal name' in dataobject.coordinate_names():
+            if 'Signal name' in dataobject.coordinate_names() and calfac_error is not None:
                 calfac_curr = calfac_error.slice_data(slicing =
                                                       {'Signal name': dataobject.get_coordinate_object('Signal name').values[0]})
                 calfac_curr_errors = dataobject_beam_on.data * calfac_curr.data
