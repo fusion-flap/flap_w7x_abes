@@ -927,7 +927,9 @@ def add_coordinate(data_object,
     options - a dictionary of options
               available: 'spatcal_dir' - the location of calibration data
     '''
-    default_options = {'Shot spatcal dir':'', "Channels":''}
+    default_options = {'Shot spatcal dir': os.path.join(os.path.dirname(os.path.abspath(__file__)),'spatcal'),
+                       "Channels":''
+                       }
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
 
     if exp_id is None:
