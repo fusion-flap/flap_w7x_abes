@@ -1075,6 +1075,7 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
                             options=o,\
                             object_name='Beam_on',
                             )
+
     o = copy.deepcopy(off_options)
     o.update({'State':{'Chop': 1, 'Defl': 0}})
     d_beam_off=flap.get_data('W7X_ABES',
@@ -1170,7 +1171,13 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         # "Rel. Time in int(Time)" varies. For dimension 1 it is 'Start Time in int(Time)' that varies
         dataobject_beam_on = process_chopped_dataobject(dataobject_beam_on, options=options)
 
+
+        if d_beam_off.coordinate('Sample')[0][-1] > dataobject.coordinate('Sample')[0][-1]:
+            d_beam_off.shape = [int((dataobject.coordinate('Sample')[0][-1]-d_beam_off.coordinate('Sample')[0][0])/
+                                   d_beam_off.get_coordinate_object('Sample').step)]
+
         dataobject_beam_off = dataobject.slice_data(slicing={'Sample': d_beam_off}, options={'Partial intervals':True})
+
         dataobject_beam_off.error = None
         dataobject_beam_off = process_chopped_dataobject(dataobject_beam_off, options={'Average Chopping Period': True})
 
