@@ -1263,7 +1263,7 @@ def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,signals='ABES-[
                 del curr_channels
                 gc.collect()
                 results = results + pool.map(partial_proc_func, channel_data)
-                print('Multichannel signal processing finished '+str(len(results)/num_of_channels)*100)+'%')
+                print('Multichannel signal processing finished '+str(len(results)/num_of_channels*100)+'%')
         for channel_processed_data in results:
             if not ("processed_data" in locals()):
                 processed_data = channel_processed_data
