@@ -1,4 +1,4 @@
-űSHOTNUMBER	start_delay(us)	end_delay(us)
+SHOTNUMBER	start_delay(us)	end_delay(us)
 20180905.011	53		50
 20180905.024	53		50
 20180905.013	103		100

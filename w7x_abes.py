@@ -7,7 +7,8 @@ Created on Sat Dec  8 23:23:49 2018
 This is the flap module for W7-X alkali BES diagnostic
 """
 
-import os.path
+import os
+import time
 from decimal import *
 import gc
 import psutil
@@ -43,7 +44,7 @@ def abes_get_config(xml):
     if (retval['version'] != '1.0'):    
         retval['TriggerTime'] = Decimal(xml.get_element('System','TriggerTime')['Value'])
     else:
-        retval['TriggerTime'] = Decimal(xml)
+        retval['TriggerTime'] = Decimal(xml.get_element('APDCAM','Trigger')['Value'])
     # Micrometer settings for spatial calibration
     if xml.get_element('System','APD_H-Micrometer')['Unit'] == 'mm' and \
        xml.get_element('System','APD_V-Micrometer')['Unit'] == 'mm':
@@ -324,7 +325,7 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
     return data_arr, data_err, calfac_err_dataobject
 
 def calculate_amplitude_calibration(shotID, options={}):
-    
+
     options_default={'Time window': None,
                      'Sample window': None,
                      'Amplitude calib. path': flap.config.get('Module W7X_ABES', 'Amplitude calib. path'),
@@ -365,6 +366,7 @@ def calculate_amplitude_calibration(shotID, options={}):
                        on_options={'Start delay': chop_delay[0], 'End delay': chop_delay[1], 'Partial intervals':options['Partial intervals']},
                        off_options={'Start delay': chop_delay[0], 'End delay': chop_delay[1],  'Partial intervals':options['Partial intervals']},
                        options=options, test=False)
+
     del light_profile
     beam_on = beam_on.slice_data(summing={'Time': 'Mean'})
     if plot_data is True:
@@ -636,7 +638,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
     """
     if (exp_id is None):
         raise ValueError('exp_id should be set for W7X ABES.')
-    default_options = {'Datapath':'data',
+    default_options = {'Datapath': 'data',
                        'Scaling':'Digit',
                        'Offset timerange': None,
                        'Amplitude calibration': False,
@@ -659,7 +661,11 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
     datapath = os.path.join(datapath_base,exp_id)
     xmlfile = os.path.join(datapath, exp_id + '_config.xml')
     xml = flap.FlapXml()
+    if os.path.exists(xmlfile) is False:
+        raise ValueError('XML file '+xmlfile+' does not exist')
     try:
+        while os.access(xmlfile, os.R_OK) is False:
+            time.sleep(0.1)
         xml.read_file(xmlfile)
     except Exception:
         raise IOError("Error reading XML file:" + xmlfile)
@@ -1053,6 +1059,7 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
                                          process.
         OUTPUT: The background subtracted A-BES data
     """
+
     options_default = {'Average Chopping Period': True}
     options = {**options_default, **options}
 
@@ -1061,6 +1068,8 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         exp_id = dataobject.exp_id
 
     o = copy.deepcopy(on_options)
+    if 'Datapath' in options.keys():
+        o['Datapath'] = options['Datapath']
     if 'W7X_ABES' not in flap.list_data_sources():
         register()
     o.update({'State':{'Chop': 0, 'Defl': 0}})
@@ -1077,6 +1086,8 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
                             )
 
     o = copy.deepcopy(off_options)
+    if 'Datapath' in options.keys():
+        o['Datapath'] = options['Datapath']
     o.update({'State':{'Chop': 1, 'Defl': 0}})
     d_beam_off=flap.get_data('W7X_ABES',
                             exp_id=exp_id,
@@ -1085,7 +1096,6 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
                             options=o,\
                             object_name='Beam_off',
                             )
-
     if (test):
         from matplotlib import pyplot as plt
         import time
@@ -1152,6 +1162,7 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
 #        background_error = np.average((d_beam_off.data-beam_off_data.data.reshape(np.shape(d_beam_off.data)))**2, axis=0)\
 #                           *len(beam_off_data.data)/(len(beam_off_data.data)-1)
 
+
         flap.delete_data_object(['ABES_on','ABES_off','Beam_on','Beam_off'],exp_id=exp_id)
         try:
             flap.delete_data_object('ABES')
@@ -1164,13 +1175,13 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
             
         return d
     else:
+
         # in this case the passed dataobject is used and the only the copper data is obtained from file
         dataobject_beam_on = dataobject.slice_data(slicing={'Sample': d_beam_on})
 
         # For dataobject_beam_on.data the 0 dimension is along a constant 'Start Time in int(Time)' and 
         # "Rel. Time in int(Time)" varies. For dimension 1 it is 'Start Time in int(Time)' that varies
         dataobject_beam_on = process_chopped_dataobject(dataobject_beam_on, options=options)
-
 
         if d_beam_off.coordinate('Sample')[0][-1] > dataobject.coordinate('Sample')[0][-1]:
             d_beam_off.shape = [int((dataobject.coordinate('Sample')[0][-1]-d_beam_off.coordinate('Sample')[0][0])/
@@ -1212,7 +1223,6 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
             else:
                 print('Calibration error not considered')
 
-    
         if test is True:
             plt.plot(dataobject_beam_on.get_coordinate_object("Time").values,
                      dataobject_beam_on.data)
@@ -1244,6 +1254,7 @@ def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,signals='ABES-[
         num_of_channels = len(channels)
         divide_to = 10
         results =[]
+
         for index in range(divide_to+1):
             with mp.Pool(int((mp.cpu_count()+1)/2)) as pool:
                 curr_channels=channels[index*int(1+num_of_channels/divide_to):(index+1)*int(1+num_of_channels/divide_to)]
@@ -1252,7 +1263,7 @@ def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,signals='ABES-[
                 del curr_channels
                 gc.collect()
                 results = results + pool.map(partial_proc_func, channel_data)
-
+                print('Multichannel signal processing finished '+str(len(results)/num_of_channels)*100)+'%')
         for channel_processed_data in results:
             if not ("processed_data" in locals()):
                 processed_data = channel_processed_data
@@ -1461,7 +1472,30 @@ def read_chopshift(shotID):
         else:
             delay = np.asarray([flap.config.get("Module W7X_ABES","Start delay"),
                                 flap.config.get("Module W7X_ABES","End delay")])
-        return delay
+    return delay
+
+def write_chopshift(shotID, start, end):
+    'Writes the data into the w7x_chop_shift file'
+    location = os.path.dirname(os.path.realpath(__file__))
+    location = os.path.join(location, 'w7x_chop_shift')
+    os.rename(location, location+'old')
+    separator = '\t'
+    found_shot = False
+    with open(location, 'w', encoding='utf-8') as fout:
+        with open(location+'old', "r", encoding='utf-8') as fin:
+            for line in fin:
+                data = line.split(separator)
+                if data[0] == shotID:
+                    data[1] = str(start)
+                    data[-1] = str(end)+'\n'
+                    found_shot = True
+                dataout = separator.join(data)
+                fout.write(dataout)
+        if found_shot == False:
+            data = [shotID, str(start), '',str(end)+'\n']
+            dataout = separator.join(data)
+            fout.write(dataout)
+    os.remove(location+'old')
 
     
 def register(data_source=None):
