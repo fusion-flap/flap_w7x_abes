@@ -569,7 +569,7 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
             start_clk += period_time_clk * start_ind
             stop_clk += period_time_clk * start_ind
         stop_sample = stop_clk * chop_clk_in_sample
-        n_period =  int((read_samplerange[1] - stop_sample) / period_time_sample)
+        n_period =  int((read_samplerange[1] - stop_sample) / period_time_sample+0.5)
         if (n_period <= 0):
             raise ValueError("No chopper intervals in time (sample) range.")
     else:
