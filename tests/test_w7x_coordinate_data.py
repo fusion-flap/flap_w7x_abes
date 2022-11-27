@@ -17,7 +17,7 @@ flap_w7x_abes.register()
 def test_w7x_coordinate_data():
     print("\n------- test coordinate data with W7-X ABES module --------")
     print("**** Reading two channels 10 microsec signal")
-    d=flap.get_data('W7X_ABES',exp_id='20181018.003',name=['ABES-1[5,6]'],\
+    d=flap.get_data('W7X_ABES',exp_id='20181018.013',name=['ABES-*'],\
                     options={'Scaling':'Volt'},object_name='ABES',\
                     coordinates=flap.Coordinate(name='Time',c_range=[1,1.00001]))
     print("**** Storage contents")
