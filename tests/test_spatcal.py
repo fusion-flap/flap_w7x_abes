@@ -20,9 +20,11 @@ if __name__ == '__main__':
 #    a = flap_w7x_abes.ShotSpatCal('20181016.008')
 #    a = flap_w7x_abes.ShotSpatCal('20171207.024')
     a = flap_w7x_abes.ShotSpatCal('20221016.008')
-    options = {'Get CMOS to machine': False ,'Get APDCAM to CMOS': True, 'Circular symmetry':True,
-           'Flip horizontally': True, 'Noise limit': 200}
+    options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Circular symmetry':True,
+           'Flip horizontally': False, 'Noise limit': 200}
+    options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Circular symmetry':True, 'Elliptical symmetry':False,'Noise limit': 200}
     a.full_calib(options=options)
+    raise ValueError('stop')
 
 
 #    a.lab_calib(options)

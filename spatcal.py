@@ -574,37 +574,56 @@ class CalcCalibration:
                     points_rzt += [[float(data) for data in line.split(' ') if data != '']]
         points_rzt = np.asarray(points_rzt)
 
-        # Click on an image to signal the point coordinates in a photo
-        self.points_cmos = np.array([])
-        plt.ion()
-        f = plt.figure()
-        gs = gridspec.GridSpec(1, 3, width_ratios=[1, 3, 2])
-        # Adding the 'buttons'
-        ax = plt.subplot(gs[0])
-        buttons = OrderedDict()
-        buttons['Get Obs.\ Angle'] = [True, partial(self.get_obs_angle, points_rzt, options)]
-        buttons['Start\nCalibration'] = [True, partial(self.start_calibration, points_rzt, options)]
-        buttons['Delete Last\nPoint'] = [True, self.delete_last_selected_point]
-        buttons['Add Point'] = [False, None]
-        self.clickbuttons = ClickButtonList(ax, buttons)
-        # adding the calibration image with the event handling
-        filename = os.path.join(options['Spatial calib source dir'], self.calibration_id, 'Geometry', 'calib_image.png')
-        self.calib_image = np.asarray(plt.imread(filename))
-        plt.subplot(gs[1])
-        self.calib_interface = plt.imshow(self.calib_image)
-        self.calib_interface.figure.canvas.mpl_connect('button_press_event', self.add_to_selected_points)
-        # adding the reference image
-        filename = os.path.join(options['Spatial calib source dir'], self.calibration_id,
-                                'Geometry', 'reference_image.png')
-        ref_image = np.asarray(plt.imread(filename))
-        plt.subplot(gs[2])
-        plt.imshow(ref_image)
-        f.tight_layout()
-        plt.pause(0.01)
-        plt.show(block=True)
+        point_file = os.path.join(options['Spatial calib source dir'], self.calibration_id, 'Geometry', 'calib_image_points.dat')
+        if os.path.exists(point_file) == True:
+            with open(point_file, "r") as f:
+                all_data = f.readlines()
+            self.points_cmos = list()
+            for point in all_data:
+                self.points_cmos += [[float(point.split("\n")[0].split("\t")[0]), float(point.split("\n")[0].split("\t")[1])]]
+                # plt.scatter(self.points_cmos[-1][0], self.points_cmos[-1][1], color='#FF0000', marker='x')
+                # plt.text(self.points_cmos[-1][0]+7, self.points_cmos[-1][1]+7, len(self.points_cmos), color='red')
+            self.points_cmos = np.asarray(self.points_cmos)
 
-        # Do some kind of fitting the output should be a function with CMOS coordinate -> real space
-        # This part is done when clicking on Start calibration which calls the start_calibration() routine
+            filename = os.path.join(options['Spatial calib source dir'], self.calibration_id, 'Geometry', 'calib_image.png')
+            self.calib_image = np.asarray(plt.imread(filename))
+            self.calib_interface = plt.imshow(self.calib_image)
+            plt.pause(0.01)
+            plt.show(block=False)
+                        
+            self.start_calibration(points_rzt, options)
+        else:
+            # Click on an image to signal the point coordinates in a photo
+            self.points_cmos = np.array([])
+            plt.ion()
+            f = plt.figure()
+            gs = gridspec.GridSpec(1, 3, width_ratios=[1, 3, 2])
+            # Adding the 'buttons'
+            ax = plt.subplot(gs[0])
+            buttons = OrderedDict()
+            buttons['Get Obs.\ Angle'] = [True, partial(self.get_obs_angle, points_rzt, options)]
+            buttons['Start\nCalibration'] = [True, partial(self.start_calibration, points_rzt, options)]
+            buttons['Delete Last\nPoint'] = [True, self.delete_last_selected_point]
+            buttons['Add Point'] = [False, None]
+            self.clickbuttons = ClickButtonList(ax, buttons)
+            # adding the calibration image with the event handling
+            filename = os.path.join(options['Spatial calib source dir'], self.calibration_id, 'Geometry', 'calib_image.png')
+            self.calib_image = np.asarray(plt.imread(filename))
+            plt.subplot(gs[1])
+            self.calib_interface = plt.imshow(self.calib_image)
+            self.calib_interface.figure.canvas.mpl_connect('button_press_event', self.add_to_selected_points)
+            # adding the reference image
+            filename = os.path.join(options['Spatial calib source dir'], self.calibration_id,
+                                    'Geometry', 'reference_image.png')
+            ref_image = np.asarray(plt.imread(filename))
+            plt.subplot(gs[2])
+            plt.imshow(ref_image)
+            f.tight_layout()
+            plt.pause(0.01)
+            plt.show(block=True)
+    
+            # Do some kind of fitting the output should be a function with CMOS coordinate -> real space
+            # This part is done when clicking on Start calibration which calls the start_calibration() routine
 
     def add_to_selected_points(self, event):
         ''' Add CMOS coordinate of clicked point to list of selected points
