@@ -530,6 +530,9 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
     options:
         'Scaling':  'Digit'
                     'Volt'
+        'Resample': Resample to this frequency [Hz]. Only frequencies below the sampling frequency can be used.
+                    The frequency will be rounded to the integer times the sampling frequency. 
+                    Data will be averaged in blocks and the variance in blocks will be added as error.
         'Offset timerange': Time range for offset subtraction
         'Datapath': Data path (string)
         'Calibration': True/False do/don't do amplitude calibration of the data
@@ -550,7 +553,8 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                        'Phase' : None,
                        'State' : None,
                        'Start delay': 0,
-                       'End delay': 0
+                       'End delay': 0,
+                       'Resample' : None
                        }
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
 
@@ -634,6 +638,11 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
         read_samplerange[1] = config['APDCAM_samplenumber']
     read_range = float(config['APDCAM_starttime']) \
                        + read_samplerange * float(config['APDCAM_sampletime'])
+    if (_options['Resample'] is not None):
+        if (_options['Resample'] > 1 / config['APDCAM_sampletime']):
+            raise ValueError("Resampling frequency should be below the original sample frequency.")
+        resample_binsize = int(round((1 / _options['Resample']) / float(config['APDCAM_sampletime'])))
+
 
     try:
         ch_chop = chspec.index('Chopper_time')
