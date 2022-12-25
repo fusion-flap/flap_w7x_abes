@@ -53,7 +53,7 @@ def abes_get_config(xml):
     else:
         raise ValueError('H-Micrometer and V-Micrometer units should be in mm')
     retval['APDCAM_state'] = int(xml.get_element('APDCAM','State')['Value'])
-    if (retval['APDCAM_state'] is 1):
+    if (retval['APDCAM_state'] == 1):
         ADCDiv = Decimal(xml.get_element('APDCAM', 'ADCDiv')['Value'])
         ADCMult = Decimal(xml.get_element('APDCAM', 'ADCMult')['Value'])
         retval['APDCAM_f_ADC'] = Decimal(20e6) * ADCMult / ADCDiv
@@ -228,7 +228,7 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
                     cal_files = [line[0]]
                 else:
                     try:
-                        cal_timerange = [float(line[1]), float(line[2])]()
+                        cal_timerange = [float(line[1]), float(line[2])]
                     except (IndexError, ValueError):
                         infile.close()
                         raise ValueError("Invalid shot calibration file: "+fn)
@@ -345,13 +345,13 @@ def calculate_amplitude_calibration(shotID, options={}):
             raise ValueError('Calibration data ('+filename+") already exists. To overwrite, set options['Overwrite']=True.")
     del options['Overwrite']
 
-    if ('Time window' is not None):
+    if (options['Time window'] is not None):
         del options['Sample window']
         data_range = copy.deepcopy(options['Time window'])
         del options['Time window']
         light_profile = w7x_abes_get_data(exp_id=shotID, data_name='ABES-*', options=options,
                                         coordinates=[flap.Coordinate(name='Time',c_range=data_range)])
-    elif ('Sample window' is not None):
+    elif (options['Sample window'] is not None):
         del options['Time window']
         data_range = copy.deepcopy(options['Sample window'])
         del options['Sample window']
@@ -649,7 +649,8 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                        'Start delay': 0,
                        'End delay': 0,
                        'Spatial calibration': False,
-                       'Partial intervals': False
+                       'Partial intervals': False,
+                       'Resample' : None
                        }
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
     try:
@@ -701,7 +702,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                 raise TypeError("Coordinate description should be flap.Coordinate.")
             if ((coord is None) or (coord.c_range is None)):
                 continue
-            if (coord.unit.name is 'Time'):
+            if (coord.unit.name == 'Time'):
                 if (coord.mode.equidistant):
                     read_range = [float(coord.c_range[0]),float(coord.c_range[1])]
                     if (read_range[1] <= read_range[0]):
@@ -709,7 +710,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                 else:
                     raise NotImplementedError("Non-equidistant Time axis is not implemented yet.")
                 break
-            if coord.unit.name is 'Sample':
+            if coord.unit.name == 'Sample':
                 if (coord.mode.equidistant):
                     read_samplerange = coord.c_range
                     if (read_samplerange[1] <= read_samplerange[0]):
@@ -737,7 +738,10 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
         read_samplerange[1] = config['APDCAM_samplenumber']
     read_range = float(config['APDCAM_starttime']) \
                        + read_samplerange * float(config['APDCAM_sampletime'])
-
+    if (_options['Resample'] is not None):
+        if (_options['Resample'] > 1 / config['APDCAM_sampletime']):
+            raise ValueError("Resampling frequency should be below the original sample frequency.")
+        resample_binsize = int(round((1 / _options['Resample']) / float(config['APDCAM_sampletime'])))
     try:
         ch_chop = chspec.index('Chopper_time')
         chopper_signal = True
@@ -808,15 +812,24 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
             offset_data = (2 ** config['APDCAM_bits'] - 1) - offset_data
 
 
-    ndata = int(read_samplerange[1] - read_samplerange[0] + 1)
+    ndata_read = int(read_samplerange[1] - read_samplerange[0] + 1)
+    if (_options['Resample'] is not None):
+        ndata_out = int(ndata_read / resample_binsize) 
+        ndata_read = ndata_out * resample_binsize
+    else:
+        ndata_out = ndata_read
 
     if (no_data is False):
-        if (len(ADC_proc) is not 1):
-            data_arr = np.empty((ndata, len(ADC_proc)), dtype=dtype)
-            if ndata*len(ADC_proc)*32 > psutil.virtual_memory().available:
-                del data_arr
-                raise MemoryError("Note enough memory for reading data")
+        if ndata_out * len(ADC_proc) * 32 > psutil.virtual_memory().available:
+            raise MemoryError("Note enough memory for reading data")
 
+        if (len(ADC_proc) != 1):
+            if (_options['Resample'] is not None):
+                data_arr = np.empty((ndata_out, len(ADC_proc)), dtype=float)
+                data_err = np.empty((ndata_out, len(ADC_proc)), dtype=float)
+            else:
+                data_arr = np.empty((ndata_out, len(ADC_proc)), dtype=dtype)
+                data_err = None
         for i in range(len(ADC_proc)):
             fn = os.path.join(datapath, "Channel_{:03d}.dat".format(ADC_proc[i] - 1))
             with open(fn,"rb") as f:
@@ -825,39 +838,46 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                 except Exception:
                     raise IOError("Error reading from file: " + fn)
     
-                if (len(ADC_proc) is 1):
-                    try:
-                        data_arr = np.fromfile(f, dtype=np.int16, count=ndata)
-                    except Exception:
-                        raise IOError("Error reading from file: " + fn)
-                    if (scale_to_volts):
-                        data_arr = ((2 ** config['APDCAM_bits'] - 1) - data_arr) \
-                                    / (2. ** config['APDCAM_bits'] - 1) * 2
-                    else:
-                        data_arr = (2 ** config['APDCAM_bits'] - 1) - data_arr
-                    if (offset_timerange is not None):
-                            data_arr -= offset_data[i]
+                try:
+                    d = np.fromfile(f, dtype=np.int16, count=ndata_read)
+                except Exception:
+                    raise IOError("Error reading from file: " + fn)
+                if (scale_to_volts):
+                    d = ((2 ** config['APDCAM_bits'] - 1) - d) \
+                                / (2. ** config['APDCAM_bits'] - 1) * 2
                 else:
-                    try:
-                        d = np.fromfile(f, dtype=np.int16, count=ndata)
-                    except Exception:
-                        raise IOError("Error reading from file: " + fn)
-                    if (scale_to_volts):
-                        d = ((2 ** config['APDCAM_bits'] - 1) - d) \
-                                    / (2. ** config['APDCAM_bits'] - 1) * 2
-                    else:
-                        d = (2 ** config['APDCAM_bits'] - 1) - d
-                    if (offset_timerange is not None):
-                            d -= offset_data[i]
-                    data_arr[:,i] = d
-
+                    d = (2 ** config['APDCAM_bits'] - 1) - d
+                if (offset_timerange is not None):
+                        d -= offset_data[i]
+            if (_options['Resample'] is not None):
+                d = d.astype(float)
+                d_resample = np.zeros(ndata_out,dtype=float)
+                d_error = np.zeros(ndata_out,dtype=float)
+                if (ndata_out > resample_binsize):
+                    for i_slice in range(0,resample_binsize):
+                        d_resample += d[slice(i_slice,len(d),resample_binsize)]
+                        d_error += d[slice(i_slice,len(d),resample_binsize)] ** 2
+                else:
+                    for i_resamp in range(0,len(d_resample)):
+                        d_resample[i_resamp] = np.sum(d[i_resamp * resample_binsize : (i_resamp + 1) * resample_binsize])
+                        d_error[i_resamp] = np.sum(d[i_resamp * resample_binsize : (i_resamp + 1) * resample_binsize] ** 2)
+                d_error = np.sqrt(d_error / resample_binsize - (d_resample / resample_binsize) ** 2)
+                d = d_resample / resample_binsize
+                if (len(ADC_proc) == 1):
+                    data_err = d_error
+                else:
+                    data_err[:,i] = d_error
+            if (len(ADC_proc) == 1):
+                data_arr = d
+            else:
+                data_arr[:,i] = d    
         try:
             data_arr, data_err, calfac_err = calibrate(data_arr, signal_proc, read_range, exp_id=exp_id, options=_options)
         except Exception as e:
             raise e
         data_dim = data_arr.ndim    
     else:
-        if (len(ADC_proc) is not 1):
+        if (len(ADC_proc) != 1):
             data_dim = 2
         else:
             data_dim = 1
