@@ -20,11 +20,12 @@ def plot_tdms_data(channels=['HV Em Meas Voltage','HV Em Meas Current','HV Ex Me
         ax[i].set_ylabel(d['unit'])
         if i == len(channels)-1:
             ax[i].set_xlabel("time")
-    plt.tight_layout()
+    # plt.tight_layout()
     plt.show()
 
 if __name__ == '__main__':  
-    shot='T20230207.002'
+    shot='T20230213.033'
     group_name=None
-    channels=['HV Em Meas Voltage','HV Em Meas Current','HV Ex Meas Voltage','HV Ex Meas Current','TC Top']
+    # channels=['HV Em Meas Voltage','HV Em Meas Current','HV Ex Meas Voltage','HV Ex Meas Current','VG HighVac1','FC2 Resistor Current mA','- FC Current mA']
+    channels=['HV Em Meas Voltage','HV Em Meas Current','HV Ex Meas Voltage','HV Ex Meas Current','- FC Voltage V','FC1 Resistor Current mA','- FC Current mA']
     chdata=plot_tdms_data(channels=channels,shot=shot,group_name=group_name)

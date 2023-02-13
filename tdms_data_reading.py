@@ -43,7 +43,11 @@ def read_one_channel(channel,shot=None,search_dir='/data/W7-X/APDCAM/'):
                         # print(group.name,ch.name)
                         chdata=tdms_file[group.name][ch.name]
                         data =chdata[:]
-                        unit=chdata.properties['Unit']
+                        try:
+                            unit=chdata.properties['Unit']
+                        except:
+                            unit=''
+                        # unit=chdata.properties['Unit']
                         tdms_data.append({'shot':shot,'group':group.name,'channel':ch.name,'data':data,'unit':unit})
     if not tdms_data:
         raise ValueError("Channel '{:s}' is not found in file {:s}.".format(str(channel),fn))
@@ -51,7 +55,7 @@ def read_one_channel(channel,shot=None,search_dir='/data/W7-X/APDCAM/'):
 
 def read_tdms_data(channel,shot=None,search_dir='/data/W7-X/APDCAM/',group_name=None):
     # search_dir = '/data/W7-X/APDCAM/'
-    file_save = '/home/refydani/W7X/data/'+shot+'_tdms_processed.pkl'
+    file_save = '/data/W7-X/Beam/tdms_processed/'+shot+'_tdms_processed.pkl'
     if group_name == None:
         group_name='.'
     else:
@@ -88,7 +92,7 @@ def read_tdms_data(channel,shot=None,search_dir='/data/W7-X/APDCAM/',group_name=
     return {'channel':channel,'data':data,'time':time,'unit':unit}
     
 def read_tdms_data_slow(channel,shot=None,search_dir='/data/W7-X/APDCAM/',group_name=None):
-    print_avail=0
+    print_avail=1
     search_dir = '/data/W7-X/APDCAM/'
     if group_name == None:
         group_name='.'
@@ -147,16 +151,17 @@ def read_tdms_data_slow(channel,shot=None,search_dir='/data/W7-X/APDCAM/',group_
         print('groups available:')
         print(group_list)
         print('channels available:')
-        print(channel_list)
+        for channel in channel_list:
+            print(channel)
     return {'channel':channel,'data':data,'time':time,'unit':unit}
 
 if __name__ == '__main__':  
-    shot='T20230207.002'
+    shot='T20230213.032'
     group_name=None
     channel='HV Em Meas Current'
-    time,data,unit=read_tdms_data(channel,shot=shot)
+    d=read_tdms_data_slow(channel,shot=shot)
   
-    plt.plot(time,data)
-    plt.ylabel(unit)
+    plt.plot(d['time'],d['data'])
+    plt.ylabel(d['unit'])
     plt.xlabel('time')
     plt.show()
