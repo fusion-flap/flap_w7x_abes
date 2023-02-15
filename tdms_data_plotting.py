@@ -24,7 +24,7 @@ def plot_tdms_data(channels=['HV Em Meas Voltage','HV Em Meas Current','HV Ex Me
     plt.show()
 
 if __name__ == '__main__':  
-    shot='T20230213.033'
+    shot='20230214.029'
     group_name=None
     # channels=['HV Em Meas Voltage','HV Em Meas Current','HV Ex Meas Voltage','HV Ex Meas Current','VG HighVac1','FC2 Resistor Current mA','- FC Current mA']
     channels=['HV Em Meas Voltage','HV Em Meas Current','HV Ex Meas Voltage','HV Ex Meas Current','- FC Voltage V','FC1 Resistor Current mA','- FC Current mA']

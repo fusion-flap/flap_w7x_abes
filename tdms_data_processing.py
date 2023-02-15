@@ -95,7 +95,7 @@ class W7X_ABES_diagnostic():
         m=22.989769*const.atomic_mass
         d=2 # emitter-extractor distance[mm]
         K=(4/9)*ε0*(2*e/m)**(0.5)
-        d_em=50 #emitter diameter [mm] - this is the scaling parameter, this should be measured with a series
+        d_em=60 #emitter diameter [mm] - this is the scaling parameter, this should be measured with a series
         Uem=read_tdms_data('HV Em Meas Voltage',shot=self.shot,group_name='Beam')
         Uex=read_tdms_data('HV Ex Meas Voltage',shot=self.shot,group_name='Beam')
         du=Uem['data']-Uex['data']
@@ -168,13 +168,14 @@ class W7X_ABES_diagnostic():
         ax[3].axhline(y=self.mean_space_charge_limit,linewidth=1,color='purple',linestyle='--')
         ax[3].set_ylabel('mA')
         ax[3].set_xlabel('time [s]')
+        ax[3].legend() 
         
         ax[4].set_title('Ion beam current ($\eta$={:3.1f})'.format(self.eta))
-        ax[4].plot(self.t,self.Iion,color='green',label="extracted ion current: {:3.2f} mA".format(self.ion_current))
-        ax[4].axhline(y=self.ion_current,linewidth=1,color='green',linestyle='--')
-        ax[4].plot(self.t,smooth(self.I_fc,1),color='black',label="FC2 current: {:3.2f} mA".format(self.fc_curr),linestyle='-')
+        # ax[4].axhline(y=self.ion_current,linewidth=1,color='green',linestyle='--')
+        ax[4].plot(self.t,smooth(self.I_fc,1),color='black',label="FC2 current",linestyle='-')
         # ax[4].plot(self.t,smooth(self.I_fc_ps,1),color='blue',label="FC2 house PS",linestyle='--')
         ax[4].plot(self.t,smooth(self.I_fc,5)-smooth(self.I_fc_ps,5),color='pink',label="FC2-FC2 house PS",linestyle='--')
+        ax[4].plot(self.t,self.Iion,color='green',label="extracted ion current")
         ax[4].set_ylabel('mA')
         ax[4].set_xlabel('time [s]')
         ax[4].legend() 
@@ -233,7 +234,7 @@ class W7X_ABES_diagnostic():
 
     
 if __name__ == '__main__':  
-        shot='T20230213.034'
+        shot='20230215.027'
         # shot='pina'
         # plt.close('all')
         a=W7X_ABES_diagnostic(shot=shot)
