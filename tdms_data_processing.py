@@ -68,15 +68,17 @@ class W7X_ABES_diagnostic():
         t=Uex['time']
         d=Uex['data']
         self.HVon_ind=(np.where(d > max(d)-0.1))[0]
-        self.HVup_ind=(np.where(d > max(d)-5))[0]
-        self.HVup_ind=np.arange(self.HVon_ind[0],self.HVon_ind[-1])
-        self.beam_on_ind=self.HVup_ind[(np.where(d[self.HVup_ind] < max(d)-1))[0]]
+        
+        # self.HVup_ind=(np.where(d > max(d)-5))[0]
+        # self.HVup_ind=np.arange(self.HVon_ind[0],self.HVon_ind[-1])
+        # self.beam_on_ind=self.HVup_ind[(np.where(d[self.HVup_ind] < max(d)-1))[0]]
+        self.beam_on_ind=(np.where((d > max(d)-5) & (d < max(d)-0.5) & (abs(np.gradient(smooth(d,5))) < 0.1)))[0]
         # self.HVon_ind=[]
         # plt.figure()
-        # plt.scatter(t,d)
-        # plt.scatter(t[self.HVup_ind],d[self.HVup_ind])
-        # plt.scatter(t[self.beam_on_ind],d[self.beam_on_ind])
-        # plt.show()
+        plt.scatter(t,d)
+        plt.scatter(t[self.HVon_ind],d[self.HVon_ind])
+        plt.scatter(t[self.beam_on_ind],d[self.beam_on_ind])
+        plt.show()
     
     def calc_resistor_chain(self):
         Iemb=read_tdms_data('HV Em Meas Current',shot=self.shot,group_name='Beam',search_dir=self.search_dir,save_dir=self.save_dir)
@@ -329,8 +331,8 @@ class W7X_ABES_diagnostic():
         plt.show()
         
 if __name__ == '__main__':  
-        # shot='20230216.069'
-        shot='T20230216.010'
+        shot='T20230216.001'
+        # shot='20230215.022'
         search_dir=r'C:/Users/refyd/Documents/BES/W7X/data/'
         save_dir=r'C:/Users/refyd/Documents/BES/W7X/tdms_processed'
         plot_dir='C:/Users/refyd/Documents/BES/W7X/tdms_figures/'
