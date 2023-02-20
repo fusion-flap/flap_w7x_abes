@@ -32,34 +32,61 @@ def smooth(y, box_pts):
     return np.array(y_smooth)
 
 class W7X_ABES_diagnostic():
-    def __init__(self,shot=None):
+    def __init__(self,shot=None,plot_dir='/data/W7-X/Beam/tdms_figures/',search_dir='/data/W7-X/APDCAM/',save_dir='/data/W7-X/Beam/tdms_processed/'):
         self.shot=shot     
-        self.plotpath='/data/W7-X/Beam/tdms_figures/'
-        self.calc_resistor_chain()
-        self.calc_emitter_current()
-        self.calc_space_charge_limit()
+        self.search_dir=search_dir
+        self.save_dir=save_dir
+        self.plot_dir=plot_dir
+        self.times()
+        # self.calc_resistor_chain()
+        self.calc_resistor_chain_plasma()
+        # self.calc_emitter_current()
+        self.calc_emitter_current_plasma()
+        # self.calc_space_charge_limit()
+        self.calc_space_charge_limit_plasma()
         self.calc_toroidal_aiming_test()
-        self.calc_fc2()
+        # self.calc_fc2()
+        self.calc_fc2_plasma()
         
         self.print_shotnumber()
         self.print_HV()
         self.print_resistor_chain()       
-        self.print_space_charge_limitt()
+        
+        self.print_space_charge_limit()
         self.print_emitter_current()
-    
+        
+        # self.times()
         # self.plot_resistor_chain()
         # self.plot_main_parameter()
         self.plot_emitter_current()
         # self.plot_focusing_test()
         # self.plot_toroidal_aiming_test()
+        # self.find_times()
         
+    def times(self):
+        Uex=read_tdms_data('HV Ex Meas Voltage',shot=self.shot,group_name=None,search_dir=self.search_dir,save_dir=self.save_dir)
+        t=Uex['time']
+        d=Uex['data']
+        self.HVon_ind=(np.where(d > max(d)-0.1))[0]
+        self.HVup_ind=(np.where(d > max(d)-5))[0]
+        self.HVup_ind=np.arange(self.HVon_ind[0],self.HVon_ind[-1])
+        self.beam_on_ind=self.HVup_ind[(np.where(d[self.HVup_ind] < max(d)-1))[0]]
+        # self.HVon_ind=[]
+        # plt.figure()
+        # plt.scatter(t,d)
+        # plt.scatter(t[self.HVup_ind],d[self.HVup_ind])
+        # plt.scatter(t[self.beam_on_ind],d[self.beam_on_ind])
+        # plt.show()
+    
     def calc_resistor_chain(self):
-        Iemb=read_tdms_data('HV Em Meas Current',shot=self.shot,group_name='Beam')
+        Iemb=read_tdms_data('HV Em Meas Current',shot=self.shot,group_name='Beam',search_dir=self.search_dir,save_dir=self.save_dir)
         t0=Iemb['time'][0]
-        Iem=read_tdms_data('HV Em Meas Current',shot=self.shot,group_name='Raise')
-        Uem=read_tdms_data('HV Em Meas Voltage',shot=self.shot,group_name='Raise')
-        Iex=read_tdms_data('HV Ex Meas Current',shot=self.shot,group_name='Raise')
-        Uex=read_tdms_data('HV Ex Meas Voltage',shot=self.shot,group_name='Raise')
+        group_name='Raise'
+        # group_name=None
+        Iem=read_tdms_data('HV Em Meas Current',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Uem=read_tdms_data('HV Em Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Iex=read_tdms_data('HV Ex Meas Current',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Uex=read_tdms_data('HV Ex Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
         ind=[nearest_ind(Iem['time'], t0-np.timedelta64(1,'s')),nearest_ind(Iem['time'], t0)]
         self.t_r_em=(Iem['time']-Iem['time'][0])/ np.timedelta64(1, 's')
         self.r_em = np.divide(Uem['data'], Iem['data'], out=np.zeros_like(Uem['data']), where=Iem['data']!=0)
@@ -67,11 +94,26 @@ class W7X_ABES_diagnostic():
         self.em_chn_res=np.mean(self.r_em[ind[0]:ind[1]])
         self.ex_chn_res=np.mean(self.r_ex[ind[0]:ind[1]])
         
+    def calc_resistor_chain_plasma(self):
+        group_name=None
+        Iem=read_tdms_data('HV Em Meas Current',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Uem=read_tdms_data('HV Em Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Iex=read_tdms_data('HV Ex Meas Current',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Uex=read_tdms_data('HV Ex Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        ind=self.HVon_ind
+        self.t_r_em=(Iem['time']-Iem['time'][0])/ np.timedelta64(1, 's')
+        self.r_em = np.divide(Uem['data'], Iem['data'], out=np.zeros_like(Uem['data']), where=Iem['data']!=0)
+        self.r_ex = np.divide(Uex['data'], Iex['data'], out=np.zeros_like(Uem['data']), where=Iex['data']!=0)
+        self.em_chn_res=np.mean(self.r_em[ind])
+        self.ex_chn_res=np.mean(self.r_ex[ind])
+        
     def calc_emitter_current(self):
-        Uem=read_tdms_data('HV Em Meas Voltage',shot=self.shot,group_name='Beam')
-        Uex=read_tdms_data('HV Ex Meas Voltage',shot=self.shot,group_name='Beam')
-        Iem=read_tdms_data('HV Em Meas Current',shot=self.shot,group_name='Beam')
-        Iex=read_tdms_data('HV Ex Meas Current',shot=self.shot,group_name='Beam')
+        group_name='Beam'
+        # group_name=None
+        Iem=read_tdms_data('HV Em Meas Current',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Uem=read_tdms_data('HV Em Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Iex=read_tdms_data('HV Ex Meas Current',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Uex=read_tdms_data('HV Ex Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
         self.Uem=Uem['data']
         self.Uex=Uex['data']
         Iem_res=Uem['data']/self.em_chn_res
@@ -88,33 +130,87 @@ class W7X_ABES_diagnostic():
         self.ion_current=np.mean(self.Iion[ind:])
         self.Uextractor=np.mean(Uex['data'][ind:])
         self.Uemitter=np.mean(Uem['data'][ind:])
+
+    def calc_emitter_current_plasma(self):
+        self.times()
+        # group_name='Beam'
+        group_name=None
+        Iem=read_tdms_data('HV Em Meas Current',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Uem=read_tdms_data('HV Em Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Iex=read_tdms_data('HV Ex Meas Current',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Uex=read_tdms_data('HV Ex Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        self.Uem=Uem['data'][self.beam_on_ind]
+        self.Uex=Uex['data'][self.beam_on_ind]
+        Iem_res=Uem['data'][self.beam_on_ind]/self.em_chn_res
+        Iex_res=Uex['data'][self.beam_on_ind]/self.ex_chn_res
+        self.t=(Iem['time'][self.beam_on_ind]-Iem['time'][self.beam_on_ind][0])/ np.timedelta64(1, 's') #this converts us to seconds
+        self.Iem=Iem['data'][self.beam_on_ind]-Iem_res
+        self.Iex=Iex['data'][self.beam_on_ind]-Iex_res
+        self.eta=1
+        Iexs=self.Iex
+        Iexs[Iexs==0] = 1e-6 # suppress zero values for power calculation to avoid warnings
+        self.sigma=-1/((1+self.eta)*((self.Iem/Iexs)+(self.eta/(1+self.eta))))
+        self.Iion=np.divide(self.Iem, (1+self.eta*self.sigma), out=np.zeros_like(self.Iem), where=(1+self.eta*self.sigma)!=0)
+        ind=nearest_ind(Iem['time'][self.beam_on_ind], Iem['time'][self.beam_on_ind][0]+np.timedelta64(1,'s')) #cacluate only after beam stablizes
+        self.ion_current=np.mean(self.Iion[ind:])
+        self.Uextractor=np.mean(self.Uex[ind:])
+        self.Uemitter=np.mean(self.Uem[ind:])
         
     def calc_space_charge_limit(self):
+        self.times()
         ε0=const.epsilon_0
         e=const.e
         m=22.989769*const.atomic_mass
         d=2 # emitter-extractor distance[mm]
         K=(4/9)*ε0*(2*e/m)**(0.5)
         d_em=60 #emitter diameter [mm] - this is the scaling parameter, this should be measured with a series
-        Uem=read_tdms_data('HV Em Meas Voltage',shot=self.shot,group_name='Beam')
-        Uex=read_tdms_data('HV Ex Meas Voltage',shot=self.shot,group_name='Beam')
+        group_name='Beam'
+        Uem=read_tdms_data('HV Em Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Uex=read_tdms_data('HV Ex Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
         du=Uem['data']-Uex['data']
         du[du<0] = 0 # suppress negative values for power calculation to avoid warnings
         self.dU=du
         self.space_charge_limit=K*(np.sqrt((du)*1e3)**3)/(d**2)*(d_em/2)**2*np.pi
         ind=nearest_ind(Uem['time'], Uem['time'][0]+np.timedelta64(1,'s')) #cacluate only after beam stablizes
         self.mean_space_charge_limit=np.mean(self.space_charge_limit[ind:])
+
+    def calc_space_charge_limit_plasma(self):
+        ε0=const.epsilon_0
+        e=const.e
+        m=22.989769*const.atomic_mass
+        d=2 # emitter-extractor distance[mm]
+        K=(4/9)*ε0*(2*e/m)**(0.5)
+        d_em=60 #emitter diameter [mm] - this is the scaling parameter, this should be measured with a series
+        group_name=None
+        Uem=read_tdms_data('HV Em Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        Uex=read_tdms_data('HV Ex Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        du=Uem['data'][self.beam_on_ind]-Uex['data'][self.beam_on_ind]
+        du[du<0] = 0 # suppress negative values for power calculation to avoid warnings
+        self.dU=du
+        self.space_charge_limit=K*(np.sqrt((du)*1e3)**3)/(d**2)*(d_em/2)**2*np.pi
+        ind=nearest_ind(Uem['time'][self.beam_on_ind], Uem['time'][self.beam_on_ind][0]+np.timedelta64(1,'s')) #cacluate only after beam stablizes
+        self.mean_space_charge_limit=np.mean(self.space_charge_limit[ind:])
     
     def calc_fc2(self):
-        fc=read_tdms_data('FC2 Resistor Current mA',shot=self.shot,group_name='Beam')
-        I_fc_ps=read_tdms_data('- FC Current mA',shot=self.shot,group_name='Beam')
+        fc=read_tdms_data('FC2 Resistor Current mA',shot=self.shot,group_name='Beam',search_dir=self.search_dir,save_dir=self.save_dir)
+        I_fc_ps=read_tdms_data('- FC Current mA',shot=self.shot,group_name='Beam',search_dir=self.search_dir,save_dir=self.save_dir)
         ind=nearest_ind(fc['time'], fc['time'][0]+np.timedelta64(1,'s'))
         self.I_fc=fc['data']
         self.fc_curr=np.mean(fc['data'][ind:])
         self.I_fc_ps=I_fc_ps['data']
+
+    def calc_fc2_plasma(self):
+        self.times()
+        group_name=None
+        fc=read_tdms_data('FC2 Resistor Current mA',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        I_fc_ps=read_tdms_data('- FC Current mA',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
+        ind=nearest_ind(fc['time'][self.beam_on_ind], fc['time'][self.beam_on_ind][0]+np.timedelta64(1,'s'))
+        self.I_fc=fc['data'][self.beam_on_ind]
+        self.fc_curr=np.mean(fc['data'][ind:])
+        self.I_fc_ps=I_fc_ps['data'][self.beam_on_ind]
         
     def calc_toroidal_aiming_test(self):
-        U_aim_tor=read_tdms_data('- Aiming Control (tor) V',shot=self.shot,group_name='Beam')
+        U_aim_tor=read_tdms_data('- Aiming Control (tor) V',shot=self.shot,group_name='Beam',search_dir=self.search_dir,save_dir=self.save_dir)
         self.U_aim_tor=U_aim_tor['data']
     
     def print_HV(self):
@@ -129,7 +225,7 @@ class W7X_ABES_diagnostic():
         print('Emitter resistor chain: {:3.1f} MOhm'.format(self.em_chn_res))
         print('Extractor resistor chain: {:3.1f} MOhm'.format(self.ex_chn_res))
         
-    def print_space_charge_limitt(self):
+    def print_space_charge_limit(self):
         print('Space charge limit: {:3.2f} mA'.format(self.mean_space_charge_limit))
         
     def print_emitter_current(self):
@@ -181,7 +277,7 @@ class W7X_ABES_diagnostic():
         ax[4].legend() 
         
         # plt.tight_layout()
-        plt.savefig(self.plotpath+self.shot+'_processed_beam_properties.png')
+        plt.savefig(self.plot_dir+self.shot+'_processed_beam_properties.png')
         fig.show()
         
     def plot_resistor_chain(self):
@@ -212,7 +308,7 @@ class W7X_ABES_diagnostic():
                 ax[i].set_xlabel("time")
         plt.tight_layout()
         plt.show()
-        plt.savefig(self.plotpath+self.shot+'_main_parameter_plot.png')
+        plt.savefig(self.plot_dir+self.shot+'_main_parameter_plot.png')
         
     def plot_focusing_test(self):
         plt.figure(10)
@@ -231,13 +327,16 @@ class W7X_ABES_diagnostic():
         plt.xlabel('V')
         plt.legend() 
         plt.show()
-
-    
+        
 if __name__ == '__main__':  
-        shot='20230215.027'
+        shot='20230216.069'
+        # shot='T20230216.010'
+        search_dir=r'C:/Users/refyd/Documents/BES/W7X/data/'
+        save_dir=r'C:/Users/refyd/Documents/BES/W7X/tdms_processed'
+        plot_dir='C:/Users/refyd/Documents/BES/W7X/tdms_figures/'
         # shot='pina'
         # plt.close('all')
-        a=W7X_ABES_diagnostic(shot=shot)
+        a=W7X_ABES_diagnostic(shot=shot,search_dir=search_dir,save_dir=save_dir,plot_dir=plot_dir)
         # emitter_current(shot=shot)
         # resistor_chain(shot=shot)
         # plt.plot(time,data)

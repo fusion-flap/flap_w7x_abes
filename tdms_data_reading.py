@@ -29,9 +29,9 @@ def read_one_channel(channel,shot=None,search_dir='/data/W7-X/APDCAM/'):
         for search_dir in dl:
             fl=glob.glob(search_dir+'/*'+shot+'*.tdms')
             if len(fl) == 0: 
-                raise ValueError("Shot directory not found in '{:s}'".format(search_dir))
+                raise ValueError("TDMS file not found in '{:s}'".format(search_dir))
     else:
-        raise ValueError("Shot directory not found in '{:s}'".format(search_dir))
+        raise ValueError("Shot ("+shot+") directory not found in '{:s}'".format(search_dir))
     tdms_data=[]
     for fn in fl:
         fn = os.path.join(search_dir,fn)
@@ -53,9 +53,9 @@ def read_one_channel(channel,shot=None,search_dir='/data/W7-X/APDCAM/'):
         raise ValueError("Channel '{:s}' is not found in file {:s}.".format(str(channel),fn))
     return tdms_data
 
-def read_tdms_data(channel,shot=None,search_dir='/data/W7-X/APDCAM/',group_name=None):
+def read_tdms_data(channel,shot=None,search_dir='/data/W7-X/APDCAM/',save_dir='/data/W7-X/Beam/tdms_processed/',group_name=None):
     # search_dir = '/data/W7-X/APDCAM/'
-    file_save = '/data/W7-X/Beam/tdms_processed/'+shot+'_tdms_processed.pkl'
+    file_save =save_dir+shot+'_tdms_processed.pkl'
     if group_name == None:
         group_name='.'
     else:
@@ -156,10 +156,11 @@ def read_tdms_data_slow(channel,shot=None,search_dir='/data/W7-X/APDCAM/',group_
     return {'channel':channel,'data':data,'time':time,'unit':unit}
 
 if __name__ == '__main__':  
-    shot='T20230213.032'
-    group_name=None
+    shot='20230216.069'
+    search_dir=r'C:/Users/refyd/Documents/BES/W7X/data/'
+    save_dir=r'C:/Users/refyd/Documents/BES/W7X/tdms_processed/'
     channel='HV Em Meas Current'
-    d=read_tdms_data_slow(channel,shot=shot)
+    d=read_tdms_data(channel,shot=shot,search_dir=search_dir,save_dir=save_dir)
   
     plt.plot(d['time'],d['data'])
     plt.ylabel(d['unit'])
