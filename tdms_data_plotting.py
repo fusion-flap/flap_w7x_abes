@@ -30,4 +30,5 @@ if __name__ == '__main__':
     group_name=None
     # channels=['HV Em Meas Voltage','HV Em Meas Current','HV Ex Meas Voltage','HV Ex Meas Current','VG HighVac1','FC2 Resistor Current mA','- FC Current mA']
     channels=['HV Em Meas Voltage','HV Em Meas Current','HV Ex Meas Voltage','HV Ex Meas Current','- FC Voltage V','FC1 Resistor Current mA','- FC Current mA']
-    chdata=plot_tdms_data(channels=channels,shot=shot,group_name=group_name,search_dir=search_dir,save_dir=save_dir)
+    # chdata=plot_tdms_data(channels=channels,shot=shot,group_name=group_name,search_dir=search_dir,save_dir=save_dir)
+    chdata=plot_tdms_data(channels=channels,shot=shot,group_name=group_name)

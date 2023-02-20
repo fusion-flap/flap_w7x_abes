@@ -178,9 +178,9 @@ class W7X_ABES_diagnostic():
         ε0=const.epsilon_0
         e=const.e
         m=22.989769*const.atomic_mass
-        d=2 # emitter-extractor distance[mm]
+        d=4 # emitter-extractor distance[mm]
         K=(4/9)*ε0*(2*e/m)**(0.5)
-        d_em=60 #emitter diameter [mm] - this is the scaling parameter, this should be measured with a series
+        d_em=100 #emitter diameter [mm] - this is the scaling parameter, this should be measured with a series
         group_name=None
         Uem=read_tdms_data('HV Em Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
         Uex=read_tdms_data('HV Ex Meas Voltage',shot=self.shot,group_name=group_name,search_dir=self.search_dir,save_dir=self.save_dir)
@@ -329,14 +329,15 @@ class W7X_ABES_diagnostic():
         plt.show()
         
 if __name__ == '__main__':  
-        shot='20230216.069'
-        # shot='T20230216.010'
+        # shot='20230216.069'
+        shot='T20230216.010'
         search_dir=r'C:/Users/refyd/Documents/BES/W7X/data/'
         save_dir=r'C:/Users/refyd/Documents/BES/W7X/tdms_processed'
         plot_dir='C:/Users/refyd/Documents/BES/W7X/tdms_figures/'
         # shot='pina'
         # plt.close('all')
-        a=W7X_ABES_diagnostic(shot=shot,search_dir=search_dir,save_dir=save_dir,plot_dir=plot_dir)
+        # a=W7X_ABES_diagnostic(shot=shot,search_dir=search_dir,save_dir=save_dir,plot_dir=plot_dir)
+        a=W7X_ABES_diagnostic(shot=shot)
         # emitter_current(shot=shot)
         # resistor_chain(shot=shot)
         # plt.plot(time,data)

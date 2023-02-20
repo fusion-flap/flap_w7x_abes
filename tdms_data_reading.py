@@ -160,7 +160,8 @@ if __name__ == '__main__':
     search_dir=r'C:/Users/refyd/Documents/BES/W7X/data/'
     save_dir=r'C:/Users/refyd/Documents/BES/W7X/tdms_processed/'
     channel='HV Em Meas Current'
-    d=read_tdms_data(channel,shot=shot,search_dir=search_dir,save_dir=save_dir)
+    # d=read_tdms_data(channel,shot=shot,search_dir=search_dir,save_dir=save_dir)
+    d=read_tdms_data(channel,shot=shot)
   
     plt.plot(d['time'],d['data'])
     plt.ylabel(d['unit'])
