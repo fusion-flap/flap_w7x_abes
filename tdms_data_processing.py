@@ -72,13 +72,13 @@ class W7X_ABES_diagnostic():
         # self.HVup_ind=(np.where(d > max(d)-5))[0]
         # self.HVup_ind=np.arange(self.HVon_ind[0],self.HVon_ind[-1])
         # self.beam_on_ind=self.HVup_ind[(np.where(d[self.HVup_ind] < max(d)-1))[0]]
-        self.beam_on_ind=(np.where((d > max(d)-5) & (d < max(d)-0.5) & (abs(np.gradient(smooth(d,5))) < 0.1)))[0]
+        self.beam_on_ind=(np.where((d > max(d)-10) & (d < max(d)-0.5) & (abs(np.gradient(smooth(d,5))) < 0.1)))[0]
         # self.HVon_ind=[]
         # plt.figure()
-        plt.scatter(t,d)
-        plt.scatter(t[self.HVon_ind],d[self.HVon_ind])
-        plt.scatter(t[self.beam_on_ind],d[self.beam_on_ind])
-        plt.show()
+        # plt.scatter(t,d)
+        # plt.scatter(t[self.HVon_ind],d[self.HVon_ind])
+        # plt.scatter(t[self.beam_on_ind],d[self.beam_on_ind])
+        # plt.show()
     
     def calc_resistor_chain(self):
         Iemb=read_tdms_data('HV Em Meas Current',shot=self.shot,group_name='Beam',search_dir=self.search_dir,save_dir=self.save_dir)
@@ -272,7 +272,7 @@ class W7X_ABES_diagnostic():
         # ax[4].axhline(y=self.ion_current,linewidth=1,color='green',linestyle='--')
         ax[4].plot(self.t,smooth(self.I_fc,1),color='black',label="FC2 current",linestyle='-')
         # ax[4].plot(self.t,smooth(self.I_fc_ps,1),color='blue',label="FC2 house PS",linestyle='--')
-        ax[4].plot(self.t,smooth(self.I_fc,5)-smooth(self.I_fc_ps,5),color='pink',label="FC2-FC2 house PS",linestyle='--')
+        # ax[4].plot(self.t,smooth(self.I_fc,5)-smooth(self.I_fc_ps,5),color='pink',label="FC2-FC2 house PS",linestyle='--')
         ax[4].plot(self.t,self.Iion,color='green',label="extracted ion current")
         ax[4].set_ylabel('mA')
         ax[4].set_xlabel('time [s]')
@@ -331,7 +331,7 @@ class W7X_ABES_diagnostic():
         plt.show()
         
 if __name__ == '__main__':  
-        shot='T20230216.001'
+        shot='20230221.007'
         # shot='20230215.022'
         search_dir=r'C:/Users/refyd/Documents/BES/W7X/data/'
         save_dir=r'C:/Users/refyd/Documents/BES/W7X/tdms_processed'
