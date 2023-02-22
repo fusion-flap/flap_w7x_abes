@@ -5,19 +5,30 @@ Created on Tue Dec 13 13:35:45 2022
 
 @author: apdcam
 """
-import flap
-import flap_apdcam
-import flap_w7x_abes
-import os
 import matplotlib.pyplot as plt
-import numpy as np
-import math
 
-flap_apdcam.register()
+import flap
+import flap_w7x_abes
+
 flap_w7x_abes.register()
 
+def show_all_abes(exp_id,time=[0,5]):
+    """
+    Plot the 40 ABES signals on the beam in a 5x8 pot matrix.
 
-def show_all_abes(exp_id,time=[0,1]):
+    Parameters
+    ----------
+    exp_id : string
+        The experiment ID.
+    time : list of two numbers, optional
+        The time range in seconds. If None, will plot all data of the shot. 
+        The default is [0,5].
+
+    Returns
+    -------
+    None.
+
+    """
 
     d=flap.get_data('W7X_ABES',
                     exp_id=exp_id,
@@ -26,67 +37,65 @@ def show_all_abes(exp_id,time=[0,1]):
                     options={'Resample':1e3
                              }
                     )
-    flap.list_data_objects(d)
-    d1 = d.slice_data(slicing={'Channel':flap.Intervals(1,5,step=5)})
-    flap.list_data_objects(d1)
+    d = d.slice_data(slicing={'Channel':flap.Intervals(1,5,step=5)})
 
-    plt.figure()
-    d1.plot(plot_type='grid xy',axes=['Interval(Channel)','Interval(Channel) sample index','Time'],
-            options={'Y range':[0,2]})    
+    d.plot(plot_type='grid xy',axes=['Interval(Channel)','Interval(Channel) sample index','Time'],
+            options={'Y range':[-0.1,1]})    
     plt.suptitle(exp_id)
-    
-def show_all(shot,time=[0,1],datapath='/data'):
 
-    d=flap.get_data('APDCAM',
-                    name='ADC*',
-                    coordinates={'Time':time},
-                    options={'Datapath':os.path.join(datapath,shot),
-                             'Camera type':'APDCAM-10G_FC',
-                             'Scaling':'Volt',
-                             'Resample':1e3
-                             }
+def show_all_abes_spectra(exp_id,time=[0,1],fres=20,frange=[100,1E6],log_fres=True,beam_on=True):
+    """
+    Plot the power spectra of all 40 ABES channels.
+
+    Parameters
+    ----------
+    exp_id : string
+        The experiment ID.
+    time : list of two numbers, optional
+        The time range in seconds. If None, will plot all data of the shot. 
+        The default is [0,5].
+    fres : float, optional
+        Frequency resolution in Hz. The default is 20. If 
+    frange : list of two numbers, optional
+        The frequency range in Hz. The default is [100,1e6]
+    log_fres : bolean, optioinal
+        If True the frequency resolution will change proportionally with frequency.
+    beam_on : boolean, optional
+        If True will process beam-on inervals, otherwise beam-off (chopped)     
+        
+    Returns
+    -------
+    None.
+
+    """
+
+    # Loading data
+    d=flap.get_data('W7X_ABES',
+                    exp_id=exp_id,
+                    name='ABES*',
+                    coordinates={'Time':time}
                     )
-    d1 = d.slice_data(slicing={'ADC Channel':flap.Intervals(1,8,step=8)})
-
-    plt.figure()
-    d1.plot(plot_type='grid xy',axes=['Interval(ADC Channel)','Interval(ADC Channel) sample index','Time'],
-            options={'Y range':[0,2]})    
-    plt.suptitle(shot)
-
-def show_all_spectra(shot,timerange=None,datapath='/data'):
-
-    if (timerange is None):
-        tr = None
+    # Finding processing intervals
+    if (beam_on):
+        d_chop=flap.get_data('W7X_ABES',exp_id=exp_id,name='Chopper_time',
+                             options={'State':{'Chop': 0, 'Defl': 0},'Start':1000,'End':-1000}
+                             )
     else:
-        tr= {'Time':timerange}
-    d=flap.get_data('APDCAM',
-                    name='ADC*',
-                    coordinates=tr,
-                    options={'Datapath':os.path.join(datapath,shot),
-                             'Camera type':'APDCAM-10G_FC',
-                             'Scaling':'Volt'
-                             }
-                    )
-    d1 = d.slice_data(slicing={'ADC Channel':flap.Intervals(1,8,step=8)})
-    print('Calculating power spectra...')
-    d1p = d1.apsd(coordinate='Time',options={'Resolution':1e1,
-                                      'Log':True,
-                                      'Range':[1e3,1e6]
-                                      }
-                  )
-    plt.rcParams['axes.labelsize'] = 6
-    plt.rcParams['axes.titlesize'] = 6
-    plt.rcParams['xtick.labelsize'] = 5
-    plt.rcParams['ytick.labelsize'] = 5
-    plt.rcParams['axes.titlepad'] = -10
-    
-    d1p.plot(plot_type='grid xy',axes=['Interval(ADC Channel)','Interval(ADC Channel) sample index','Frequency'],
-                  options={'Log x':True,'Log y':True,'Y range':[2e-6,1e-4]}
-                  )
-    plt.suptitle(shot)
-    
-# plt.close('all')    
-# show_all_spectra('T20221214.001')
-# show_all_spectra('T20221214.002')
-# show_all_spectra('T20221214.004')
-# show_all_spectra('T20221214.003')
+        d_chop=flap.get_data('W7X_ABES',exp_id=exp_id,name='Chopper_time',
+                             options={'State':{'Chop': 1, 'Defl': 0},'Start':1000,'End':-1000}
+                             )
+    # Calculating power spectra in processing intervals
+    d_ps = d.apsd(coordinate='Time',
+                  intervals={'Time':d_chop},
+                  options={'Interval':1, 'Range':frange,'Res':fres,'Log': log_fres}
+                 )
+    # Arranging signals in a 5x8 matrix in preparation for plotting
+    d_ps = d_ps.slice_data(slicing={'Channel':flap.Intervals(1,5,step=5)})
+
+    d_ps.plot(plot_type='grid xy',
+              axes=['Interval(Channel)','Interval(Channel) sample index','Frequency'],
+              options={'Log y': True,'Log x': True}
+              )    
+    plt.suptitle(exp_id)
+
+ 

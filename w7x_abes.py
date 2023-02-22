@@ -821,7 +821,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
 
     if (no_data is False):
         if ndata_out * len(ADC_proc) * 32 > psutil.virtual_memory().available:
-            raise MemoryError("Note enough memory for reading data")
+            raise MemoryError("Not enough memory for reading data")
 
         if (len(ADC_proc) != 1):
             if (_options['Resample'] is not None):
@@ -884,18 +884,33 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
 
     coord = [None]*data_dim*2
     c_mode = flap.CoordinateMode(equidistant=True)
+    if (read_range is None):
+        read_range = float(config['APDCAM_sampletime']) + read_samplerange * float(config['APDCAM_sampletime'])
+    if (_options['Resample'] is not None):
+        tstart = read_range[0] + float(config['APDCAM_sampletime']) * resample_binsize / 2
+        tstep = float(config['APDCAM_sampletime']) * resample_binsize
+    else:
+        tstart = read_range[0]
+        tstep = float(config['APDCAM_sampletime'])
     coord[0] = copy.deepcopy(flap.Coordinate(name='Time',
                                              unit='Second',
                                              mode=c_mode,
-                                             start=read_range[0],
-                                             step=config['APDCAM_sampletime'],
+                                             start=tstart,
+                                             step=tstep,
                                              dimension_list=[0])
                              )
+
+    if (_options['Resample'] is not None):
+        s_start = read_samplerange[0] + resample_binsize / 2
+        s_step = resample_binsize
+    else:
+        s_start = read_samplerange[0]
+        s_step = 1
     coord[1] = copy.deepcopy(flap.Coordinate(name='Sample',
                                              unit='n.a.',
                                              mode=c_mode,
-                                             start=read_samplerange[0],
-                                             step=1,
+                                             start=s_start,
+                                             step=s_step,
                                              dimension_list=[0])
                              )
     if (data_dim > 1):
@@ -1517,7 +1532,7 @@ def write_chopshift(shotID, start, end):
             fout.write(dataout)
     os.remove(location+'old')
 
-    
+   
 def register(data_source=None):
     flap.register_data_source('W7X_ABES', get_data_func=w7x_abes_get_data, add_coord_func=add_coordinate)
 
