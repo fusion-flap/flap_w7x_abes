@@ -14,16 +14,21 @@ from scipy.ndimage import median_filter
 
 
 if __name__ == '__main__':
-#    a = ShotSpatCal('20180912.040', options={"spatcal_dir": "./tests/"})
-#    channel_names = ['ABES-1', 'ABES-2']
-#    b=a.create_coordinate_object([0], 'Beam axis', channel_names=channel_names)
-#    a = flap_w7x_abes.ShotSpatCal('20181016.008')
-#    a = flap_w7x_abes.ShotSpatCal('20171207.024')
-    a = flap_w7x_abes.ShotSpatCal('20221016.008')
-    options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Circular symmetry':True,
-           'Flip horizontally': False, 'Noise limit': 200}
-    options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Circular symmetry':True, 'Elliptical symmetry':False,'Noise limit': 200}
-    a.full_calib(options=options)
+
+    shotID = '20230222.012'
+    full_calib = False
+    if full_calib is True:
+        a = flap_w7x_abes.ShotSpatCal(shotID)
+        options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Circular symmetry':True,
+               'Flip horizontally': False, 'Noise limit': 200}
+        options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Circular symmetry':True, 'Elliptical symmetry':False,'Noise limit': 200}
+        a.full_calib(options=options)
+    
+
+    shot_calib = True
+    if shot_calib is True:
+        a = flap_w7x_abes.ShotSpatCal(shotID)
+        a.generate_shotdata(options={'Plot': True})
     raise ValueError('stop')
 
 
