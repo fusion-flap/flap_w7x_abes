@@ -3,6 +3,6 @@ This file describes the observation geometry
 2nd line: a point on the optical axis in the tokamak (x,y,z)
 3rd line:vector along image x, this is approximately perpendicular to the beam direction   4th line: lens diameter in mm , 0, 0
 2.474 5.715 2.559
-1.915 5.896 0.0
--0.9852515270647113 0.17111232689860298 0.0
+1.9117 5.9104 0.0
+-0.9852515270647113 0.17111232689860298 0
 184 0 0
