@@ -17,7 +17,7 @@ def test_W7X_data():
     flap.delete_data_object('*')
     print("\n------- test data read with W7-X ABES data --------")
     print("***** Reading 39 channels (1-40, omitting 32) in time interval 3-4 s.")
-    d=flap.get_data('W7X_ABES',exp_id='20181018.008',name=['ABES-[1-31]','ABES-[33-40]'],options={'Scaling':'Volt'},\
+    d=flap.get_data('W7X_ABES',exp_id='20181018.003',name=['ABES-[1-31]','ABES-[33-40]'],\
                     object_name='ABES',coordinates={'Time':[3,4]})
     print("**** Storage contents")
     flap.list_data_objects()

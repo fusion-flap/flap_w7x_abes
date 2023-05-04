@@ -1006,7 +1006,7 @@ def regenerate_time_sample(d):
         ct = d.get_coordinate_object('Start Time in int(Sample)')
         c_shift = d.get_coordinate_object('Rel. Time in int(Sample)')
         if (c_shift.dimension_list != []):
-            raise ValueError("Rel Time in int(Sample) is not constant.")
+            raise ValueError("Rel. Time in int(Sample) is not constant.")
         if (not ct.mode.equidistant):
             if c_shift.values == None:
                 c_shift.values = c_shift.start
@@ -1187,6 +1187,36 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         d=flap.get_data_object('ABES_on')
         d_back = flap.get_data_object('ABES_back')
         d.data -= d_back.data
+        
+        
+        #add electrc noise using offset data
+        del o['State']
+        if 'Signal name' in dataobject.coordinate_names():
+            offset = flap.get_data('W7X_ABES',
+                          exp_id=exp_id,
+                          coordinates={'Time':[-0.1,0.1]},
+                          name=dataobject.get_coordinate_object('Signal name').values[0],
+                          object_name='ABES'
+                          )
+            chop = np.mean(d_beam_on.coordinate("Time")[2]-d_beam_on.coordinate("Time")[1])
+            if chop < 1e-4:
+                if np.min(offset.coordinate("Time")[0]) < -1e-6 and options['Average Chopping Period'] is True:
+                    offset = offset.slice_data(slicing={"Time": flap.Intervals(-0.1,-1e-6)})
+                    electric_noise = np.var(offset.data, axis=0)
+                    d.error = np.sqrt(d.error**2+electric_noise)
+                elif options['Average Chopping Period'] is True:
+                    standard_error = np.array([8.52008759e-03, 6.05577881e-03, 5.61784578e-03, 4.01606559e-03,
+                           4.80343614e-03, 4.96760886e-03, 4.31857827e-03, 4.61216619e-03,
+                           5.07540636e+00, 5.77341359e+00, 5.17886695e+00, 6.67524467e+00,
+                           4.10515027e+00, 3.20796480e+00, 4.06675798e+00, 4.07734300e+00,
+                           4.09595980e+00, 3.70180586e+00, 4.78968865e+00, 3.76662174e+00,
+                           4.02454327e+00, 3.90762905e+00, 5.00180528e+00, 3.25465952e+00,
+                           4.32225647e+00, 3.23294377e+00, 5.75256366e+00, 4.56699600e+00,
+                           5.02907424e+00, 4.54773953e+00, 6.10916503e+00, 4.75039061e+00,
+                           3.76776202e+00, 5.17901390e+00, 4.44659086e+00, 6.81016910e+00,
+                           7.95957335e+00, 1.45460916e+01, 1.10220756e+01, 1.85718833e+01])
+                    d.error = np.sqrt(d.error**2+standard_error)
+
 #        flap.add_data_object(d,'ABES')
 
 #        # error approximation
@@ -1257,6 +1287,36 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
                 dataobject_beam_on.error = np.asarray(np.sqrt(dataobject_beam_on.error**2 + calfac_curr_errors**2))
             else:
                 print('Calibration error not considered')
+
+        #add electrc noise using offset data
+        del o['State']
+        if 'Signal name' in dataobject.coordinate_names():
+            offset = flap.get_data('W7X_ABES',
+                          exp_id=exp_id,
+                          coordinates={'Time':[-0.1,0.1]},
+                          name=dataobject.get_coordinate_object('Signal name').values[0],
+                          object_name='ABES'
+                          )
+            chop = np.mean(d_beam_on.coordinate("Time")[2]-d_beam_on.coordinate("Time")[1])
+            if chop<1e-4:
+                if np.min(offset.coordinate("Time")[0]) < -1e-6 and options['Average Chopping Period'] is True:
+                    offset_time = [-0.1,-1e-6]
+                    offset = offset.slice_data(slicing={"Time": flap.Intervals(-0.1,-1e-6)})
+                    electric_noise = np.var(offset.data, axis=0)
+                    dataobject_beam_on.error = np.sqrt(dataobject_beam_on.error**2+electric_noise)
+                elif options['Average Chopping Period'] is True:
+                    standard_error = np.array([8.52008759e-03, 6.05577881e-03, 5.61784578e-03, 4.01606559e-03,
+                           4.80343614e-03, 4.96760886e-03, 4.31857827e-03, 4.61216619e-03,
+                           5.07540636e+00, 5.77341359e+00, 5.17886695e+00, 6.67524467e+00,
+                           4.10515027e+00, 3.20796480e+00, 4.06675798e+00, 4.07734300e+00,
+                           4.09595980e+00, 3.70180586e+00, 4.78968865e+00, 3.76662174e+00,
+                           4.02454327e+00, 3.90762905e+00, 5.00180528e+00, 3.25465952e+00,
+                           4.32225647e+00, 3.23294377e+00, 5.75256366e+00, 4.56699600e+00,
+                           5.02907424e+00, 4.54773953e+00, 6.10916503e+00, 4.75039061e+00,
+                           3.76776202e+00, 5.17901390e+00, 4.44659086e+00, 6.81016910e+00,
+                           7.95957335e+00, 1.45460916e+01, 1.10220756e+01, 1.85718833e+01])
+                    dataobject_beam_on.error = np.sqrt(dataobject_beam_on.error**2+standard_error)
+
 
         if test is True:
             plt.plot(dataobject_beam_on.get_coordinate_object("Time").values,
