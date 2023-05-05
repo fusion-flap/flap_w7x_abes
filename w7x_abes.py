@@ -9,6 +9,7 @@ This is the flap module for W7-X alkali BES diagnostic
 
 import os
 import time
+import warnings
 from decimal import *
 import gc
 import psutil
@@ -786,31 +787,34 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
     except (NameError, KeyError):
         offset_timerange = None
 
-    if (offset_timerange is not None):
-        if (type(offset_timerange) is not list):
-            raise ValueError("Invalid Offset timerange. Should be list or string.")
-        if ((len(offset_timerange) != 2) or (offset_timerange[0] >= offset_timerange[1])) :
-            raise ValueError("Invalid Offset timerange.")
-        offset_samplerange = np.rint((np.array(offset_timerange) - float(config['APDCAM_starttime']))
-                                   / float(config['APDCAM_sampletime']))
-        if ((offset_samplerange[0] < 0) or (offset_samplerange[1] >= config['APDCAM_samplenumber'])):
-            raise ValueError("Offset timerange is out of measurement time.")
-        offset_data = np.empty(len(ADC_proc), dtype='int16')
-        for i_ch in range(len(ADC_proc)):
-            fn = os.path.join(datapath, "Channel_{:03d}.dat".format(ADC_proc[i_ch] - 1))
-            with open(fn,"rb") as f:
-                try:
-                    f.seek(int(offset_samplerange[0]) * 2, os.SEEK_SET)
-                    d = np.fromfile(f, dtype=np.int16, count=int(offset_samplerange[1]-offset_samplerange[0])+1)
-                except Exception:
-                    raise IOError("Error reading from file: " + fn)
-            offset_data[i_ch] = np.int16(np.mean(d))
-        if (scale_to_volts):
-            offset_data = ((2 ** config['APDCAM_bits'] - 1) - offset_data) \
-                        / (2. ** config['APDCAM_bits'] - 1) * 2
-        else:
-            offset_data = (2 ** config['APDCAM_bits'] - 1) - offset_data
-
+    try:
+        if (offset_timerange is not None):
+            if (type(offset_timerange) is not list):
+                raise ValueError("Invalid Offset timerange. Should be list or string.")
+            if ((len(offset_timerange) != 2) or (offset_timerange[0] >= offset_timerange[1])) :
+                raise ValueError("Invalid Offset timerange.")
+            offset_samplerange = np.rint((np.array(offset_timerange) - float(config['APDCAM_starttime']))
+                                       / float(config['APDCAM_sampletime']))
+            if ((offset_samplerange[0] < 0) or (offset_samplerange[1] >= config['APDCAM_samplenumber'])):
+                raise ValueError("Offset timerange is out of measurement time.")
+            offset_data = np.empty(len(ADC_proc), dtype='int16')
+            for i_ch in range(len(ADC_proc)):
+                fn = os.path.join(datapath, "Channel_{:03d}.dat".format(ADC_proc[i_ch] - 1))
+                with open(fn,"rb") as f:
+                    try:
+                        f.seek(int(offset_samplerange[0]) * 2, os.SEEK_SET)
+                        d = np.fromfile(f, dtype=np.int16, count=int(offset_samplerange[1]-offset_samplerange[0])+1)
+                    except Exception:
+                        raise IOError("Error reading from file: " + fn)
+                offset_data[i_ch] = np.int16(np.mean(d))
+            if (scale_to_volts):
+                offset_data = ((2 ** config['APDCAM_bits'] - 1) - offset_data) \
+                            / (2. ** config['APDCAM_bits'] - 1) * 2
+            else:
+                offset_data = (2 ** config['APDCAM_bits'] - 1) - offset_data
+    except ValueError as e:
+        warnings.warn(str(e))
+        offset_timerange = None
 
     ndata_read = int(read_samplerange[1] - read_samplerange[0] + 1)
     if (_options['Resample'] is not None):
@@ -1192,12 +1196,22 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         #add electrc noise using offset data
         del o['State']
         if 'Signal name' in dataobject.coordinate_names():
-            offset = flap.get_data('W7X_ABES',
-                          exp_id=exp_id,
-                          coordinates={'Time':[-0.1,0.1]},
-                          name=dataobject.get_coordinate_object('Signal name').values[0],
-                          object_name='ABES'
-                          )
+            try:
+                offset = flap.get_data('W7X_ABES',
+                              exp_id=exp_id,
+                              coordinates={'Time':[-0.1,0.1]},
+                              name=dataobject.get_coordinate_object('Signal name').values[0],
+                              object_name='ABES'
+                              )
+            except OSError:
+                #no amplitude calibration present yet
+                offset = flap.get_data('W7X_ABES',
+                              exp_id=exp_id,
+                              coordinates={'Time':[-0.1,0.1]},
+                              name=dataobject.get_coordinate_object('Signal name').values[0],
+                              object_name='ABES',
+                              options = {'Amplitude calibration': False}
+                              )
             chop = np.mean(d_beam_on.coordinate("Time")[2]-d_beam_on.coordinate("Time")[1])
             if chop < 1e-4:
                 if np.min(offset.coordinate("Time")[0]) < -1e-6 and options['Average Chopping Period'] is True:
@@ -1290,21 +1304,31 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
 
         #add electrc noise using offset data
         del o['State']
-        if 'Signal name' in dataobject.coordinate_names():
-            offset = flap.get_data('W7X_ABES',
-                          exp_id=exp_id,
-                          coordinates={'Time':[-0.1,0.1]},
-                          name=dataobject.get_coordinate_object('Signal name').values[0],
-                          object_name='ABES'
-                          )
+        if 'Signal name' in dataobject.coordinate_names() and options['Average Chopping Period'] is True:
+            try:
+                offset = flap.get_data('W7X_ABES',
+                              exp_id=exp_id,
+                              coordinates={'Time':[-0.1,0.1]},
+                              name=dataobject.get_coordinate_object('Signal name').values[0],
+                              object_name='ABES'
+                              )
+            except OSError:
+                #no amplitude calibration present yet
+                offset = flap.get_data('W7X_ABES',
+                              exp_id=exp_id,
+                              coordinates={'Time':[-0.1,0.1]},
+                              name=dataobject.get_coordinate_object('Signal name').values[0],
+                              object_name='ABES',
+                              options = {'Amplitude calibration': False}
+                              )
             chop = np.mean(d_beam_on.coordinate("Time")[2]-d_beam_on.coordinate("Time")[1])
             if chop<1e-4:
-                if np.min(offset.coordinate("Time")[0]) < -1e-6 and options['Average Chopping Period'] is True:
+                if np.min(offset.coordinate("Time")[0]) < -1e-6:
                     offset_time = [-0.1,-1e-6]
                     offset = offset.slice_data(slicing={"Time": flap.Intervals(-0.1,-1e-6)})
                     electric_noise = np.var(offset.data, axis=0)
                     dataobject_beam_on.error = np.sqrt(dataobject_beam_on.error**2+electric_noise)
-                elif options['Average Chopping Period'] is True:
+                else:
                     standard_error = np.array([8.52008759e-03, 6.05577881e-03, 5.61784578e-03, 4.01606559e-03,
                            4.80343614e-03, 4.96760886e-03, 4.31857827e-03, 4.61216619e-03,
                            5.07540636e+00, 5.77341359e+00, 5.17886695e+00, 6.67524467e+00,
