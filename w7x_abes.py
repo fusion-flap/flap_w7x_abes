@@ -1339,6 +1339,12 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
                            5.02907424e+00, 4.54773953e+00, 6.10916503e+00, 4.75039061e+00,
                            3.76776202e+00, 5.17901390e+00, 4.44659086e+00, 6.81016910e+00,
                            7.95957335e+00, 1.45460916e+01, 1.10220756e+01, 1.85718833e+01])
+                    if len(dataobject.get_coordinate_object('Signal name').values)<len(standard_error):
+                        ch = [int(chname.split("-")[1])-1 for chname in dataobject.get_coordinate_object('Signal name').values]
+                        standard_error = standard_error[ch]
+                        if len(ch) == 1:
+                            standard_error = standard_error[0]
+                    # raise ValueError(str(dataobject.get_coordinate_object('Signal name').values))
                     dataobject_beam_on.error = np.sqrt(dataobject_beam_on.error**2+standard_error)
 
 
