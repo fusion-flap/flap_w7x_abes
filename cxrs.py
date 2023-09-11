@@ -151,5 +151,97 @@ def spect_calib_cxrs_get_data(dataset_curr):
    
     return cxrs_data
 
+def read_fibre_config(exp_id=None, year=None):
+    #finding the configuration file
+    if exp_id != None:
+        currdir = os.path.dirname(os.path.abspath(__file__))
+        if int(exp_id[:4]) <= 2023:
+            year =2021 
+    config_file = os.path.join(currdir, 'spatcal', str(year), 'cxrs_fiber_patchconfig.dat')
     
-spect_calib_cxrs()
+    # reading the data
+    with open(config_file, "r") as fibre_config:
+        lines = fibre_config.readlines()
+    # reading the patching from Domoknos's patch box
+    patch_fibers_oc = {}
+    patch_fibers_oc_na = {}
+    for line in lines[1:12]:
+        for connection_point in line.split("\t")[1:-1]:
+            patch_fibers_oc[connection_point.split("/")[1]] = connection_point.split("/")[0]
+    for connection_point in lines[13].split("\t")[1:]:
+            patch_fibers_oc_na[connection_point.split("/")[1]] = connection_point.split("/")[0]
+    
+    # temp = {}
+    # for key in sorted(patch_fibers_oc.keys()):
+    #     temp[patch_fibers_oc[key].zfill(2)] = key
+    # relkeys = [key for key in sorted(temp.keys()) if key != "0S"]
+    # index = 1
+    # allkeys = np.flip(np.asarray(sorted(relkeys)))
+    # for key in range(len(allkeys)//2):
+    #     print(f"{index} {allkeys[2*key]} {temp[allkeys[2*key]]} \t {allkeys[2*key+1]} {temp[allkeys[2*key+1]]}")
+    #     index += 1
+
+    # reading the second configuration of the second patch panel
+    patch_fibers_spectf = {}
+    for line in lines[16:-1]:
+        for connection_point in line.split("\t")[1:-1]:
+            patch_fibers_spectf[connection_point.split("/")[1]] = connection_point.split("/")[0]
+        connection_point = line.split("\t")[-1]
+        patch_fibers_spectf[connection_point.split("/")[1].split("\n")[0]] = connection_point.split("/")[0]
+    NA = [dead.split("\n")[0] for dead in lines[-1].split("\t")[1:]]
+
+    # merging the two
+    patch_oc_spectf = {}
+    for key in patch_fibers_oc.keys():
+        patch_oc_spectf[patch_fibers_oc[key]] = 'N.A.'
+    for fiber in patch_fibers_spectf.keys():
+        try:
+            if fiber not in NA:
+               patch_oc_spectf[patch_fibers_oc[fiber]] = patch_fibers_spectf[fiber]
+        except KeyError:
+            pass
+    return patch_oc_spectf
+
+def plot_fibre_config(patch_oc_spectf):
+    xstep = 3
+    ystep = 1
+    
+    locations = {}
+    for oc in np.arange(90)+1:
+        locations[str(oc)] = [(oc-1)%2-0.5, (oc-1)//2]
+
+    
+    naming = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
+    for side_oc_id in range(len(naming)):
+        starter_loc_x = [-3, 2]
+        starter_loc_y = [9, 16.5, 23.5,30.5, 38]
+        starter_loc = np.array([starter_loc_x[side_oc_id%2], starter_loc_y[side_oc_id//2]])
+        for fibers in np.arange(4)+1:
+            locations[naming[side_oc_id]+str(fibers)] = [starter_loc[0]+(fibers-1)%2, starter_loc[1]+(fibers-1)//2]
+
+    from matplotlib import pyplot as plt
+    color = {'A':'tab:blue', 'H':'tab:green'}
+    pointid=0
+    x = [xstep*locations[channel][0] for channel in locations.keys()]
+    y = [ystep*locations[channel][1] for channel in locations.keys()]
+    plt.clf()
+    sc = plt.scatter(x, y, s=0, facecolors="none", edgecolors="black")
+    for channel in locations.keys():
+        try:
+            plt.text(xstep*locations[channel][0]-0.5, ystep*locations[channel][1], f"{channel}/{patch_oc_spectf[str(channel)].split('.')[1]}",
+                     c=color[patch_oc_spectf[str(channel)].split('.')[0]])
+        except Exception as e:
+            plt.text(xstep*locations[channel][0]-0.5, ystep*locations[channel][1], f"{channel}/N.A.", c="black")
+
+        pointid += 1
+    plt.text(0,-2*ystep,"INBOARD")
+    plt.text(0,46*ystep,"OUTBOARD")
+    plt.axis('equal')
+    plt.xlim([-5,5])
+    plt.axis("off")
+    plt.text(5, 0, 'Optical channel / Alkali patchpanel number', c=color['A'])
+    plt.text(5, 1, 'Optical channel / Helium patchpanel number', c=color['H'])
+    plt.tight_layout()
+    # plt.gca().invert_yaxis()
+    plt.ylim([46*ystep, -2*ystep])
+    
