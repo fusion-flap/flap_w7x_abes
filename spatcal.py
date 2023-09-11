@@ -175,6 +175,12 @@ class ShotSpatCal(flap.DataObject):
             'Datapath': flap.config.get("Module W7X_ABES", "Datapath"),
             'Plot': False}
         options = {**options_default, **options}
+        
+        # self.generate_apdcam_shotdata(options=options)
+        self.generate_cxrs_shotdata(options=options)
+        
+
+    def generate_apdcam_shotdata(self,options={}):
 
         shotspatcal_filename = os.path.join(
             options['Shot spatcal dir'], self.shotID + '_spat.cal')
@@ -338,6 +344,210 @@ class ShotSpatCal(flap.DataObject):
             plt.scatter(beam_start[0], beam_start[1], color='tab:blue')
             plt.show(block=False)
             plt.pause(0.01)
+            
+    def generate_cxrs_shotdata(self,options={}):
+
+        shotspatcal_filename = os.path.join(
+            options['Shot spatcal dir'], self.shotID + '_cxrs_spat.cal')
+        if os.path.isfile(shotspatcal_filename) is True and options['Overwrite'] is False:
+            raise FileExistsError('Spatial calibration file ' + shotspatcal_filename + ' already exists\n' +
+                                  "\t\t\t\tSet options['Overwrite'] = True to overwrite the file.")
+
+        # opening the relevant calibration files
+        filename = os.path.join(options['Spatial calib source dir'], options['Calibration ID'],
+                                'Geometry', 'cxrs_to_cmos.hdf5')
+        cxrs_to_cmos = flap.load(filename)
+
+        cmos_cxrs_trans_mat = cxrs_to_cmos['Transformation matrix']
+        chan_cent = cxrs_to_cmos['CXRS channel centers']
+        filename = os.path.join(options['Spatial calib source dir'], options['Calibration ID'],
+                                'Geometry', 'cmos_to_real.hdf5')
+        projections = flap.load(filename)
+        cmos_to_real = projections['CMOS to machine projection']
+        real_to_cmos = projections['Machine to CMOS projection']
+        opt_axis_norm = projections['Optical axis vector']
+        obs_point = projections['Observation point']
+        image_x_vector = projections['Direction of image x axis']
+        image_y_vector = projections['Direction of image y axis']
+        midplane_crosspoint = projections['Midplane crosspoint']
+
+        # # Get micrometer settings
+        # datapath_base = options['Datapath']
+        # datapath = os.path.join(datapath_base, self.shotID)
+        # xmlfile = os.path.join(datapath, self.shotID + '_config.xml')
+        # xml = flap.FlapXml()
+        # xml.read_file(xmlfile)
+        # try:
+        #     if (xml.head.tag != 'ShotSettings'):
+        #         raise ValueError(
+        #             "No ShotSettings entry found in XML file " + xmlfile + ".")
+        #     if (xml.head.attrib['Experiment'] != "W7-X A-BES"):
+        #         raise ValueError(xmlfile + " is not a W7-X ABES config file.")
+        # except Exception:
+        #     raise ValueError("File format error in " + xmlfile)
+        # config = flap_w7x_abes.abes_get_config(xml)
+
+        # Reading the beam coordinates
+        filename = os.path.join(
+            options['Spatial calib source dir'], options['Calibration ID'], 'Geometry', 'beam.dat')
+        with open(filename) as beam_data:
+            lines = beam_data.readlines()
+            beam_start = np.asarray(
+                [float(data) for data in lines[2].rstrip().split(' ') if data != ''])
+            beam_end = np.asarray(
+                [float(data) for data in lines[3].rstrip().split(' ') if data != ''])
+            beam_norm = beam_end-beam_start
+            beam_norm = beam_norm/np.linalg.norm(beam_norm)
+            beam_plane_vector = np.cross(beam_norm, np.asarray([0, 0, 1]))
+
+        # Calculating the position of the channels on the CMOS image
+        from .cxrs import read_fibre_config
+        patch_dict = read_fibre_config(self.calibration_id)
+        connected = [key for key in patch_dict.keys() if ('N.A' not in patch_dict[key].upper()
+                                                          and 'N.A' not in patch_dict[key].upper())]
+        
+        microA = 1.20
+        microB = 4.13
+        shot_channel_cent = OrderedDict()
+        fibres = []
+        for key in connected:
+            channel = patch_dict[key]
+            new_channel_name = channel
+            if key in chan_cent.keys():
+                lab_config = chan_cent[key][1]
+                fibres += [chan_cent[key][0]]
+                if type(lab_config[0]) is list:
+                    lab_config = lab_config[0]
+                a_del = microA - lab_config[0]
+                b_del = microB - lab_config[1]
+                chan_cent_move = np.dot(
+                    cmos_cxrs_trans_mat, np.array([a_del, b_del]))
+                curr_chan_cent = np.asarray([lab_config[2]+chan_cent_move[0],
+                                             lab_config[3]+chan_cent_move[1]])
+                shot_channel_cent.update({channel: curr_chan_cent})
+
+        # Calculating the position of the channels in the machine, assuming that they are in the z=0 plane
+        for key in shot_channel_cent.keys():
+            point_XY = get_points_projection(np.asarray([shot_channel_cent[key]]),
+                                             cmos_to_real)
+            point_machine_coord = image_x_vector*point_XY[0][0] +\
+                image_y_vector*point_XY[0][1] +\
+                midplane_crosspoint
+
+            # Getting the cross point of observation point - point_machine_coord line on the z=0 plane
+            connecting_vector = obs_point - point_machine_coord
+            length_along_vector = -obs_point[2]/connecting_vector[2]
+            shot_channel_cent[key] = {'Fibre coords im': shot_channel_cent[key],
+                                      'Device xyz': obs_point + connecting_vector * length_along_vector}
+            # Adding the beam axis coord
+            coord_from_beam_start = shot_channel_cent[key]['Device xyz']-beam_start
+            shot_channel_cent[key].update({'Beam coord': np.asarray([np.dot(coord_from_beam_start, beam_norm),
+                                                                     np.linalg.norm(coord_from_beam_start - beam_norm *
+                                                                                    np.dot(coord_from_beam_start, beam_norm))*
+                                                                     np.sign((coord_from_beam_start - beam_norm *
+                                                                                    np.dot(coord_from_beam_start, beam_norm))[1])])})
+
+        # Everything of interest is done. The next part is just saving everything the same manner as it was
+        # for the idl code
+        calibconf = MachineCalibConfig()
+        beam_points = calibconf.get_image_XY_coord([beam_start, beam_end], obs_point=obs_point,
+                                                   opt_axis_norm=opt_axis_norm,
+                                                   image_x_vector=image_x_vector,
+                                                   image_y_vector=image_y_vector)
+        beam_im = get_points_projection(np.asarray(beam_points), real_to_cmos)
+
+        object_dict = {'Version': 'flap_1.0',
+                       'Calibration ID': str(options['Calibration ID']),
+                       'Channels': np.array(list(shot_channel_cent.keys())),
+                       'Fibres': np.asarray(fibres),
+                       'Beam_start_im': beam_im[0, :],
+                       'Beam_end_im': beam_im[1, :],
+                       'Beam_start_xyz': beam_start,
+                       'Beam_end_xyz': beam_end,
+                       'Beam_start_beam': np.asarray([0, 0]),
+                       'Beam_end_beam': beam_end-beam_start,
+                       'Beam_plane_vector': beam_plane_vector}
+
+        fibre_coords_xyz = []
+        fibre_coords_beam = []
+        fibre_coords_im = []
+        for chan in shot_channel_cent.keys():
+            fibre_coords_xyz = fibre_coords_xyz + \
+                [list(shot_channel_cent[chan]['Device xyz'])]
+            fibre_coords_im = fibre_coords_im + \
+                [list(shot_channel_cent[chan]['Fibre coords im'])]
+            fibre_coords_beam = fibre_coords_beam + \
+                [shot_channel_cent[chan]['Beam coord']]
+        fibre_coords_im = np.transpose(np.asarray(fibre_coords_im))
+        fibre_coords_xyz = np.transpose(np.asarray(fibre_coords_xyz))
+        fibre_coords_beam = np.transpose(np.asarray(fibre_coords_beam))
+        object_dict_update = {'Fibre_coords_beam': fibre_coords_beam,
+                              'Fibre_coords_im': fibre_coords_im,
+                              'Fibre_coords_xyz': fibre_coords_xyz}
+
+        object_dict.update(object_dict_update)
+        flap.save(object_dict, shotspatcal_filename)
+
+        if options['Plot'] is True:
+            plt.figure()
+            # Plotting the image coordinates
+            plt.subplot(1, 3, 1)
+            plt.title("Location on CMOS")
+            file = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                'spatcal', self.calibration_id, '13_52a557d22_1636047256870.png')
+            data = plt.imread(file)
+            plt.imshow(data, cmap='gray')
+            fibres_plot = []
+            for key in patch_dict:
+                channel = patch_dict[key]
+                new_channel_name = channel
+                if key in chan_cent.keys():
+                    lab_config = chan_cent[key][1]
+                    fibres += [chan_cent[key][0]]
+                    if type(lab_config[0]) is list:
+                        lab_config = lab_config[0]
+                    a_del = microA - lab_config[0]
+                    b_del = microB - lab_config[1]
+                    chan_cent_move = np.dot(
+                        cmos_cxrs_trans_mat, np.array([a_del, b_del]))
+                    curr_chan_cent = np.asarray([lab_config[2]+chan_cent_move[0],
+                                                 lab_config[3]+chan_cent_move[1]])
+                    plt.scatter(curr_chan_cent[0], curr_chan_cent[1], color='gray', alpha=0.5)
+            plt.scatter(fibre_coords_im[0],
+                    fibre_coords_im[1], color='tab:red')
+            index = 0
+            for channel in object_dict['Channels']:
+                plt.text(fibre_coords_im[0][index]+5,
+                      fibre_coords_im[1][index], str(channel).split('.')[1], color='tab:red')
+                index += 1
+            plt.plot(np.asarray([beam_im[0, 0], beam_im[1, 0]]), [
+                     beam_im[0, 1], beam_im[1, 1]], color='tab:blue')
+            plt.scatter(beam_im[0, 0], beam_im[0, 1], color='tab:blue')
+            plt.axis('equal')
+            plt.xlim([np.min(fibre_coords_im[0])-50, np.max(fibre_coords_im[0])+50])
+            plt.ylim([beam_im[0, 1]-50, np.max(fibre_coords_im[1])+50])
+            # Plotting the channel radii
+            plt.subplot(1, 3, 2)
+            plt.title("Location along BEAM")
+            points = np.sort(
+                np.sqrt(fibre_coords_xyz[0]**2+fibre_coords_xyz[1]**2))
+            points = fibre_coords_beam
+            plt.scatter(points[0], points[1], label='new', color="tab:red")
+            # Plotting the machine coordinates
+            plt.subplot(1, 3, 3)
+            plt.title("Location in real space")
+            plt.scatter(fibre_coords_xyz[0],
+                        fibre_coords_xyz[1], color='tab:red')
+            index = 0
+            for channel in object_dict['Channels']:
+                plt.text(fibre_coords_xyz[0][index]+0.003,
+                      fibre_coords_xyz[1][index], f"{str(channel).split('.')[1]}: {fibre_coords_xyz[0][index], fibre_coords_xyz[1][index]}", color='tab:red')
+                index += 1
+            plt.plot([beam_start[0], beam_end[0]], [
+                        beam_start[1], beam_end[1]], color='tab:blue')
+            plt.scatter(beam_start[0], beam_start[1], color='tab:blue')
+            plt.show(block=False)
+            plt.pause(0.01)
 
 
 class CalcCalibration:
@@ -365,6 +575,7 @@ class CalcCalibration:
                                                      'spatcal'),
             'Get APDCAM to CMOS': True,
             'Get CMOS to machine': True,
+            'Get CXRS to CMOS': True,
             'Type': 'Points'}
         options = {**options_default, **options}
 
@@ -372,11 +583,22 @@ class CalcCalibration:
 
         if options['Get APDCAM to CMOS'] is True:
             self.process_apdcam_to_cmos_calib(options)
-            # self.chan_cent is a directory with keys of the channel names and contains h0, v0, cx0, cy0
+            # self.apdcam_chan_cent is a directory with keys of the channel names and contains h0, v0, cx0, cy0
             data_to_save = {'Transformation matrix': self.cmos_apdcam_trans_mat,
-                            'APDCAM channel centers': self.chan_cent}
+                            'APDCAM channel centers': self.apdcam_chan_cent}
             filename = os.path.join(options['Spatial calib source dir'], self.calibration_id,
                                     'Geometry', 'apdcam_to_cmos.hdf5')
+            print('saving '+filename)
+            flap.save(data_to_save, filename)
+            print("done")
+
+        if options['Get CXRS to CMOS'] is True:
+            self.process_cxrs_to_cmos_calib(options)
+            # self.apdcam_chan_cent is a directory with keys of the channel names and contains h0, v0, cx0, cy0
+            data_to_save = {'Transformation matrix': self.cmos_cxrs_trans_mat,
+                            'CXRS channel centers': self.cxrs_chan_cent}
+            filename = os.path.join(options['Spatial calib source dir'], self.calibration_id,
+                                    'Geometry', 'cxrs_to_cmos.hdf5')
             print('saving '+filename)
             flap.save(data_to_save, filename)
             print("done")
@@ -397,24 +619,24 @@ class CalcCalibration:
             flap.save(data_to_save, filename)
             print("done")
 
-    def read_fibre_calib_list(self, options):
-        ''' Reads the fibre_calib_images.dat file information
+    def read_apdcam_apdcam_fibre_calib_list(self, options):
+        ''' Reads the apdcam_fibre_calib_images.dat file information
         '''
         options_default = {}
         options = {**options_default, **options}
 
         filename = os.path.join(
-            options['Spatial calib source dir'], self.calibration_id, 'fibre_calib_images.dat')
-        self.fibre_calib_list = []
+            options['Spatial calib source dir'], self.calibration_id, 'apdcam_fibre_calib_images.dat')
+        self.apdcam_fibre_calib_list = []
 
         with open(filename) as fibre_list:
             lines = fibre_list.readlines()
             for line_index in range(1, len(lines)):
                 line_data = [data for data in lines[line_index].split(
                     "\t") if data != ""]
-                self.fibre_calib_list += [[line_data[0], float(line_data[1]), float(
+                self.apdcam_fibre_calib_list += [[line_data[0], float(line_data[1]), float(
                     line_data[2]), line_data[3], line_data[4][:-1]]]
-        return self.fibre_calib_list
+        return self.apdcam_fibre_calib_list
 
     def process_apdcam_to_cmos_calib(self, options):
         ''' Processing the apdcam to cmos calibration data
@@ -429,7 +651,7 @@ class CalcCalibration:
         OUTPUT: the follwing variables are created
             self.cmos_apdcam_trans_mat - 2*2 linear transformation matrix for calculating the position of the
                                              channels based on the micrometer settings
-            self.chan_cent - dictionary with keys of the channel names. Stores the location of the apdcam centers on
+            self.apdcam_chan_cent - dictionary with keys of the channel names. Stores the location of the apdcam centers on
                              the CMOS image and their fibre names
         '''
         options_default = {
@@ -441,12 +663,12 @@ class CalcCalibration:
             'Flip horizontally': False}
         options = {**options_default, **options}
 
-        if hasattr(self, 'fibre_calib_list') is False:
-            self.read_fibre_calib_list(options)
+        if hasattr(self, 'apdcam_fibre_calib_list') is False:
+            self.read_apdcam_apdcam_fibre_calib_list(options)
 
         transform_points = False
         first_image = True
-        for image_params in self.fibre_calib_list:
+        for image_params in self.apdcam_fibre_calib_list:
             if image_params[3][-3:] == 'bmp':
                 split_filename = image_params[3].split('.')
                 split_filename[-1] = 'png'
@@ -454,7 +676,7 @@ class CalcCalibration:
             if first_image == True:
                 if int(image_params[4]) != int(self.calibration_id):
                     transform_points = True
-                    a, B = self.calc_cmos_transform(
+                    a, B = self.calc_apdcam_cmos_transform(
                         options['Flip horizontally'])
                 if options['Plot'] is False:
                     first_image = False
@@ -471,7 +693,7 @@ class CalcCalibration:
                 image_filtered[image_filtered < options['Noise limit']] = 0
                 image_filtered = median_filter(image_filtered, size=3)
 
-                # adding the location of the center of the channel to the self.fibre_calib_list variable
+                # adding the location of the center of the channel to the self.apdcam_fibre_calib_list variable
                 x_weight = np.sum(image_filtered, axis=0)
                 y_weight = np.sum(image_filtered, axis=1)
 
@@ -485,7 +707,7 @@ class CalcCalibration:
                 image_filtered[np.where(
                     image_filtered < np.max(image_filtered)*0.5)] = 0
 
-                # adding the location of the center of the channel to the self.fibre_calib_list variable
+                # adding the location of the center of the channel to the self.apdcam_fibre_calib_list variable
                 x_weight = np.sum(image_filtered, axis=0)
                 y_weight = np.sum(image_filtered, axis=1)
 
@@ -514,7 +736,7 @@ class CalcCalibration:
 
         # Get the transformation matrix with the v and h micrometer
         # Finding the channels with multiple measurements and storing the corresponding data
-        channel_meas = np.asarray(self.fibre_calib_list)[:, 0]
+        channel_meas = np.asarray(self.apdcam_fibre_calib_list)[:, 0]
         multi_chan_meas_id, chan_count = np.unique(
             channel_meas, return_counts=True)
         multi_chan_meas_id = multi_chan_meas_id[chan_count > 1]
@@ -523,7 +745,7 @@ class CalcCalibration:
         chan_cent = {}
         for chan in multi_chan_meas_id:
             chan_cent[chan] = list()
-        for image_params in self.fibre_calib_list:
+        for image_params in self.apdcam_fibre_calib_list:
             if image_params[0] in multi_chan_meas_id:
                 chan_cent[image_params[0]] += [[image_params[1],
                                                 image_params[2], image_params[5], image_params[6]]]
@@ -533,7 +755,7 @@ class CalcCalibration:
 
         if options['Plot'] is True:
             plt.contourf(imsum)
-            for image_params in self.fibre_calib_list:
+            for image_params in self.apdcam_fibre_calib_list:
                 plt.scatter(chan_cent[image_params[0]][0][2], chan_cent[image_params[0]][0][3],
                             color='red', marker='x')
             plt.show(block=False)
@@ -582,7 +804,7 @@ class CalcCalibration:
                     line = [name for name in line[0].split('\t') if name != '']
                 if len(line) != 0:
                     head_config_map.update({line[1]: line[0]})
-        self.chan_cent = {}
+        self.apdcam_chan_cent = {}
         for chan in chan_cent.keys():
             if chan in multi_chan_meas_id:
                 curr_chan_data = {head_config_map[chan]: [
@@ -590,8 +812,312 @@ class CalcCalibration:
             else:
                 curr_chan_data = {
                     head_config_map[chan]: [chan, chan_cent[chan]]}
-            self.chan_cent.update(curr_chan_data)
+            self.apdcam_chan_cent.update(curr_chan_data)
         return self.cmos_apdcam_trans_mat
+    
+    def read_cxrs_fibre_calib_list(self, options):
+        ''' Reads the apdcam_fibre_calib_images.dat file information
+        '''
+        options_default = {}
+        options = {**options_default, **options}
+
+        filename = os.path.join(
+            options['Spatial calib source dir'], self.calibration_id, 'cxrs_fibre_calib_images.dat')
+        self.cxrs_fibre_calib_list = []
+
+        with open(filename) as fibre_list:
+            lines = fibre_list.readlines()
+            for line_index in range(1, len(lines)):
+                line_data = [data for data in lines[line_index].split(
+                    "\t") if data != ""]
+                self.cxrs_fibre_calib_list += [[line_data[0], float(line_data[1]), float(
+                    line_data[2]), line_data[3], line_data[4][:-1]]]
+        return self.cxrs_fibre_calib_list
+    
+    def summall_cxrs_fibers(self, options={}):
+        #this one only works properly if the micrometer settings have not been changed for the relevan imaages
+        imagenum = 0
+        for line in self.cxrs_fibre_calib_list:
+            if line[0].upper() == 'ALL':
+                currimage = plt.imread(os.path.join(
+                        options['Spatial calib source dir'], self.calibration_id, line[3]))
+                currimage = np.asarray(currimage)
+                if imagenum == 0:
+                    image = currimage
+                    starting_micrometer_settings = [line[1], line[2]]
+                else:
+                    image += currimage
+                imagenum += 1
+            elif line[0].upper() == 'REFALL':
+                refall = plt.imread(os.path.join(
+                    options['Spatial calib source dir'], self.calibration_id, line[3]))
+                refall = np.asarray(refall).astype("float")
+                #taking out the yellowish part
+                refall = refall[:,:,:3]
+                yellow = np.zeros(refall.shape)
+                condition = np.where((refall[:,:,0]/refall[:,:,1]>0.5)*
+                                (refall[:,:,0]/refall[:,:,2]>0.9)*
+                                (refall[:,:,0]>0.75))
+                yellow[condition] = refall[condition]
+                yellow = np.sum(yellow, axis=2)
+                yellow = median_filter(yellow, size=3)
+                yellow[np.where(yellow>0.5*np.mean(yellow))] = 1
+        
+        if self.calibration_id == "2021":
+            image[580:680, 500:580] = np.median(image)
+            image[:, :550] = np.median(image)
+            image[:, 715:] = np.median(image)
+        try:
+            image_filtered = image/np.var(image)
+            image_filtered = image_filtered-np.median(image_filtered)
+            image_filtered[image_filtered < options['Noise limit']/1000*imagenum] = 0
+            image_filtered = median_filter(image_filtered, size=3)
+        except ZeroDivisionError:  # this my happen for different calibration images, these need to be filtered differently
+            image_filtered = image/np.var(image)
+            image_filtered[np.where(
+                image_filtered < np.max(image_filtered)*0.5)] = 0
+
+        return image_filtered, yellow, starting_micrometer_settings
+    
+    def process_cxrs_to_cmos_calib(self, options):
+        ''' Processing the AEB21 cxrs to cmos calibration data
+        INPUT: options - Spatial calib source dir - the location of the calibration files
+                         Noise limit - a limit value, below which the noise is removed from the images
+                         Calculate micrometer angle: boolean, prints out the angle between the horizontal and vertical
+                                                      micrometer
+                         Plot - whether to plot the cmos image corresponding to the measurements
+                         Flip horizontally - Looking at the dead pixels, it was found that the 2017-2018 laboratory
+                         calibration CMOS images were flipped horizontally relative to the stellarator images,
+                         this can be corrected by setting this option to True
+        OUTPUT: the follwing variables are created
+            self.cmos_cxrs_trans_mat - 2*2 linear transformation matrix for calculating the position of the
+                                             channels based on the micrometer settings
+            self.cxrs_chan_cent - dictionary with keys of the channel names. Stores the location of the cxrs centers on
+                             the CMOS image and their fibre names
+        '''
+        options_default = {
+            'Spatial calib source dir': os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                     'spatcal'),
+            'Noise limit': 100,
+            'Calculate micrometer angle': False,
+            'Plot': False}
+        options = {**options_default, **options}
+
+        
+        if hasattr(self, 'apdcam_fibre_calib_list') is False:
+            self.read_cxrs_fibre_calib_list(options)
+        summed_image, refimage, micrometer_settings = self.summall_cxrs_fibers(options=options)
+        cxrs_to_cmos = self.calc_cxrs_cmos_transform(summed_image, refimage)
+
+
+
+        first_image = True
+        for image_params in self.cxrs_fibre_calib_list:
+            if image_params[3][-3:] == 'bmp':
+                split_filename = image_params[3].split('.')
+                split_filename[-1] = 'png'
+                image_params[3] = '.'.join(split_filename)
+            
+            if "lower_fibre_" in image_params[3]:
+                
+                image = plt.imread(os.path.join(
+                    options['Spatial calib source dir'], image_params[4], image_params[3]))
+                image = np.asarray(image)
+                
+                # removing the background and the dead pixels
+                try:
+                    # for colored images finding the 'yellow color'
+                    image_filtered = image[:,:,:3]
+                    yellow = np.zeros(image_filtered.shape)
+                    condition = np.where((image_filtered[:,:,0]/image_filtered[:,:,1]>0.5)*
+                                    (image_filtered[:,:,0]/image_filtered[:,:,2]>0.9)*
+                                    (image_filtered[:,:,0]>0.75))
+                    yellow[condition] = image_filtered[condition]
+                    image_filtered = np.sum(yellow, axis=2)
+                    image_filtered = median_filter(image_filtered, size=3)
+                    image_filtered[np.where(image_filtered<0.75*np.median(image_filtered))] = 0
+    
+                    x_weight = np.sum(image_filtered, axis=0)
+                    y_weight = np.sum(image_filtered, axis=1)
+    
+                    x_center = np.average(
+                        np.arange(len(x_weight)), weights=x_weight)
+                    y_center = np.average(
+                        np.arange(len(y_weight)), weights=y_weight)
+    
+                except ZeroDivisionError:  # this my happen for different calibration images, these need to be filtered differently
+                    image_filtered = image/np.var(image)
+                    image_filtered[np.where(
+                        image_filtered < np.max(image_filtered)*0.5)] = 0
+    
+                    # adding the location of the center of the channel to the self.apdcam_fibre_calib_list variable
+                    x_weight = np.sum(image_filtered, axis=0)
+                    y_weight = np.sum(image_filtered, axis=1)
+    
+                    x_center = np.average(
+                        np.arange(len(x_weight)), weights=x_weight)
+                    y_center = np.average(
+                        np.arange(len(y_weight)), weights=y_weight)
+    
+                [cmos_x, cmos_y] = get_points_projection(np.asarray([[x_center, y_center]]), cxrs_to_cmos)[0]
+                image_params += [cmos_x, cmos_y]
+                image_params[1:3] = micrometer_settings
+                if options['Plot'] is True:
+                    plt.subplot(1,2,1)
+                    plt.imshow(refimage)
+                    plt.contourf(image_filtered, alpha=0.5)
+                    plt.scatter(x_center,
+                                y_center, color='red')
+                    plt.subplot(1,2,2)
+                    plt.imshow(summed_image)
+                    plt.scatter(cmos_x, cmos_y, color='red')
+                    plt.show()
+                    plt.show(block=False)
+                    plt.pause(0.05)
+                    plt.clf()
+            elif "ALL" not in image_params[0]:
+                image = plt.imread(os.path.join(
+                    options['Spatial calib source dir'], image_params[4], image_params[3]))
+                image = np.asarray(image)
+                
+                # removing the background and the dead pixels
+                try:
+                    image_filtered = image/np.var(image)
+                    image_filtered = image_filtered-np.median(image_filtered)
+                    image_filtered[image_filtered < options['Noise limit']*10] = 0
+                    image_filtered = median_filter(image_filtered, size=3)
+                    image_filtered[np.where(image_filtered<0.75*np.median(image_filtered))] = 0
+    
+                    x_weight = np.sum(image_filtered, axis=0)
+                    y_weight = np.sum(image_filtered, axis=1)
+    
+                    x_center = np.average(
+                        np.arange(len(x_weight)), weights=x_weight)
+                    y_center = np.average(
+                        np.arange(len(y_weight)), weights=y_weight)
+
+                except ZeroDivisionError:  # this my happen for different calibration images, these need to be filtered differently
+                    image_filtered = image/np.var(image)
+                    image_filtered[np.where(
+                        image_filtered < np.max(image_filtered)*0.5)] = 0
+    
+                    # adding the location of the center of the channel to the self.apdcam_fibre_calib_list variable
+                    x_weight = np.sum(image_filtered, axis=0)
+                    y_weight = np.sum(image_filtered, axis=1)
+    
+                    x_center = np.average(
+                        np.arange(len(x_weight)), weights=x_weight)
+                    y_center = np.average(
+                        np.arange(len(y_weight)), weights=y_weight)
+
+                image_params += [x_center, y_center]
+
+                if options['Plot'] is True:
+                    plt.imshow(image_filtered)
+                    plt.scatter(x_center,
+                                y_center, color='red', marker='x')
+                    plt.show()
+                    plt.show(block=False)
+                    plt.pause(0.05)
+                    plt.clf()
+                                
+
+        # Get the transformation matrix with the A and B micrometer
+        # Finding the channels with multiple measurements and storing the corresponding data
+        channel_meas = np.array([line[0] for line in self.cxrs_fibre_calib_list])
+        multi_chan_meas_id, chan_count = np.unique(
+            channel_meas, return_counts=True)
+        multi_chan_meas_id = multi_chan_meas_id[chan_count > 1]
+        multi_chan_meas_id = [chan_id for chan_id in multi_chan_meas_id if 'ALL' not in chan_id]
+
+        # Collecting the data for the channels with multiple measurements
+        chan_cent = {}
+        for chan in multi_chan_meas_id:
+            chan_cent[chan] = list()
+        for image_params in self.cxrs_fibre_calib_list:
+            if image_params[0] in multi_chan_meas_id:
+                chan_cent[image_params[0]] += [[image_params[1],
+                                                image_params[2], image_params[5], image_params[6]]]                
+            elif "ALL" not in image_params[0]:
+                chan_cent[image_params[0]] = [
+                    [image_params[1], image_params[2], image_params[5], image_params[6]]]
+
+        # Creating an equation system for obtaining the elements of the transformation matrix
+        for chan in multi_chan_meas_id:
+            index = 0
+            h0, v0, cx0, cy0 = chan_cent[chan][0]
+            # The notation is the following A*[dh, dv] = [dcx, dcy] the goal is to find A
+            for meas_id in range(1, len(chan_cent[chan])):
+                curr_eq = [[chan_cent[chan][meas_id][0]-h0, chan_cent[chan][meas_id][1]-v0, 0, 0],
+                           [0, 0, chan_cent[chan][meas_id][0]-h0, chan_cent[chan][meas_id][1]-v0]]
+                curr_cent_move = [chan_cent[chan][meas_id]
+                                  [2]-cx0, chan_cent[chan][meas_id][3]-cy0]
+                if meas_id == 1 and index == 0:
+                    eqsys = np.array(curr_eq)
+                    cent_move = np.array(curr_cent_move)
+                else:
+                    eqsys = np.concatenate((eqsys, curr_eq), axis=0)
+                    cent_move = np.concatenate((cent_move, curr_cent_move))
+        trans_mat_sol = np.linalg.solve(np.dot(np.transpose(eqsys), eqsys),
+                                        np.dot(np.transpose(eqsys), cent_move))
+        trans_mat = np.array([trans_mat_sol[:2], trans_mat_sol[2:]])
+        self.cmos_cxrs_trans_mat = trans_mat
+
+        if options['Calculate micrometer angle'] is True:
+            # Ideally the rows of self,trans_mat should be orthogonal. The angle can be calculated as
+            cosa = (trans_mat[0, 0] * trans_mat[1, 0] + trans_mat[0, 1] * trans_mat[1, 1]) / \
+                   (np.sqrt(trans_mat[0, 0]**2 + trans_mat[0, 1]**2)
+                    * np.sqrt(trans_mat[1, 0]**2 + trans_mat[1, 1]**2))
+            angle = np.arccos(cosa)*180 / np.pi  # should be around 90
+            print("The angle between the horizontal and vertical micrometer: " +
+                  str(angle)+" degrees")
+
+
+        # Saving the center of the coordinates
+        # with open(os.path.join(options['Spatial calib source dir'], self.calibration_id, 'head_fibre_config.dat'), 'r')\
+        #         as head_config:
+        #     line = head_config.readline()
+        #     head_config_map = {}
+        #     while line:
+        #         line = [name for name in head_config.readline(
+        #         ).rstrip().split(' ') if name != '']
+        #         if len(line) == 1:
+        #             line = [name for name in line[0].split('\t') if name != '']
+        #         if len(line) != 0:
+        #             head_config_map.update({line[1]: line[0]})
+        
+        from .cxrs import read_fibre_config
+        patch_dict = read_fibre_config(self.calibration_id)
+
+        self.cxrs_chan_cent = {}
+        for chan in chan_cent.keys():
+            if 'ref' in chan:
+                try:
+                    curr_chan_data = {chan[3:].upper(): [patch_dict[chan[3:].upper()], [chan_cent[chan][0]]]}
+                except KeyError: 
+                    #the fiber is broken according to the config
+                    curr_chan_data = {chan[3:].upper(): ["N.A.", [chan_cent[chan][0]]]}
+                self.cxrs_chan_cent.update(curr_chan_data)
+        
+        
+        if options['Plot'] is True:
+            plt.imshow(summed_image)
+            for key in self.cxrs_chan_cent:
+                if 'ALL' not in image_params[0]:
+                    plt.scatter(self.cxrs_chan_cent[key][1][0][-2], self.cxrs_chan_cent[key][1][0][-1],
+                                color='tab:red', marker='x')
+                    if self.cxrs_chan_cent[key][0][0] == 'H' or self.cxrs_chan_cent[key][0][0] == 'N':
+                        plt.text(self.cxrs_chan_cent[key][1][0][-2], self.cxrs_chan_cent[key][1][0][-1],
+                                 self.cxrs_chan_cent[key][0], color='white')
+                    else:
+                        plt.text(self.cxrs_chan_cent[key][1][0][-2]-10, self.cxrs_chan_cent[key][1][0][-1],
+                                 self.cxrs_chan_cent[key][0], color='white')
+            plt.axis('equal')
+            plt.show(block=False)
+            plt.pause(0.01)
+        
+        return self.cmos_cxrs_trans_mat
+
 
     def process_cmos_to_machine_calib(self, options={}):
         ''' Processing the cmos to machine calibration data. This function opens an interactive matplotlib figure
@@ -838,7 +1364,7 @@ class CalcCalibration:
         angle = optimize_angle(points_xyz, self.points_cmos, self.calibconf)
         return angle
 
-    def calc_cmos_transform(self, flip_horizontally):
+    def calc_apdcam_cmos_transform(self, flip_horizontally):
 
         if int(self.calibration_id) == 2021:
             # reading the corresponding optical channels
@@ -913,6 +1439,39 @@ class CalcCalibration:
             B = np.array(((c, -s), (s, c)))
 
             return a, B
+        else:
+            raise NotImplementedError(
+                "Currently only works for 2021 calibration")
+
+    def calc_cxrs_cmos_transform(self, summed_image, refimage):
+        if int(self.calibration_id) == 2021:
+               
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'spatcal',
+                       self.calibration_id, 'Geometry', 'cxrs_calib_image_points.dat'), 'r') as calib_file:
+                lines = calib_file.readlines()
+            source_XY = np.zeros([len(lines)-1, 2])
+            proj_XY = np.zeros([len(lines)-1, 2])
+            line_index = 0
+            for line in lines[1:]:
+                source_XY[line_index,0] = float(line.split('\t')[1])
+                source_XY[line_index,1] = float(line.split('\t')[2])
+                proj_XY[line_index,0] = float(line.split('\t')[3])
+                proj_XY[line_index,1] = float(line.split('\t')[4].split("\n")[0])
+                line_index += 1
+            
+            
+            cxrs_to_cmos = solve_warp_equation(source_XY, proj_XY, options={'Elliptical symmetry': False,
+                                                                            'Circular symmetry': True})
+            
+            # Checking the accuracy and plotting the data
+            # cmos_check = get_points_projection(source_XY, cxrs_to_cmos)
+
+            # plt.imshow(summed_image)
+            # for points in proj_XY:
+            #     plt.scatter(points[0], points[1], color="red")
+            # for points in cmos_check:
+            #     plt.scatter(points[0], points[1], color="blue", marker="x")
+            return cxrs_to_cmos
         else:
             raise NotImplementedError(
                 "Currently only works for 2021 calibration")

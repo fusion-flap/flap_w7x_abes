@@ -16,14 +16,23 @@ from scipy.ndimage import median_filter
 if __name__ == '__main__':
 
     shotID = '20230222.012'
-    full_calib = False
+    full_calib = True
     if full_calib is True:
         a = flap_w7x_abes.ShotSpatCal(shotID)
         options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Circular symmetry':True,
                'Flip horizontally': False, 'Noise limit': 200}
         options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Circular symmetry':True, 'Elliptical symmetry':False,'Noise limit': 200}
+        options = {'Get CMOS to machine': False,'Get APDCAM to CMOS': False, 'Get CXRS to CMOS': True, 'Circular symmetry':True, 'Elliptical symmetry':False,'Noise limit': 200}
         a.full_calib(options=options)
-    
+
+
+    # filename = os.path.join('/media/mvecsei/DATA/repos/flap/modules/flap_w7x_abes/spatcal/2021/Geometry', 'apdcam_to_cmos.hdf5')
+    # apdcam_to_cmos = flap.load(filename)
+    # print(apdcam_to_cmos['APDCAM channel centers'])
+    # filename = os.path.join('/media/mvecsei/DATA/repos/flap/modules/flap_w7x_abes/spatcal/2021/Geometry', 'cxrs_to_cmos.hdf5')
+    # apdcam_to_cmos = flap.load(filename)
+    # print(apdcam_to_cmos['CXRS channel centers'])
+    # asdf
 
     shot_calib = True
     if shot_calib is True:
