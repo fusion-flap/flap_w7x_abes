@@ -30,8 +30,10 @@ class ShotSpatCal(flap.DataObject):
         shotyear = self.shotID[:4]
         if int(shotyear) < 2022:
             self.calibration_id = "2018"
-        else:
+        elif int(shotyear) < 2024:
             self.calibration_id = "2021"
+        else:
+            self.calibration_id = "2024"
 
     def full_calib(self, options={}):
         ''' Performs a spatial calibration for a given shot
@@ -163,6 +165,7 @@ class ShotSpatCal(flap.DataObject):
                      Overwrite - whether to overwrite an already existing spatial calibration data
                      Datapath - where to find the xml files of the current shot
                      Plot - whether to plot the image coordinates of the fibres and the beam
+                     Generate CXRS / APDCAM - whether to generate the spatial data for a specific observation system
         OUTPUt: The calibration data is saved with flap.save() to 'Shot spatcal dir'
         '''
         options_default = {
@@ -173,11 +176,15 @@ class ShotSpatCal(flap.DataObject):
                                              'spatcal'),
             'Overwrite': False,
             'Datapath': flap.config.get("Module W7X_ABES", "Datapath"),
-            'Plot': False}
+            'Plot': False,
+            'Generate CXRS': True,
+            'Generate APDCAM': True}
         options = {**options_default, **options}
         
-        # self.generate_apdcam_shotdata(options=options)
-        self.generate_cxrs_shotdata(options=options)
+        if options['Generate CXRS'] is True:
+            self.generate_cxrs_shotdata(options=options)
+        if options['Generate APDCAM'] is True:
+            self.generate_apdcam_shotdata(options=options)
         
 
     def generate_apdcam_shotdata(self,options={}):
@@ -494,7 +501,7 @@ class ShotSpatCal(flap.DataObject):
             plt.subplot(1, 3, 1)
             plt.title("Location on CMOS")
             file = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                'spatcal', self.calibration_id, '13_52a557d22_1636047256870.png')
+                                'spatcal', self.calibration_id, 'Geometry', 'calib_image.png')
             data = plt.imread(file)
             plt.imshow(data, cmap='gray')
             fibres_plot = []
@@ -863,7 +870,7 @@ class CalcCalibration:
                 yellow = median_filter(yellow, size=3)
                 yellow[np.where(yellow>0.5*np.mean(yellow))] = 1
         
-        if self.calibration_id == "2021":
+        if self.calibration_id == "2021" or self.calibration_id == "2024":
             image[580:680, 500:580] = np.median(image)
             image[:, :550] = np.median(image)
             image[:, 715:] = np.median(image)
@@ -904,7 +911,7 @@ class CalcCalibration:
         options = {**options_default, **options}
 
         
-        if hasattr(self, 'apdcam_fibre_calib_list') is False:
+        if hasattr(self, 'cxrs_fibre_calib_list') is False:
             self.read_cxrs_fibre_calib_list(options)
         summed_image, refimage, micrometer_settings = self.summall_cxrs_fibers(options=options)
         cxrs_to_cmos = self.calc_cxrs_cmos_transform(summed_image, refimage)
@@ -1098,8 +1105,7 @@ class CalcCalibration:
                     #the fiber is broken according to the config
                     curr_chan_data = {chan[3:].upper(): ["N.A.", [chan_cent[chan][0]]]}
                 self.cxrs_chan_cent.update(curr_chan_data)
-        
-        
+
         if options['Plot'] is True:
             plt.imshow(summed_image)
             for key in self.cxrs_chan_cent:
@@ -1107,11 +1113,15 @@ class CalcCalibration:
                     plt.scatter(self.cxrs_chan_cent[key][1][0][-2], self.cxrs_chan_cent[key][1][0][-1],
                                 color='tab:red', marker='x')
                     if self.cxrs_chan_cent[key][0][0] == 'H' or self.cxrs_chan_cent[key][0][0] == 'N':
+                        # plt.text(self.cxrs_chan_cent[key][1][0][-2], self.cxrs_chan_cent[key][1][0][-1],
+                        #          self.cxrs_chan_cent[key][0], color='white')
                         plt.text(self.cxrs_chan_cent[key][1][0][-2], self.cxrs_chan_cent[key][1][0][-1],
-                                 self.cxrs_chan_cent[key][0], color='white')
+                                 key, color='white')
                     else:
+                        # plt.text(self.cxrs_chan_cent[key][1][0][-2]-10, self.cxrs_chan_cent[key][1][0][-1],
+                        #          self.cxrs_chan_cent[key][0], color='white')
                         plt.text(self.cxrs_chan_cent[key][1][0][-2]-10, self.cxrs_chan_cent[key][1][0][-1],
-                                 self.cxrs_chan_cent[key][0], color='white')
+                                 key, color='white')
             plt.axis('equal')
             plt.show(block=False)
             plt.pause(0.01)

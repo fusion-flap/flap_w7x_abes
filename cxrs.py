@@ -156,7 +156,9 @@ def read_fibre_config(exp_id=None, year=None):
     if exp_id != None:
         currdir = os.path.dirname(os.path.abspath(__file__))
         if int(exp_id[:4]) <= 2023:
-            year =2021 
+            year = 2021 
+        else:
+            year = 2024
     config_file = os.path.join(currdir, 'spatcal', str(year), 'cxrs_fiber_patchconfig.dat')
     
     # reading the data

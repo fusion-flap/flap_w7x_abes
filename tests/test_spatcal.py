@@ -15,14 +15,11 @@ from scipy.ndimage import median_filter
 
 if __name__ == '__main__':
 
-    shotID = '20230222.012'
+    shotID = '20220222.012'
     full_calib = True
     if full_calib is True:
         a = flap_w7x_abes.ShotSpatCal(shotID)
-        options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Circular symmetry':True,
-               'Flip horizontally': False, 'Noise limit': 200}
-        options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Circular symmetry':True, 'Elliptical symmetry':False,'Noise limit': 200}
-        options = {'Get CMOS to machine': False,'Get APDCAM to CMOS': False, 'Get CXRS to CMOS': True, 'Circular symmetry':True, 'Elliptical symmetry':False,'Noise limit': 200}
+        options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Get CXRS to CMOS': False, 'Circular symmetry':True, 'Elliptical symmetry':False,'Noise limit': 200}
         a.full_calib(options=options)
 
 
@@ -37,7 +34,7 @@ if __name__ == '__main__':
     shot_calib = True
     if shot_calib is True:
         a = flap_w7x_abes.ShotSpatCal(shotID)
-        a.generate_shotdata(options={'Plot': True})
+        a.generate_shotdata(options={'Plot': True, 'Overwrite': True})
     raise ValueError('stop')
 
 
@@ -49,8 +46,19 @@ if __name__ == '__main__':
     import h5py
     old = h5py.File('/media/mvecsei/DATA/data/W7-X/APDCAM/spatcal/20181016.008_spat.cal', 'r')
     old_unflipped = h5py.File('/media/mvecsei/DATA/repos/flap/modules/flap_w7x_abes/tests/20181016.008_spat.cal', 'r')
-    new = flap.load('/DATA/repos/flap/modules/flap_w7x_abes/spatcal/20181016.008_spat.cal')
+    new = flap.load('/media/mvecsei/DATA/repos/flap/modules/flap_w7x_abes/spatcal/20240222.012_cxrs_spat.cal')
 
+
+    whatnot = dict()
+    index = 0
+    for channel in new['Channels']:
+        whatnot[channel] = [new['Fibre_coords_xyz'][0][index], new['Fibre_coords_xyz'][1][index]]
+        index += 1
+    keys = sorted(whatnot.keys())
+    for key in keys:
+        print(f"{key} {whatnot[key]}")
+        plt.scatter(whatnot[key][0], whatnot[key][1])
+        plt.text(whatnot[key][0], whatnot[key][1], key)
 #    h5File = h5py.File('/media/mvecsei/DATA/data/W7-X/APDCAM/spatcal/20171207.024_spat.cal', 'r')
     from matplotlib import pyplot as plt
 #
