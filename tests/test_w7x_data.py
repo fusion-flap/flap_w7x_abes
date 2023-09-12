@@ -12,6 +12,8 @@ import flap
 import flap_w7x_abes
 
 flap_w7x_abes.register()
+d=flap.get_data('W7X_ABES_CXRS',exp_id='20230314.032', name="QSI")
+dfgd
 
 def test_W7X_data():
     flap.delete_data_object('*')

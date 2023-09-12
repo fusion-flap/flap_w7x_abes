@@ -16,11 +16,11 @@ from scipy.ndimage import median_filter
 if __name__ == '__main__':
 
     shotID = '20220222.012'
-    full_calib = True
-    if full_calib is True:
-        a = flap_w7x_abes.ShotSpatCal(shotID)
-        options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Get CXRS to CMOS': False, 'Circular symmetry':True, 'Elliptical symmetry':False,'Noise limit': 200}
-        a.full_calib(options=options)
+    # full_calib = True
+    # if full_calib is True:
+    #     a = flap_w7x_abes.ShotSpatCal(shotID)
+    #     options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Get CXRS to CMOS': False, 'Circular symmetry':True, 'Elliptical symmetry':False,'Noise limit': 200}
+    #     a.full_calib(options=options)
 
 
     # filename = os.path.join('/media/mvecsei/DATA/repos/flap/modules/flap_w7x_abes/spatcal/2021/Geometry', 'apdcam_to_cmos.hdf5')
@@ -33,7 +33,7 @@ if __name__ == '__main__':
 
     shot_calib = True
     if shot_calib is True:
-        a = flap_w7x_abes.ShotSpatCal(shotID)
+        a = flap_w7x_abes.ShotSpatCalCXRS(shotID)
         a.generate_shotdata(options={'Plot': True, 'Overwrite': True})
     raise ValueError('stop')
 

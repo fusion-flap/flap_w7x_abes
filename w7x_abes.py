@@ -981,7 +981,10 @@ def add_coordinate(data_object,
         exp_spatcal = spatcal.ShotSpatCal(data_object.exp_id, options=_options)
     else:
         exp_spatcal = spatcal.ShotSpatCal(exp_id, options=_options)
-    exp_spatcal.read(options=_options)
+    try:
+        exp_spatcal.read(options=_options)
+    except Exception as e:
+        print(e)
 
     # getting the dimension of the channel coordinate, this should be the same as the spatial coordinate
     data_coord_list = np.array([coord.unit.name for coord in data_object.coordinates])
@@ -1625,4 +1628,6 @@ def write_chopshift(shotID, start, end):
    
 def register(data_source=None):
     flap.register_data_source('W7X_ABES', get_data_func=w7x_abes_get_data, add_coord_func=add_coordinate)
+    from .cxrs_main import w7x_abes_cxrs_get_data, cxrs_add_coordinate
+    flap.register_data_source('W7X_ABES_CXRS', get_data_func=w7x_abes_cxrs_get_data, add_coord_func=cxrs_add_coordinate)
 
