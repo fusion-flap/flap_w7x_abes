@@ -195,6 +195,33 @@ def spectral_error_calc(spec):
     #     popt,param = curve_fit(linear, np.arange(0,spec.data.shape[2],1), spec_perint[i,:])
     #     spec_perint[i,:] = spec_perint[i,:] - linear(np.arange(0,spec.data.shape[2],1), *popt)
     return np.sqrt(spec_perint.var(axis = 1) / (spec.data.shape[2]))
+
+def indep_spectral_error_calc(spec):
+    spec_perint = np.zeros((spec.data.shape[0],spec.data.shape[2]))
+    for i in range(spec.data.shape[2]):
+        ind = np.nonzero(abs(spec.data[10,:,i]) > 1e-10)
+        for j in ind[0]:
+            spec_perint[:,i] = spec_perint[:,i] + spec.data[:,j,i] / len(ind[0])
+    # for i in range(spec_perint.shape[0]):
+    #       spec_perint[i,:] = spec_perint[i,:] - spec_perint[i,:].mean()
+         
+    HR = np.zeros((spec.data.shape[0]))
+    HL = np.zeros((spec.data.shape[0]))
+    for i in range(1,spec_perint.shape[0]-1):
+        M1 = spec_perint[i,:]
+        HR[i]=np.mean(M1**2)-np.mean(M1*spec_perint[i+1,:])*M1.mean()/spec_perint[i+1,:].mean()
+        HL[i]=np.mean(M1**2)-np.mean(M1*spec_perint[i-1,:])*M1.mean()/spec_perint[i-1,:].mean()
+    H = (HR + HL) / 2
+    M1 = spec_perint[0,:]
+    H[0] = np.mean(M1**2)-np.mean(M1*spec_perint[1,:])*M1.mean()/spec_perint[1,:].mean()
+    M1 = spec_perint[-1,:]
+    H[-1] = np.mean(M1**2)-np.mean(M1*spec_perint[-2,:])*M1.mean()/spec_perint[-2,:].mean()
+    err = np.sqrt( H / spec_perint.shape[1])
+    # print(err)
+    # raise ValueError("STOP")
+    # plt.figure()
+    # plt.plot(err,marker = "+")
+    return err
     
 def active_passive_with_error(spectra,roi,t_start,t_stop,el,expe_id,timerange,bg_wls=[0],plots=False):
     d_beam_on=flap.get_data('W7X_ABES',exp_id=expe_id,name='Chopper_time',
@@ -219,8 +246,8 @@ def active_passive_with_error(spectra,roi,t_start,t_stop,el,expe_id,timerange,bg
     s_off_sliced=ROI1.slice_data(slicing={'Time':d_beam_off})
     
     #the intervals are taken as independent measurements
-    error_on = spectral_error_calc(s_on_sliced)
-    error_off = spectral_error_calc(s_off_sliced)
+    error_on = indep_spectral_error_calc(s_on_sliced)
+    error_off = indep_spectral_error_calc(s_off_sliced)
     
     if(bg_wls != [0]):
         ROI1_witbg = spectra.slice_data(slicing={"ROI" :"P0"+str(roi),
@@ -276,8 +303,8 @@ def error_distr(spectra,roi,t_start,t_stop,el,expe_id,minint,timerange,lstart,ls
     s_off_sliced=ROI1.slice_data(slicing={'Time':d_beam_off})
     
     #the intervals are taken as independent measurements
-    error_on = list(spectral_error_calc(s_on_sliced))
-    error_off = list(spectral_error_calc(s_off_sliced))
+    error_on = list(indep_spectral_error_calc(s_on_sliced))
+    error_off = list(indep_spectral_error_calc(s_off_sliced))
     if(bg_wls != [0]):
         ROI1_witbg = spectra.slice_data(slicing={"ROI" :"P0"+str(roi),
                                         "Wavelength":flap.Intervals(bg_wls[0], bg_wls[1])},
@@ -695,7 +722,7 @@ def CVI_529_line_generator(grid,roi,B,theta,wavelength_setting,lower_wl_lim,uppe
     # fetching the fine structure of the predefined line
     fine_structure_query = '/getZeeman.json?name=C-VI-5291&B='+str(B)+'&theta1='+str(theta)
     fine_structure = requests.get(pc_location + fine_structure_query).json()
-    wl_values = wavelength_grid_generator(grid,wavelength_setting)#loading the wavelength grid
+    wl_values = wavelength_grid_generator(grid,wavelength_setting,roi)#loading the wavelength grid
     wl_grid0 = wl_values[wl_values > lower_wl_lim] #slicing the wavelength grid
     wl_grid = wl_grid0[upper_wl_lim > wl_grid0]
     
@@ -781,5 +808,5 @@ def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,tstop,bg,
         err = tempfit_error(sol,solution.fun,stepsize)
         R_plot = round(spectra.coordinate("Device R")[0][0,(roi-1),0],4)
         plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ "+str(round(err,2))+" ev")
-        N = 1000
-        tempfit_error_curve(sol,stepsize,N)
+        # N = 1000
+        # tempfit_error_curve(sol,stepsize,N)
