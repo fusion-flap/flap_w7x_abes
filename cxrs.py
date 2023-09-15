@@ -254,8 +254,8 @@ def active_passive_with_error(spectra,roi,t_start,t_stop,el,expe_id,timerange,bg
                                         "Wavelength":flap.Intervals(bg_wls[0], bg_wls[1])},
                                         summing = {"Wavelength":"Mean","Time":"Mean"})
         ROI1.data[:,:] = ROI1.data[:,:] - ROI1_witbg.data
-    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Mean"})
-    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Mean"})
+    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Sum"})
+    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Sum"})
     
     if(plots == True):
         plt.figure()
@@ -302,6 +302,8 @@ def error_distr(spectra,roi,t_start,t_stop,el,expe_id,minint,timerange,lstart,ls
     s_on_sliced=ROI1.slice_data(slicing={'Time':d_beam_on}) #for error calculation
     s_off_sliced=ROI1.slice_data(slicing={'Time':d_beam_off})
     
+    
+    
     #the intervals are taken as independent measurements
     error_on = list(indep_spectral_error_calc(s_on_sliced))
     error_off = list(indep_spectral_error_calc(s_off_sliced))
@@ -310,8 +312,8 @@ def error_distr(spectra,roi,t_start,t_stop,el,expe_id,minint,timerange,lstart,ls
                                         "Wavelength":flap.Intervals(bg_wls[0], bg_wls[1])},
                                         summing = {"Wavelength":"Mean","Time":"Mean"})
         ROI1.data[:,:] = ROI1.data[:,:] - ROI1_witbg.data
-    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Mean"})
-    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Mean"})
+    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Sum"})
+    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Sum"})
     int_on = list(s_on.data)
     int_off = list(s_off.data)
     
@@ -322,15 +324,7 @@ def error_distr(spectra,roi,t_start,t_stop,el,expe_id,minint,timerange,lstart,ls
     intensity = intensity[intensity.argsort()]
     
     err = err[intensity > minint]
-    intensity = intensity[intensity >minint]
-    
-    # err = np.array(error_on)
-    # intensity = np.array(int_on)
-    # err = err[intensity.argsort()]
-    # intensity = intensity[intensity.argsort()]
-    # err = err[intensity > minint]
-    # intensity = intensity[intensity >minint]
-    
+    intensity = intensity[intensity >minint]    
     
     sq = lambda x,a,b : a*np.sqrt(x) + b
     if(plots == True):
@@ -343,6 +337,7 @@ def error_distr(spectra,roi,t_start,t_stop,el,expe_id,minint,timerange,lstart,ls
         plt.ylabel("Error",fontsize = fs)
         plt.legend(["Data","Fit"],fontsize = fs-2)
         plt.grid()
+    return popt
 
 
 def passive(qsi_cxrs,roi,t_start,t_stop,expe_id):
@@ -808,5 +803,5 @@ def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,tstop,bg,
         err = tempfit_error(sol,solution.fun,stepsize)
         R_plot = round(spectra.coordinate("Device R")[0][0,(roi-1),0],4)
         plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ "+str(round(err,2))+" ev")
-        # N = 1000
-        # tempfit_error_curve(sol,stepsize,N)
+        N = 1000
+        tempfit_error_curve(sol,stepsize,N)
