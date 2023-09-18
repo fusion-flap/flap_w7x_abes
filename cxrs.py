@@ -9,7 +9,6 @@ Data processing code for Wendelstein 7-X QSI CXRS spectra measured during OP2.1
 
 import datetime
 import requests
-import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
@@ -26,7 +25,7 @@ def gauss(lambd,s,A,up,down):
 
 def doppler_broadening(kbt,a): #pontosítandó
     M = 19.9419 
-    return a*np.sqrt(2*1.602176487*kbt/M) / 30000
+    return a*np.sqrt(2*1.602176487*abs(kbt)/M) / 30000
 
 def wavelength_grid_generator(grid,wavelength_setting,roi):
     calib_array = np.loadtxt("wavelength_calib_2023_"+grid+".txt") #loading the calibration coeffs
@@ -162,8 +161,8 @@ def active_passive(spectra,roi,t_start,t_stop,el,expe_id,timerange):
     
     #slicing the data
     ROI1 = spectra.slice_data(slicing={"ROI" :"P0"+str(roi),"Time":flap.Intervals(t_start, t_stop)})
-    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Mean"})
-    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Mean"})
+    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Sum"})
+    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Sum"})
     
     plt.figure()
     s_on.plot(axes = "Wavelength")
@@ -196,6 +195,63 @@ def spectral_error_calc(spec):
     #     spec_perint[i,:] = spec_perint[i,:] - linear(np.arange(0,spec.data.shape[2],1), *popt)
     return np.sqrt(spec_perint.var(axis = 1) / (spec.data.shape[2]))
 
+def get_line_intensity(spectra,roi,t_start,t_stop,el,expe_id,timerange,lstart,lstop,bg_wls=[0],plots=False):
+    d_beam_on=flap.get_data('W7X_ABES',exp_id=expe_id,name='Chopper_time',
+                             options={'State':{'Chop': 0, 'Defl': 0}},\
+                             object_name='Beam_on',
+                             coordinates={'Time': timerange})
+
+    d_beam_off=flap.get_data('W7X_ABES',exp_id=expe_id,name='Chopper_time',
+                             options={'State':{'Chop': 1, 'Defl': 0}},\
+                             object_name='Beam_off',
+                             coordinates={'Time': timerange})
+    
+    #correcting the timescales
+    c=d_beam_on.get_coordinate_object("Time")
+    c.start = c.start + el
+    c=d_beam_off.get_coordinate_object("Time")
+    c.start = c.start + el
+    
+    #slicing the data
+    ROI1 = spectra.slice_data(slicing={"ROI" :"P0"+str(roi),"Time":flap.Intervals(t_start, t_stop)})
+    ROI1 = ROI1.slice_data(slicing={"Wavelength" :flap.Intervals(lstart, lstop)})
+    s_on_sliced=ROI1.slice_data(slicing={'Time':d_beam_on}) #for error calculation
+    s_off_sliced=ROI1.slice_data(slicing={'Time':d_beam_off})
+    
+    
+    if(bg_wls != [0]):
+        ROI1_witbg = spectra.slice_data(slicing={"ROI" :"P0"+str(roi),
+                                        "Wavelength":flap.Intervals(bg_wls[0], bg_wls[1])},
+                                        summing = {"Wavelength":"Mean","Time":"Mean"})
+        ROI1.data[:,:] = ROI1.data[:,:] - ROI1_witbg.data
+    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Sum"})
+    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Sum"})
+    
+    lambd = s_on.coordinate("Wavelength")[0]
+    gaus = lambda x,A,s,mu : A*np.e**(-(((x-mu)**2)/s**2))
+    
+    popton, pcovon = curve_fit(gaus,lambd, s_on.data,p0 = [max(s_on.data),0.1,lambd.mean()])
+    poptoff, pcovoff = curve_fit(gaus,lambd, s_off.data,p0 = [max(s_off.data),0.1,lambd.mean()])
+    if(plots == True):
+        fs = 15
+        plt.figure()
+        plt.plot(lambd,s_on.data,"+")
+        plt.plot(lambd,gaus(lambd,*popton))
+        plt.xlabel("Wavelength [nm]",fontsize = fs)
+        plt.ylabel("Spectral intensity",fontsize = fs)
+        plt.legend(["Data","Fit"],fontsize = fs-2)
+        plt.title(expe_id+", Beam on line intensity fit")
+        
+        plt.figure()
+        plt.plot(lambd,s_off.data,"+")
+        plt.plot(lambd,gaus(lambd,*poptoff))
+        plt.xlabel("Wavelength [nm]",fontsize = fs)
+        plt.ylabel("Spectral intensity",fontsize = fs)
+        plt.legend(["Data","Fit"],fontsize = fs-2)
+        plt.title(expe_id+", Beam off line intensity fit")
+        
+    return popton[0], poptoff[0]
+
 def indep_spectral_error_calc(spec):
     spec_perint = np.zeros((spec.data.shape[0],spec.data.shape[2]))
     for i in range(spec.data.shape[2]):
@@ -216,7 +272,7 @@ def indep_spectral_error_calc(spec):
     H[0] = np.mean(M1**2)-np.mean(M1*spec_perint[1,:])*M1.mean()/spec_perint[1,:].mean()
     M1 = spec_perint[-1,:]
     H[-1] = np.mean(M1**2)-np.mean(M1*spec_perint[-2,:])*M1.mean()/spec_perint[-2,:].mean()
-    err = np.sqrt( H / spec_perint.shape[1])
+    err = np.sqrt( abs(H) / spec_perint.shape[1])
     # print(err)
     # raise ValueError("STOP")
     # plt.figure()
@@ -254,8 +310,8 @@ def active_passive_with_error(spectra,roi,t_start,t_stop,el,expe_id,timerange,bg
                                         "Wavelength":flap.Intervals(bg_wls[0], bg_wls[1])},
                                         summing = {"Wavelength":"Mean","Time":"Mean"})
         ROI1.data[:,:] = ROI1.data[:,:] - ROI1_witbg.data
-    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Sum"})
-    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Sum"})
+    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Mean"})
+    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Mean"})
     
     if(plots == True):
         plt.figure()
@@ -312,8 +368,8 @@ def error_distr(spectra,roi,t_start,t_stop,el,expe_id,minint,timerange,lstart,ls
                                         "Wavelength":flap.Intervals(bg_wls[0], bg_wls[1])},
                                         summing = {"Wavelength":"Mean","Time":"Mean"})
         ROI1.data[:,:] = ROI1.data[:,:] - ROI1_witbg.data
-    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Sum"})
-    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Sum"})
+    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Mean"})
+    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Mean"})
     int_on = list(s_on.data)
     int_off = list(s_off.data)
     
@@ -331,14 +387,13 @@ def error_distr(spectra,roi,t_start,t_stop,el,expe_id,minint,timerange,lstart,ls
         fs = 15
         plt.figure()
         plt.plot(intensity,err,"+")
-        popt, pcov = curve_fit(sq, intensity, err,p0=[1,1e-4])
+        popt, pcov = curve_fit(sq, intensity, err,p0=[0.03,0.3])
         plt.plot(intensity,sq(intensity,*popt))
         plt.xlabel("Spectral intensity",fontsize = fs)
         plt.ylabel("Error",fontsize = fs)
         plt.legend(["Data","Fit"],fontsize = fs-2)
         plt.grid()
     return popt
-
 
 def passive(qsi_cxrs,roi,t_start,t_stop,expe_id):
     
@@ -467,248 +522,7 @@ def load_spectral_config():
         lis = file.readlines()
         lis = [line.strip() for line in lis]
     return lis
-    
-def instr_func(grid,roi):
-    if(grid == "1200g_per_mm"):
-        background_limits = [900,1000]
-    elif(grid == "1800g_per_mm"):
-        background_limits = [950,1020]
-    elif(grid == "2400g_per_mm"):
-        background_limits = [550,600]
-
-    #get data by time interval
-    if(grid == "1200g_per_mm" and roi == 3):
-        cxrs_data = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                  options={'Scale Time': True,
-                                          'Cache Data': False,
-                                          'Time Start':datetime.datetime(2023, 8, 23, 10, 42, 00),
-                                          'Time Stop': datetime.datetime(2023, 8, 23, 10, 45, 00)},
-                                  object_name='QSI_CXRS_data')
         
-        roi_coord_flap = flap.Coordinate(name='ROI', unit="1", mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                      values=["P01","P02","P03","P04","P05","P06"], dimension_list=[1])
-        cxrs_data.add_coordinate_object(roi_coord_flap)
-        cxrs_data.del_coordinate("Coord 1")
-        cxrs_data=cxrs_data.slice_data(slicing = {'ROI':"P0"+str(roi)})
-        baseline = cxrs_data.data[0,background_limits[0]:background_limits[1]].mean()
-        cxrs_data.data[:] = cxrs_data.data[:]-baseline
-        cxrs_data=cxrs_data.slice_data(slicing={"Coord 2":flap.Intervals(660, 687)})
-        
-    elif(grid == "1800g_per_mm" and roi == 3):
-        cxrs_data = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                  options={'Scale Time': True,
-                                          'Cache Data': False,
-                                          'Time Start':datetime.datetime(2023, 8, 23, 10, 41, 00),
-                                          'Time Stop': datetime.datetime(2023, 8, 23, 10, 43, 00)},
-                                  object_name='QSI_CXRS_data')
-        
-        roi_coord_flap = flap.Coordinate(name='ROI', unit="1", mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                      values=["P01","P02","P03","P04","P05","P06"], dimension_list=[1])
-        cxrs_data.add_coordinate_object(roi_coord_flap)
-        cxrs_data.del_coordinate("Coord 1")
-        cxrs_data=cxrs_data.slice_data(slicing = {'ROI':"P0"+str(roi)})
-        baseline = cxrs_data.data[0,background_limits[0]:background_limits[1]].mean()
-        cxrs_data.data[:] = cxrs_data.data[:]-baseline
-        cxrs_data=cxrs_data.slice_data(slicing={"Coord 2":flap.Intervals(643, 667)})
-        
-    elif(grid == "2400g_per_mm" and roi == 3):
-        cxrs_data = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                  options={'Scale Time': True,
-                                          'Cache Data': False,
-                                          'Time Start':datetime.datetime(2023, 8, 23, 10, 38, 00),
-                                          'Time Stop': datetime.datetime(2023, 8, 23, 10, 40, 00)},
-                                  object_name='QSI_CXRS_data')
-        
-        roi_coord_flap = flap.Coordinate(name='ROI', unit="1", mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                      values=["P01","P02","P03","P04","P05","P06"], dimension_list=[1])
-        cxrs_data.add_coordinate_object(roi_coord_flap)
-        cxrs_data.del_coordinate("Coord 1")
-        cxrs_data=cxrs_data.slice_data(slicing = {'ROI':"P0"+str(roi)})
-        baseline = cxrs_data.data[0,background_limits[0]:background_limits[1]].mean()
-        cxrs_data.data[:] = cxrs_data.data[:]-baseline
-        cxrs_data=cxrs_data.slice_data(slicing={"Coord 2":flap.Intervals(657, 682)})
-        
-    elif(grid == "2400g_per_mm" and roi == 1):
-        cxrs_data = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                  options={'Scale Time': True,
-                                          'Cache Data': False,
-                                          'Time Start':datetime.datetime(2023, 8, 23, 12, 46, 30),
-                                          'Time Stop': datetime.datetime(2023, 8, 23, 12, 47, 30)},
-                                  object_name='QSI_CXRS_data')
-        
-        roi_coord_flap = flap.Coordinate(name='ROI', unit="1", mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                      values=["P01","P02","P03","P04","P05","P06"], dimension_list=[1])
-        cxrs_data.add_coordinate_object(roi_coord_flap)
-        cxrs_data.del_coordinate("Coord 1")
-        cxrs_data=cxrs_data.slice_data(slicing = {'ROI':"P0"+str(roi)})
-        baseline = cxrs_data.data[0,background_limits[0]:background_limits[1]].mean()
-        cxrs_data.data[:] = cxrs_data.data[:]-baseline
-        cxrs_data=cxrs_data.slice_data(slicing={"Coord 2":flap.Intervals(966, 993)})
-        
-    elif(grid == "1800g_per_mm" and roi == 1):
-        cxrs_data = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                  options={'Scale Time': True,
-                                          'Cache Data': False,
-                                          'Time Start':datetime.datetime(2023, 8, 23, 12, 49, 45),
-                                          'Time Stop': datetime.datetime(2023, 8, 23, 12, 50, 15)},
-                                  object_name='QSI_CXRS_data')
-        
-        roi_coord_flap = flap.Coordinate(name='ROI', unit="1", mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                      values=["P01","P02","P03","P04","P05","P06"], dimension_list=[1])
-        cxrs_data.add_coordinate_object(roi_coord_flap)
-        cxrs_data.del_coordinate("Coord 1")
-        cxrs_data=cxrs_data.slice_data(slicing = {'ROI':"P0"+str(roi)})
-        baseline = cxrs_data.data[0,background_limits[0]:background_limits[1]].mean()
-        cxrs_data.data[:] = cxrs_data.data[:]-baseline
-        cxrs_data=cxrs_data.slice_data(slicing={"Coord 2":flap.Intervals(638, 662)})
-        
-    elif(grid == "1200g_per_mm" and roi == 1):
-        cxrs_data = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                  options={'Scale Time': True,
-                                          'Cache Data': False,
-                                          'Time Start':datetime.datetime(2023, 8, 23, 12, 51, 30),
-                                          'Time Stop': datetime.datetime(2023, 8, 23, 12, 52, 15)},
-                                  object_name='QSI_CXRS_data')
-        
-        roi_coord_flap = flap.Coordinate(name='ROI', unit="1", mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                      values=["P01","P02","P03","P04","P05","P06"], dimension_list=[1])
-        cxrs_data.add_coordinate_object(roi_coord_flap)
-        cxrs_data.del_coordinate("Coord 1")
-        cxrs_data=cxrs_data.slice_data(slicing = {'ROI':"P0"+str(roi)})
-        baseline = cxrs_data.data[0,background_limits[0]:background_limits[1]].mean()
-        cxrs_data.data[:] = cxrs_data.data[:]-baseline
-        cxrs_data=cxrs_data.slice_data(slicing={"Coord 2":flap.Intervals(660, 680)})
-        
-    elif(grid == "2400g_per_mm" and roi == 2):
-        cxrs_data = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                  options={'Scale Time': True,
-                                          'Cache Data': False,
-                                          'Time Start':datetime.datetime(2023, 8, 23, 12, 54, 30),
-                                          'Time Stop': datetime.datetime(2023, 8, 23, 12, 56, 0)},
-                                  object_name='QSI_CXRS_data')
-        
-        roi_coord_flap = flap.Coordinate(name='ROI', unit="1", mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                      values=["P01","P02","P03","P04","P05","P06"], dimension_list=[1])
-        cxrs_data.add_coordinate_object(roi_coord_flap)
-        cxrs_data.del_coordinate("Coord 1")
-        cxrs_data=cxrs_data.slice_data(slicing = {'ROI':"P0"+str(roi)})
-        baseline = cxrs_data.data[0,background_limits[0]:background_limits[1]].mean()
-        cxrs_data.data[:] = cxrs_data.data[:]-baseline
-        cxrs_data=cxrs_data.slice_data(slicing={"Coord 2":flap.Intervals(648, 677)})
-        
-    elif(grid == "1800g_per_mm" and roi == 2):
-        cxrs_data = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                  options={'Scale Time': True,
-                                          'Cache Data': False,
-                                          'Time Start':datetime.datetime(2023, 8, 23, 12, 57, 0),
-                                          'Time Stop': datetime.datetime(2023, 8, 23, 12, 58, 0)},
-                                  object_name='QSI_CXRS_data')
-        
-        roi_coord_flap = flap.Coordinate(name='ROI', unit="1", mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                      values=["P01","P02","P03","P04","P05","P06"], dimension_list=[1])
-        cxrs_data.add_coordinate_object(roi_coord_flap)
-        cxrs_data.del_coordinate("Coord 1")
-        cxrs_data=cxrs_data.slice_data(slicing = {'ROI':"P0"+str(roi)})
-        baseline = cxrs_data.data[0,background_limits[0]:background_limits[1]].mean()
-        cxrs_data.data[:] = cxrs_data.data[:]-baseline
-        cxrs_data=cxrs_data.slice_data(slicing={"Coord 2":flap.Intervals(638, 663)})
-        
-    elif(grid == "1200g_per_mm" and roi == 2):
-        cxrs_data = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                  options={'Scale Time': True,
-                                          'Cache Data': False,
-                                          'Time Start':datetime.datetime(2023, 8, 23, 12, 58, 30),
-                                          'Time Stop': datetime.datetime(2023, 8, 23, 13, 0, 0)},
-                                  object_name='QSI_CXRS_data')
-        
-        roi_coord_flap = flap.Coordinate(name='ROI', unit="1", mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                      values=["P01","P02","P03","P04","P05","P06"], dimension_list=[1])
-        cxrs_data.add_coordinate_object(roi_coord_flap)
-        cxrs_data.del_coordinate("Coord 1")
-
-        cxrs_data=cxrs_data.slice_data(slicing = {'ROI':"P0"+str(roi)})
-        baseline = cxrs_data.data[0,background_limits[0]:background_limits[1]].mean()
-        cxrs_data.data[:] = cxrs_data.data[:]-baseline
-        cxrs_data=cxrs_data.slice_data(slicing={"Coord 2":flap.Intervals(660, 680)})
-        
-    elif(grid == "2400g_per_mm" and roi == 4):
-        cxrs_data = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                  options={'Scale Time': True,
-                                          'Cache Data': False,
-                                          'Time Start':datetime.datetime(2023, 8, 23, 13, 10, 30),
-                                          'Time Stop': datetime.datetime(2023, 8, 23, 13, 12, 0)},
-                                  object_name='QSI_CXRS_data')
-        
-        roi_coord_flap = flap.Coordinate(name='ROI', unit="1", mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                      values=["P01","P02","P03","P04","P05","P06"], dimension_list=[1])
-        cxrs_data.add_coordinate_object(roi_coord_flap)
-        cxrs_data.del_coordinate("Coord 1")
-        
-        cxrs_data=cxrs_data.slice_data(slicing = {'ROI':"P0"+str(roi)})
-        baseline = cxrs_data.data[0,background_limits[0]:background_limits[1]].mean()
-        cxrs_data.data[:] = cxrs_data.data[:]-baseline
-        cxrs_data=cxrs_data.slice_data(slicing={"Coord 2":flap.Intervals(657, 682)})
-
-        
-    elif(grid == "1800g_per_mm" and roi == 4):
-        cxrs_data = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                  options={'Scale Time': True,
-                                          'Cache Data': False,
-                                          'Time Start':datetime.datetime(2023, 8, 23, 13, 12, 30),
-                                          'Time Stop': datetime.datetime(2023, 8, 23, 13, 13, 0)},
-                                  object_name='QSI_CXRS_data')
-        
-        roi_coord_flap = flap.Coordinate(name='ROI', unit="1", mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                      values=["P01","P02","P03","P04","P05","P06"], dimension_list=[1])
-        cxrs_data.add_coordinate_object(roi_coord_flap)
-        cxrs_data.del_coordinate("Coord 1")
-        cxrs_data=cxrs_data.slice_data(slicing = {'ROI':"P0"+str(roi)})
-        baseline = cxrs_data.data[0,background_limits[0]:background_limits[1]].mean()
-        cxrs_data.data[:] = cxrs_data.data[:]-baseline
-        cxrs_data=cxrs_data.slice_data(slicing={"Coord 2":flap.Intervals(643, 670)})
-
-    elif(grid == "1200g_per_mm" and roi == 4):
-        cxrs_data = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                  options={'Scale Time': True,
-                                          'Cache Data': False,
-                                          'Time Start':datetime.datetime(2023, 8, 23, 13, 14, 0),
-                                          'Time Stop': datetime.datetime(2023, 8, 23, 13, 15, 0)},
-                                  object_name='QSI_CXRS_data')
-        
-        roi_coord_flap = flap.Coordinate(name='ROI', unit="1", mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                      values=["P01","P02","P03","P04","P05","P06"], dimension_list=[1])
-        cxrs_data.add_coordinate_object(roi_coord_flap)
-        cxrs_data.del_coordinate("Coord 1")
-        cxrs_data=cxrs_data.slice_data(slicing = {'ROI':"P0"+str(roi)})
-        baseline = cxrs_data.data[0,background_limits[0]:background_limits[1]].mean()
-        cxrs_data.data[:] = cxrs_data.data[:]-baseline
-        cxrs_data=cxrs_data.slice_data(slicing={"Coord 2":flap.Intervals(663, 684)})
-    return cxrs_data.data[:] / cxrs_data.data.max()
-    
-def tempfit_error(sol,fmin,stepsize):
-    s = sol[1]
-    sl = [s]
-    #f = [fmin]
-    while(CVI_fitfunc(np.array([sol[0],s,sol[2]])) < 1.0625*fmin):
-        s += stepsize
-        sl.append(s)
-        #f.append(CVI_fitfunc(np.array([sol[0],s,sol[2]])))
-        
-    sb = abs(s - sol[1])
-    s = sol[1]
-    while(CVI_fitfunc(np.array([sol[0],s,sol[2]])) < 1.0625*fmin):
-        s += -stepsize
-        sl.append(s)
-        #f.append(CVI_fitfunc(np.array([sol[0],s,sol[2]])))
-    sj = abs(s - sol[1])
-    return (sj+sb)*2
-
-def tempfit_error_curve(sol,stepsize,N):
-    res = []
-    for i in range(1,N+1):
-        res.append(CVI_fitfunc(np.array([sol[0],i*stepsize,sol[2]])))
-    plt.figure()
-    plt.plot(np.arange(1,N+1,stepsize),np.array(res),"+")
 
 def CVI_529_line_generator(grid,roi,B,theta,wavelength_setting,lower_wl_lim,upper_wl_lim,mu_add,kbt,A):
     # location where the web service is hosted
@@ -726,11 +540,12 @@ def CVI_529_line_generator(grid,roi,B,theta,wavelength_setting,lower_wl_lim,uppe
     locations = np.array(fine_structure['wavelengths'])/10
     intensities = np.array(fine_structure['amplitude'])
     locations = locations + mu_add #Doppler shift + calibration uncertainty
-    mu = sum(locations*intensities)/sum(intensities)
+    mu = np.dot(locations,intensities)/sum(intensities)
     for i in range(len(intensities)):
         diff = abs(wl_grid - locations[i])
-        closest_ind = np.argsort(diff)[:2]
-        distance = diff[np.argsort(diff)[:2]]
+        sor = np.argsort(diff)
+        closest_ind = sor[:2]
+        distance = diff[sor[:2]]
         I2 = intensities[i] / (1 + distance[1]/distance[0])
         projection[closest_ind[1]] += I2
         projection[closest_ind[0]] += intensities[i] - I2
@@ -741,7 +556,7 @@ def CVI_529_line_generator(grid,roi,B,theta,wavelength_setting,lower_wl_lim,uppe
     doppler_spectrum = np.convolve(projection, gaussian, mode = "same")
     
     #convolution with instrumental function
-    instr = instr_func(grid,roi).ravel()
+    instr = np.load("instr_funcs/"+grid+"_P0"+str(roi)+".npy").ravel()
     complete_spectrum = np.convolve(doppler_spectrum, instr, mode = "same")
     
     return complete_spectrum
@@ -762,7 +577,8 @@ def CVI_fitfunc(esti):
     
     modelled = CVI_529_line_generator(grid,roi,B,theta,wavelength_setting,lower_wl_lim,upper_wl_lim,mu_add,kbt,A)
     measured = flap.load("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement.dat")
-    return (sum(((modelled - measured.data)/measured.error)**2) - 3) / measured.data.shape[0]
+    C = (modelled - measured.data)/measured.error
+    return (np.dot(C,C) - 3) / measured.data.shape[0]
 
 def CVI_fitfunc_plot(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
                      tstop,bg,B,theta,lvl,uvl,tr,save=False):
@@ -785,6 +601,46 @@ def CVI_fitfunc_plot(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
     plt.legend(["Calculated","Measured"],loc = "best",fontsize = (fs-2))
     return sum(((modelled - measured.data)/measured.error)**2) / measured.data.shape[0]
 
+def tempfit_error(sol,fmin,stepsize):
+    s = sol[1]
+    sl = [s]
+    #f = [fmin]
+    while(CVI_fitfunc(np.array([sol[0],s,sol[2]])) < 1.0625*fmin):
+        s += stepsize
+        sl.append(s)
+        #f.append(CVI_fitfunc(np.array([sol[0],s,sol[2]])))
+        
+    sb = abs(s - sol[1])
+    s = sol[1]
+    while(CVI_fitfunc(np.array([sol[0],s,sol[2]])) < 1.0625*fmin):
+        s += -stepsize
+        sl.append(s)
+        #f.append(CVI_fitfunc(np.array([sol[0],s,sol[2]])))
+    sj = abs(s - sol[1])
+    return (sj+sb)*2
+
+def tempfit_error_fitfunc(Tfit):
+    mu_add,kbt,A,fmin = np.loadtxt("Terror_fit_parameters.txt")
+    return abs(CVI_fitfunc(np.array([mu_add,kbt+Tfit[0],A])) - 1.0625*fmin)
+
+def tempfit_error_fit(sol,fmin,met):
+    np.savetxt("Terror_fit_parameters.txt",np.array([sol[0],sol[1], sol[2],fmin]))
+    Terr_per4_pos = minimize(tempfit_error_fitfunc,np.array([100.0]),method = met,
+                         tol=1e-4, options={"maxiter":2000},bounds=((1,None),(None,None)))
+    Terr_per4_neg = minimize(tempfit_error_fitfunc,np.array([-100.0]),method = met,
+                         tol=1e-4, options={"maxiter":2000},bounds=((None,-1),(None,None)))
+    print(Terr_per4_pos)
+    print(Terr_per4_neg)
+    if(Terr_per4_pos.success == True and Terr_per4_neg.success == True):
+        return abs(2*Terr_per4_pos.x[0]) + abs(2*Terr_per4_neg.x[0])
+
+def tempfit_error_curve(sol,stepsize,N):
+    res = []
+    for i in range(1,N+1):
+        res.append(CVI_fitfunc(np.array([sol[0],i*stepsize,sol[2]])))
+    plt.figure()
+    plt.plot(np.arange(1,N+1,stepsize),np.array(res),"+")
+    
 def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr):
     
     met="Powell"
@@ -792,16 +648,16 @@ def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,tstop,bg,
     es_chisq=CVI_fitfunc_plot(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
                               tstop,bg,B,theta,lvl,uvl,tr,save=True)
     plt.title("$\chi^2 = $"+str(round(es_chisq,6)))
-    solution=minimize(CVI_fitfunc,esti,method=met,bounds = ((None,None),(0.1,None),(None,None)),tol=1e-12,
+    solution=minimize(CVI_fitfunc,esti,method=met,bounds = ((None,None),(0.1,None),(None,None)),tol=1e-8,
                                                             options={"maxiter":2000})
     print(solution)
     if(solution.success == True):
         sol=solution.x
         CVI_fitfunc_plot(spectra,sol[0],sol[1],sol[2],expe_id,grid,ws,roi,
                          tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr)
-        stepsize = 1
-        err = tempfit_error(sol,solution.fun,stepsize)
+        # stepsize = 1
+        err = tempfit_error_fit(sol,solution.fun,met)#tempfit_error(sol,solution.fun,stepsize)
         R_plot = round(spectra.coordinate("Device R")[0][0,(roi-1),0],4)
         plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ "+str(round(err,2))+" ev")
-        N = 1000
-        tempfit_error_curve(sol,stepsize,N)
+        # N = 1000
+        # tempfit_error_curve(sol,stepsize,N)
