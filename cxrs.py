@@ -580,19 +580,19 @@ def CVI_fitfunc(esti):
     C = (modelled - measured)/error
     return (np.dot(C,C) - 3) / measured.shape[0]
 
-def CVI_fitfunc_plot(measured,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+def CVI_fitfunc_plot(measured,measured_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
                      tstop,bg,B,theta,lvl,uvl,tr,save=False):
     
     modelled = CVI_529_line_generator(grid,roi,B,theta,ws,lvl,uvl,mu_add,kbt,A)
     fs = 15
     plt.figure()
-    plt.errorbar(lambd,measured.data, measured.error,color = "blue")
+    plt.errorbar(lambd,measured, measured_err,color = "blue")
     plt.plot(lambd,modelled,color = "red")
     plt.xlabel("Wavelength [nm]",fontsize = fs)
     plt.ylabel("Intensity [a.u.]",fontsize = fs)
     plt.grid()
     plt.legend(["Calculated","Measured"],loc = "best",fontsize = (fs-2))
-    return sum(((modelled - measured.data)/measured.error)**2) / measured.data.shape[0]
+    return sum(((modelled - measured)/measured_err)**2) / measured.shape[0]
 
 def tempfit_error(sol,fmin,stepsize):
     s = sol[1]
@@ -636,7 +636,7 @@ def tempfit_error_curve(sol,stepsize,N):
     
 def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr):
     
-    met="Powell"
+    met="L-BFGS-B"
     esti = np.array([mu_add,kbt,A])
     measured = active_passive_with_error(spectra,roi,tstart,tstop,tshift,expe_id,
                                          tr,bg_wls=bg,plots=False)
@@ -646,20 +646,22 @@ def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,tstop,bg,
     np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",measured.error)
         
     lambd = measured.coordinate("Wavelength")[0]
-    es_chisq=CVI_fitfunc_plot(measured,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
-                              tstop,bg,B,theta,lvl,uvl,tr,save=True)
+    es_chisq=CVI_fitfunc_plot(measured.data,measured.error,lambd,mu_add,kbt,A,
+                              expe_id,grid,ws,roi,tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr,save=True)
     plt.title("$\chi^2 = $"+str(round(es_chisq,6)))
-    solution=minimize(CVI_fitfunc,esti,method=met,bounds = ((None,None),(0.1,None),(None,None)),tol=1e-8,
+    solution=minimize(CVI_fitfunc,esti,method=met,bounds = ((None,None),(0.1,None),(None,None)),tol=1e-14,
                                                             options={"maxiter":2000})
     print(solution)
     if(solution.success == True):
         sol=solution.x
-        CVI_fitfunc_plot(measured,lambd,sol[0],sol[1],sol[2],expe_id,grid,ws,roi,
-                         tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr)
+        print(solution.hess_inv.matmat(np.eye(3)))
+        CVI_fitfunc_plot(measured.data,measured.error,lambd,sol[0],sol[1],sol[2],
+                         expe_id,grid,ws,roi,tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr)
         # stepsize = 1
-        err = tempfit_error_fit(sol,solution.fun,met)#tempfit_error(sol,solution.fun,stepsize)
+        # err = tempfit_error_fit(sol,solution.fun,met)#tempfit_error(sol,solution.fun,stepsize)
         R_plot = round(spectra.coordinate("Device R")[0][0,(roi-1),0],4)
-        plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ "+str(round(err,2))+" ev")
+        plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2)))
+        #plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ "+str(round(err,2))+" ev")
         # N = 1000
         # tempfit_error_curve(sol,stepsize,N)
         
@@ -670,10 +672,10 @@ def CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
     gaus = lambda x,A,s,mu : A*np.e**(-(((x-mu)**2)/s**2))
     
     popt, pcov = curve_fit(gaus,lamb, measured.data,p0 = [max(measured.data),0.1,lamb.mean()])
-    wl_values = wavelength_grid_generator(grid,ws,roi)#loading the wavelength grid
-    wl_grid0 = wl_values[wl_values > lvl] #slicing the wavelength grid
-    lambd = wl_grid0[uvl > wl_grid0]
     if(plots == True):
+        wl_values = wavelength_grid_generator(grid,ws,roi)#loading the wavelength grid
+        wl_grid0 = wl_values[wl_values > lvl] #slicing the wavelength grid
+        lambd = wl_grid0[uvl > wl_grid0]
         fs = 15
         plt.figure()
         plt.plot(lamb,measured.data,"+")
@@ -691,7 +693,7 @@ def CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
         gridfac = 3171/4800
         
     calculated=CVI_529_line_generator(grid,roi,B,theta,ws,lvl,uvl,mu_add,kbt,A)
-    calculated = gridfac*scalef* popt[0]*calculated/max(calculated)
+    calculated = gridfac*scalef*popt[0]*calculated/max(calculated)
     
     if(plots == True):
         plt.figure()
@@ -717,3 +719,65 @@ def CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
         plt.grid()
         
     return calculated,err
+
+def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+                     tstop,bg,B,theta,lvl,uvl,tr,scalef,errparam,iter_num,plots = False):
+    spectra = get_spectra(expe_id, "1200g_per_mm", ws, roi)
+    met="Powell"
+    line_param = np.array([mu_add,kbt,A])
+    measured = active_passive_with_error(spectra,roi,tstart,tstop,tshift,expe_id,
+                                         tr,bg_wls=bg,plots=False)
+    measured = measured.slice_data(slicing={"Wavelength":flap.Intervals(lvl, uvl)})
+    save_spectral_config([grid,roi,B,theta,ws,lvl,uvl])
+    np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",measured.data)
+    np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",measured.error)
+    
+    T_i = np.zeros((iter_num))
+    T_i_err = np.zeros((iter_num))
+    chisq = np.zeros((iter_num))
+    
+    for i in range(iter_num):
+        print("Iteration "+str(i))
+        sim,sim_err = CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+                               tstop,bg,B,theta,lvl,uvl,tr,scalef,errparam,plots=False)
+        np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",sim)
+        np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",sim_err)
+        if(plots == True):
+            wl_values = wavelength_grid_generator(grid,ws,roi)#loading the wavelength grid
+            wl_grid0 = wl_values[wl_values > lvl] #slicing the wavelength grid
+            lambd = wl_grid0[uvl > wl_grid0]
+            es_chisq=CVI_fitfunc_plot(sim,sim_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+                                      tstop,bg,B,theta,lvl,uvl,tr,save=True)
+            plt.title("$\chi^2 = $"+str(round(es_chisq,6)))
+        solution=minimize(CVI_fitfunc,line_param,method=met,bounds = ((None,None),(0.1,None),(None,None)),tol=1e-8,
+                                                                options={"maxiter":2000})
+        if(solution.success == False):
+            raise ValueError("Failed T_i fit")
+        print(solution)
+        sol=solution.x
+        err = tempfit_error_fit(sol,solution.fun,met)
+        T_i[i] = sol[1]
+        T_i_err[i] = err
+        chisq[i] = solution.fun
+        if(plots == True):
+            CVI_fitfunc_plot(sim,sim_err,lambd,sol[0],sol[1],sol[2],expe_id,grid,ws,roi,
+                             tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr)
+            R_plot = round(spectra.coordinate("Device R")[0][0,(roi-1),0],4)
+            plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ "+str(round(err,2))+" ev")
+            
+    print("Average T_i:")
+    print(T_i.mean())
+    print("STD of T_i:")
+    print(np.std(T_i))
+    
+    print("Average T_i error:")
+    print(T_i_err.mean())
+    print("STD of T_i error:")
+    print(np.std(T_i_err))
+    
+    print("Average chi square:")
+    print(chisq.mean())
+    print("STD of chi square:")
+    print(np.std(chisq))
+    
+    
