@@ -8,13 +8,15 @@ Created on Fri Jun 30 15:16:49 2023
 
 import os
 import warnings
+import time
 import matplotlib.pyplot as plt
 import numpy as np
 
 import flap
 from .w7x_abes import abes_get_config
+from . import spatcal
 
-
+#functions to add to the cmos dataobject
 class CMOS_data(flap.DataObject):
     def get_chopstate(self,chop=0, defl=0):
         o={'State':{'Chop': chop, 'Defl': defl}}
@@ -42,8 +44,6 @@ def w7x_abes_cmos_get_data(exp_id=None, data_name="CMOS", no_data=False, options
                      Only a single equidistant range is interpreted in c_range.
     options:
         'Datapath': Data path (string)
-        'Calibration': True/False do/don't do amplitude calibration of the data
-        'Calib. path': Calibration directory name
         For further options see Chopper_times see shopper_timing_data()
       
     """
@@ -93,7 +93,7 @@ def w7x_abes_cmos_get_data(exp_id=None, data_name="CMOS", no_data=False, options
     
     if _options['Spatial calibration'] is True:
         # Getting the spatial calibration
-        d = add_coordinate(d, ['Device R', 'Beam axis'],
+        d = w7x_abes_cmos_add_coordinate(d, ['Device x', 'Device y', 'Device R', 'Beam axis'],
                            options={"Shot spatcal dir": flap.config.get("Module W7X_ABES","Spatial calibration directory")})
     
     return d
@@ -136,6 +136,45 @@ def get_time(xml, length):
     return time_coord
 
 def register(data_source=None):
-    flap.register_data_source('W7X_ABES_CMOS', get_data_func=w7x_abes_cmos_get_data, add_coord_func=add_coordinate)
+    flap.register_data_source('W7X_ABES_CMOS', get_data_func=w7x_abes_cmos_get_data, add_coord_func=w7x_abes_cmos_add_coordinate)
+
+
+def w7x_abes_cmos_add_coordinate(data_object,
+                   coordinates,
+                   exp_id=None,
+                   options=None):
+    '''
+    Routine for adding spatial data to W7-X ABES measurements
+    data_object - the object to which the coordinate should be added
+    coordinates - a list of coordinate names to be added
+                 available: "Device x", "Device y", "Device z", "Device R", "Device Z", "Beam axis"
+    options - a dictionary of options
+              available: 'spatcal_dir' - the location of calibration data
+    '''
+    default_options = {'Shot spatcal dir': os.path.join(os.path.dirname(os.path.abspath(__file__)),'spatcal'),
+                       "Cache data": True
+                       }
+    _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
+
+    if exp_id is None:
+        exp_spatcal = spatcal.ShotSpatCalCMOS(data_object.exp_id, options=_options)
+    else:
+        exp_spatcal = spatcal.ShotSpatCalCMOS(exp_id, options=_options)
+    try:
+        exp_spatcal.read(options=_options)
+    except OSError:
+        # if the file does not exist
+        exp_spatcal.generate_shotdata(options={'Plot': False, 'Overwrite': False, "Shot spatcal dir": _options["Shot spatcal dir"]})
+        exp_spatcal.read(options=_options)
+
+    #Adding the signal names
+    if exp_id is None:
+        exp_id = data_object.exp_id
     
-    
+    #Spatial coordinates
+    for coord_name in coordinates:
+        coord_object = exp_spatcal.create_coordinate_object([1, 2], coord_name)
+        data_object.add_coordinate_object(coord_object)
+
+
+    return data_object
