@@ -9,6 +9,7 @@ Created on Fri Jun 30 15:16:49 2023
 import os
 import warnings
 import time
+import copy
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -19,6 +20,7 @@ from . import spatcal
 #functions to add to the cmos dataobject
 class CMOS_data(flap.DataObject):
     def get_chopstate(self,chop=0, defl=0):
+        # chop 0 is the beam on, chop = 1 is the beam off
         o={'State':{'Chop': chop, 'Defl': defl}}
         d_beam_st=flap.get_data('W7X_ABES',
                                 exp_id=self.exp_id,
@@ -29,6 +31,34 @@ class CMOS_data(flap.DataObject):
                                 )
         times = d_beam_st.coordinate('Time')[1]/2+d_beam_st.coordinate('Time')[2]/2
         d = self.slice_data(slicing={'Time':times})
+        return d
+    
+    def get_channel_signal(self, chimages=None):
+        #obtains the light profile for every key in chimages and returns a dataobject of the results,
+        # requires the output of the calc_chan_range function of ShotSpatCal
+        
+        if chimages is None:
+            temp = spatcal.ShotSpatCal(self.exp_id)
+            # temp.read()
+            chimages = temp.calc_chan_range()
+
+        
+        ch_keys = np.asarray(list(chimages.keys()))
+        data = np.zeros([self.data.shape[0],len(ch_keys)])
+        index = 0
+        for key in ch_keys:
+            data[:,index] = np.mean(self.data*chimages[key]/np.mean(chimages[key]), axis = (1,2))
+            index += 1
+        coord_time = copy.deepcopy(self.get_coordinate_object("Time"))
+        channel_coord = flap.Coordinate(name='Channel', unit='a.u.',
+                                        values = ch_keys, shape=len(ch_keys),
+                                        mode=flap.CoordinateMode(equidistant=False),
+                                        dimension_list=[1])
+        d = flap.DataObject(data_array=data,
+                            exp_id=self.exp_id,
+                            data_shape=data.shape,
+                            coordinates = [coord_time, channel_coord],
+                            data_title = 'Channel signals from CMOS')
         return d
 
 def w7x_abes_cmos_get_data(exp_id=None, data_name="CMOS", no_data=False, options=None, coordinates=None, data_source=None):
