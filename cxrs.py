@@ -7,12 +7,12 @@ Created on Tue Aug 8 15:27:49 2018
 Data processing code for Wendelstein 7-X QSI CXRS spectra measured during OP2.1
 """
 
-import datetime
 import requests
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.optimize import minimize
+from scipy import interpolate
 import flap
 import flap_w7x_abes
     
@@ -108,28 +108,51 @@ def slice_by_wl(spectra,w,expe_id,roi):
     plt.ylabel("Intensity",fontsize = 15)
     plt.title("Time evolution of a pixel at wavelength "+str(w)+" nm")
     
-def slice_by_wl_range(spectra,wstart,wstop,expe_id,roi):
+def slice_by_wl_range(spectra,wstart,wstop,expe_id,roi,timerange,el):
     spectra_1w = spectra.slice_data(slicing={"ROI" :"P0"+str(roi)})
     spectra_1w = spectra_1w.slice_data(slicing={"Wavelength" : flap.Intervals(wstart, wstop)},summing = {"Wavelength":"Mean"})
-    plt.figure()
-    spectra_1w.plot(axes="Time")
+    d_beam_on=flap.get_data('W7X_ABES',exp_id=expe_id,name='Chopper_time',
+                             options={'State':{'Chop': 0, 'Defl': 0}},\
+                             object_name='Beam_on',
+                             coordinates={'Time': timerange})
+
+    d_beam_off=flap.get_data('W7X_ABES',exp_id=expe_id,name='Chopper_time',
+                             options={'State':{'Chop': 1, 'Defl': 0}},\
+                             object_name='Beam_off',
+                             coordinates={'Time': timerange})
+        
+    #correcting the timescales
+    c=d_beam_on.get_coordinate_object("Time")
+    c.start = c.start + el
+    c=d_beam_off.get_coordinate_object("Time")
+    c.start = c.start + el
+        
+    # plt.figure()
+    # legend = []
+    # legend.append('Beam on')
+    # legend.append('Beam off')
+    
+    spectra_1w.plot(axes="Time",plot_type='scatter')
+    d_beam_off.plot(axes=['Time',650],plot_type='scatter',options={'Force':True})
+    d_beam_on.plot(axes=['Time',660],plot_type='scatter',options={'Force':True})
     plt.xlabel("Time [s]",fontsize = 15)
     plt.ylabel("Intensity",fontsize = 15)
     plt.title("Time evolution of a pixel at wavelength ["+str(wstart)+", "+str(wstop)+"] nm")
+    # legend.append('avg. spectral intensity')
     
-    c = spectra_1w.get_coordinate_object("Time")
-    timeres = np.mean(c.values[1:(len(c.values)-1)]-c.values[0:(len(c.values)-2)])
-    t0 = c.values[0]
-    c.mode.equidistant = True
-    c.shape = spectra_1w.data.shape
-    c.start = t0
-    c.step = timeres
-    c.dimension_list = [0]
+    # c = spectra_1w.get_coordinate_object("Time")
+    # timeres = np.mean(c.values[1:(len(c.values)-1)]-c.values[0:(len(c.values)-2)])
+    # t0 = c.values[0]
+    # c.mode.equidistant = True
+    # c.shape = spectra_1w.data.shape
+    # c.start = t0
+    # c.step = timeres
+    # c.dimension_list = [0]
     
-    plt.figure()
-    ap = spectra_1w.apsd(options={'Interval':1, 'Range':[1,100],'Res':0.1})   
-    ap.plot(axes="Frequency",options={'Log x': True, 'Log y':True, 'Error':True, 'X range':[1,100]})
-    plt.title(" ")
+    # ap = spectra_1w.apsd(options={'Interval':1, 'Range':[1,100],'Res':0.1}) 
+    # plt.figure()
+    # ap.plot(axes="Frequency",options={'Log x': True, 'Log y':True, 'Error':True, 'X range':[1,100]})
+    # plt.title(" ")
     
 def active_passive(spectra,roi,t_start,t_stop,el,expe_id,timerange):
     """
@@ -161,9 +184,19 @@ def active_passive(spectra,roi,t_start,t_stop,el,expe_id,timerange):
     
     #slicing the data
     ROI1 = spectra.slice_data(slicing={"ROI" :"P0"+str(roi),"Time":flap.Intervals(t_start, t_stop)})
-    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Sum"})
-    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Sum"})
+    s_on_intervals_full=ROI1.slice_data(slicing={'Time':d_beam_on})
+    s_off_intervals_full=ROI1.slice_data(slicing={'Time':d_beam_off})
+    s_on_intervals = s_on_intervals_full.data[:,1:,].mean(axis = 1)
+    s_off_intervals = s_off_intervals_full.data[:,1:,].mean(axis = 1)
+    s_on_data = s_on_intervals.mean(axis = 1)
+    s_off_data = s_off_intervals.mean(axis = 1)
+    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Mean"})
+    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Mean"})
+    s_on.data = s_on_data
+    s_off.data = s_off_data
     
+    # print(s_on.data.shape)
+    # raise ValueError("Stop")
     plt.figure()
     s_on.plot(axes = "Wavelength")
     s_off.plot(axes = "Wavelength")
@@ -193,7 +226,7 @@ def spectral_error_calc(spec):
     # for i in range(spec.data.shape[0]):
     #     popt,param = curve_fit(linear, np.arange(0,spec.data.shape[2],1), spec_perint[i,:])
     #     spec_perint[i,:] = spec_perint[i,:] - linear(np.arange(0,spec.data.shape[2],1), *popt)
-    return np.sqrt(spec_perint.var(axis = 1) / (spec.data.shape[2]))
+    return np.sqrt(spec_perint.var(axis = 1)/ (spec.data.shape[2]))
 
 def get_line_intensity(spectra,roi,t_start,t_stop,el,expe_id,timerange,lstart,lstop,bg_wls=[0],plots=False):
     d_beam_on=flap.get_data('W7X_ABES',exp_id=expe_id,name='Chopper_time',
@@ -300,16 +333,25 @@ def active_passive_with_error(spectra,roi,t_start,t_stop,el,expe_id,timerange,bg
     s_off_sliced=ROI1.slice_data(slicing={'Time':d_beam_off})
     
     #the intervals are taken as independent measurements
-    error_on = indep_spectral_error_calc(s_on_sliced)
-    error_off = indep_spectral_error_calc(s_off_sliced)
+    error_on = spectral_error_calc(s_on_sliced)
+    error_off = spectral_error_calc(s_off_sliced)
     
     if(bg_wls != [0]):
         ROI1_witbg = spectra.slice_data(slicing={"ROI" :"P0"+str(roi),
                                         "Wavelength":flap.Intervals(bg_wls[0], bg_wls[1])},
                                         summing = {"Wavelength":"Mean","Time":"Mean"})
         ROI1.data[:,:] = ROI1.data[:,:] - ROI1_witbg.data
+        
     s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Mean"})
     s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Mean"})
+    s_on_intervals_full=ROI1.slice_data(slicing={'Time':d_beam_on})
+    s_off_intervals_full=ROI1.slice_data(slicing={'Time':d_beam_off})
+    s_on_intervals = s_on_intervals_full.data[:,1:,].mean(axis = 1)
+    s_off_intervals = s_off_intervals_full.data[:,1:,].mean(axis = 1)
+    s_on_data = s_on_intervals.mean(axis = 1)
+    s_off_data = s_off_intervals.mean(axis = 1)
+    s_on.data = s_on_data
+    s_off.data = s_off_data
     
     if(plots == True):
         plt.figure()
@@ -568,7 +610,7 @@ def CVI_fitfunc(esti):
     grid = param[0]
     roi = int(param[1])
     B = float(param[2])
-    theta = int(param[3])
+    theta = float(param[3])
     wavelength_setting = float(param[4])
     lower_wl_lim = float(param[5])
     upper_wl_lim = float(param[6])
@@ -710,6 +752,7 @@ def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,tstop,bg,
     es_chisq=CVI_fitfunc_plot(measured.data,measured.error,lambd,mu_add,kbt,A,
                               expe_id,grid,ws,roi,tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr,save=True)
     plt.title("$\chi^2 = $"+str(round(es_chisq,6)))
+    # raise ValueError("stop")
     solution=minimize(CVI_fitfunc,esti,method=met,bounds = ((None,None),(0.1,None),(None,None)),tol=1e-12,
                                                             options={"maxiter":2000})
     print(solution)
@@ -876,6 +919,7 @@ def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
         H = error_from_hesse(sol,solution.fun,h)
         err = H[1,1]
         print(H)
+        print(sol[1])
         T_i[i] = sol[1]
         T_i_err[i] = err
         chisq[i] = solution.fun
@@ -939,6 +983,7 @@ def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
         H = error_from_hesse(sol,solution.fun,h)
         err = H[1,1]
         print(H)
+        print(sol[1])
         T_i[i] = sol[1]
         T_i_err[i] = err
         chisq[i] = solution.fun
@@ -963,4 +1008,78 @@ def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
     print("STD of chi square:")
     print(np.std(chisq))
     
+def minim(K0,S,sigma,M,H): #additional function for the following deconv fun
+    K=K0
+    M=np.array(M)
+    N=np.zeros((H.shape[1],H.shape[1]))
+    for k in range(H.shape[1]):
+        for i in range(H.shape[1]):
+            N[k,i] = H[k,i] + K*sum(M[:,k]*M[:,i]/sigma**2)
+    L=K*M.T/sigma**2
+    N=np.matrix(N)
+    L=np.matrix(L)
+    perm=L*S
+    M=np.matrix(M)
+    P=np.linalg.inv(N)*perm
+    X=(np.array(S-M*P))**2/sigma**2
+    print(sum(X[:,0])/X.shape[0])
+    print(K)
+    return P,M
     
+def spectrum_deconv(spectra,grid,roi,lvl,uvl,n,K):
+    instr = np.load("instr_funcs/"+grid+"_P0"+str(roi)+".npy").ravel()
+    spectra = spectra.slice_data(slicing={"Wavelength":flap.Intervals(lvl, uvl)})
+    S=spectra.data
+    sigma=spectra.error
+    instr=np.load("instr_funcs/"+grid+"_P0"+str(roi)+".npy").ravel()
+    instr=instr-min(instr)
+    instr=instr/max(instr) 
+    res = spectra.coordinate("Wavelength")[0][1]-spectra.coordinate("Wavelength")[0][0]
+    
+    lambd0=np.linspace(0,instr.shape[0],instr.shape[0])
+    lambd02=np.linspace(0,instr.shape[0],instr.shape[0]*n)
+    f=interpolate.interp1d(lambd0,instr)
+    A=f(lambd02)
+    M0=np.zeros((n*S.shape[0],n*S.shape[0]))
+    for i in range(n*S.shape[0]):
+        M0[i,i] = 1
+        M0[i,:]=np.convolve(M0[i,:],A,"same")
+    M=np.zeros((S.shape[0],n*S.shape[0]))
+    
+    for i in range(S.shape[0]):
+        for k in range(n*S.shape[0]):
+            if(abs(i - k/n) < abs(i + 1 - k/n) and abs(i - k/n) < abs(i - 1 - k/n)):
+                M[i,:] += M0[k,:]
+            elif(abs(i - k/n) == abs(i + 1 - k/n) and i+1 < S.shape[0]):
+                M[i,:] += M0[k,:]/2
+                M[i+1,:] += M0[k,:]/2
+    M[0,:] = 2*M[0,:] 
+    
+    H0=np.zeros((n*S.shape[0],n*S.shape[0]))
+    for i in range(n*S.shape[0]):
+        for j in range(n*S.shape[0]):
+            if(i==j):
+                H0[i,j]=n/res
+                if(j < n*S.shape[0]-1):
+                    H0[i,j+1] = -n/res
+    H = np.dot(H0,H0.T)
+    S=np.matrix(S).T
+    mtx=minim(K,S,sigma,M,H)
+    
+    lambd=np.linspace(lvl,uvl,S.shape[0])
+    lambd2=np.linspace(lvl,uvl,H.shape[0])
+    
+    plt.figure()
+    plt.plot(lambd,S,color="blue")
+    plt.plot(lambd,np.array(mtx[1]*mtx[0]),color="red")
+    plt.xlabel("$\lambda [nm]$",fontsize=15)
+    plt.ylabel("$Intensity$",fontsize=15)
+    plt.title("20181018_010, channel 43, m/n = "+str(n)+",K="+str(K),fontsize=15)
+    plt.grid()
+    
+    plt.figure()
+    plt.plot(lambd2,np.array(mtx[0]),color="green")
+    plt.xlabel("$\lambda [nm]$",fontsize=15)
+    plt.ylabel("$Intensity$",fontsize=15)
+    plt.title("20181018_010, channel 43, m/n = "+str(n)+",K="+str(K),fontsize=15)
+    plt.grid()
