@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Aug 8 15:27:49 2018
+Created on Tue Aug 8 15:27:49 2023
 
 @author: bcsillag
 
@@ -108,7 +108,24 @@ def slice_by_wl(spectra,w,expe_id,roi):
     plt.ylabel("Intensity",fontsize = 15)
     plt.title("Time evolution of a pixel at wavelength "+str(w)+" nm")
     
-def slice_by_wl_range(spectra,wstart,wstop,expe_id,roi,timerange,el):
+def interval_shift(expe_id):
+    shift = 0
+    if(expe_id[:8]=="20230314"):
+        shift = -0.0509
+    elif(expe_id[:8]=="20230315"):
+        shift = -0.05087939698492462
+    elif(expe_id[:8]=="20230316"):
+        shift = -0.05012562814070352
+    elif(expe_id[:8]=="20230323"):
+        shift = -0.0592
+    elif(expe_id[:8]=="20230328"):
+        shift = 0.051633
+    elif(expe_id[:8]=="20230330"):
+        shift = 0.051633
+    
+    return shift
+    
+def slice_by_wl_range(spectra,wstart,wstop,expe_id,roi,timerange):
     spectra_1w = spectra.slice_data(slicing={"ROI" :"P0"+str(roi)})
     spectra_1w = spectra_1w.slice_data(slicing={"Wavelength" : flap.Intervals(wstart, wstop)},summing = {"Wavelength":"Mean"})
     d_beam_on=flap.get_data('W7X_ABES',exp_id=expe_id,name='Chopper_time',
@@ -122,6 +139,7 @@ def slice_by_wl_range(spectra,wstart,wstop,expe_id,roi,timerange,el):
                              coordinates={'Time': timerange})
         
     #correcting the timescales
+    el = interval_shift(expe_id)
     c=d_beam_on.get_coordinate_object("Time")
     c.start = c.start + el
     c=d_beam_off.get_coordinate_object("Time")
@@ -132,9 +150,9 @@ def slice_by_wl_range(spectra,wstart,wstop,expe_id,roi,timerange,el):
     # legend.append('Beam on')
     # legend.append('Beam off')
     
-    spectra_1w.plot(axes="Time",plot_type='scatter')
-    d_beam_off.plot(axes=['Time',650],plot_type='scatter',options={'Force':True})
-    d_beam_on.plot(axes=['Time',660],plot_type='scatter',options={'Force':True})
+    spectra_1w.plot(axes="Time")
+    # d_beam_off.plot(axes=['Time',650],plot_type='scatter',options={'Force':True})
+    # d_beam_on.plot(axes=['Time',660],plot_type='scatter',options={'Force':True})
     plt.xlabel("Time [s]",fontsize = 15)
     plt.ylabel("Intensity",fontsize = 15)
     plt.title("Time evolution of a pixel at wavelength ["+str(wstart)+", "+str(wstop)+"] nm")
@@ -154,7 +172,7 @@ def slice_by_wl_range(spectra,wstart,wstop,expe_id,roi,timerange,el):
     # ap.plot(axes="Frequency",options={'Log x': True, 'Log y':True, 'Error':True, 'X range':[1,100]})
     # plt.title(" ")
     
-def active_passive(spectra,roi,t_start,t_stop,el,expe_id,timerange):
+def active_passive(spectra,roi,t_start,t_stop,expe_id,timerange):
     """
     A function that calculates the average spectra at beam-on and beam-off,
     then it subtracts  the two to gain the active spectrum
@@ -177,6 +195,7 @@ def active_passive(spectra,roi,t_start,t_stop,el,expe_id,timerange):
                              coordinates={'Time': timerange})
     
     #correcting the timescales
+    el = interval_shift(expe_id)
     c=d_beam_on.get_coordinate_object("Time")
     c.start = c.start + el
     c=d_beam_off.get_coordinate_object("Time")
@@ -310,7 +329,7 @@ def indep_spectral_error_calc(spec):
     # plt.plot(err,marker = "+")
     return err
     
-def active_passive_with_error(spectra,roi,t_start,t_stop,el,expe_id,timerange,bg_wls=[0],plots=False):
+def active_passive_with_error(spectra,roi,t_start,t_stop,expe_id,timerange,bg_wls=[0],plots=False):
     d_beam_on=flap.get_data('W7X_ABES',exp_id=expe_id,name='Chopper_time',
                              options={'State':{'Chop': 0, 'Defl': 0}},\
                              object_name='Beam_on',
@@ -322,6 +341,7 @@ def active_passive_with_error(spectra,roi,t_start,t_stop,el,expe_id,timerange,bg
                              coordinates={'Time': timerange})
     
     #correcting the timescales
+    el = interval_shift(expe_id)
     c=d_beam_on.get_coordinate_object("Time")
     c.start = c.start + el
     c=d_beam_off.get_coordinate_object("Time")
@@ -375,7 +395,7 @@ def active_passive_with_error(spectra,roi,t_start,t_stop,el,expe_id,timerange,bg
     
     return s_subs
 
-def error_distr(spectra,roi,t_start,t_stop,el,expe_id,minint,timerange,lstart,lstop,bg_wls=[0],plots=False):
+def error_distr(spectra,roi,t_start,t_stop,expe_id,minint,timerange,lstart,lstop,bg_wls=[0],plots=False):
     d_beam_on=flap.get_data('W7X_ABES',exp_id=expe_id,name='Chopper_time',
                              options={'State':{'Chop': 0, 'Defl': 0}},\
                              object_name='Beam_on',
@@ -387,6 +407,7 @@ def error_distr(spectra,roi,t_start,t_stop,el,expe_id,minint,timerange,lstart,ls
                              coordinates={'Time': timerange})
     
     #correcting the timescales
+    el = interval_shift(expe_id)
     c=d_beam_on.get_coordinate_object("Time")
     c.start = c.start + el
     c=d_beam_off.get_coordinate_object("Time")
@@ -511,8 +532,7 @@ def autocorr(qsi_cxrs,roi,t_start,t_stop,lstart,lstop,expe_id):
     plt.grid()
     
     
-def normed_intensity(qsi_cxrs,t_start,t_stop,expe_id,timerange,el,bg_wls):
-    print("***** Reading beam-on, beam-off intervals into DataObjects.")
+def normed_intensity(qsi_cxrs,t_start,t_stop,expe_id,timerange,bg_wls):
     d_beam_on=flap.get_data('W7X_ABES',exp_id=expe_id,name='Chopper_time',
                              options={'State':{'Chop': 0, 'Defl': 0}},\
                              object_name='Beam_on',
@@ -523,7 +543,7 @@ def normed_intensity(qsi_cxrs,t_start,t_stop,expe_id,timerange,el,bg_wls):
                              object_name='Beam_off',
                              coordinates={'Time': timerange})
     
-    flap.list_data_objects(d_beam_on)
+    el = interval_shift(expe_id)
     c=d_beam_on.get_coordinate_object("Time")
     c.start = c.start + el
     c=d_beam_off.get_coordinate_object("Time")
@@ -538,15 +558,14 @@ def normed_intensity(qsi_cxrs,t_start,t_stop,expe_id,timerange,el,bg_wls):
     s_off=qsi_cxrs.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Mean"})
     s_subs = s_on
     s_subs.data = s_on.data-s_off.data
-    flap.list_data_objects(s_subs)
     
     lineint = []
     int_calib = np.array([5961,5667,1209,3367])/5961
     for i in range(4):
-        line = max(s_subs.data[i,200:])
+        line = max(s_subs.data[i,300:800])
         lineint.append(line)
     lineint = np.array(lineint)
-    print(lineint/int_calib)
+    return lineint/int_calib
     
 def save_spectral_config(lis):
     with open('spectral_fit_config.cfg', 'w') as f:
@@ -622,7 +641,7 @@ def CVI_fitfunc(esti):
     C = (modelled - measured)/error
     return (np.dot(C,C) - 3) / measured.shape[0]
 
-def CVI_fitfunc_plot(measured,measured_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+def CVI_fitfunc_plot(measured,measured_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                      tstop,bg,B,theta,lvl,uvl,tr,save=False):
     
     modelled = CVI_529_line_generator(grid,roi,B,theta,ws,lvl,uvl,mu_add,kbt,A)
@@ -736,12 +755,12 @@ def error_from_hesse(sol,fmin,h):
     I = np.linalg.inv(alpha)
     return np.sqrt(abs(I))
     
-def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr):
+def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,tstop,bg,B,theta,lvl,uvl,tr):
     
     met="Powell"
     h = np.array([1e-5,1e-3,1e-8])
     esti = np.array([mu_add,kbt,A])
-    measured = active_passive_with_error(spectra,roi,tstart,tstop,tshift,expe_id,
+    measured = active_passive_with_error(spectra,roi,tstart,tstop,expe_id,
                                          tr,bg_wls=bg,plots=False)
     measured = measured.slice_data(slicing={"Wavelength":flap.Intervals(lvl, uvl)})
     save_spectral_config([grid,roi,B,theta,ws,lvl,uvl])
@@ -750,7 +769,7 @@ def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,tstop,bg,
         
     lambd = measured.coordinate("Wavelength")[0]
     es_chisq=CVI_fitfunc_plot(measured.data,measured.error,lambd,mu_add,kbt,A,
-                              expe_id,grid,ws,roi,tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr,save=True)
+                              expe_id,grid,ws,roi,tstart,tstop,bg,B,theta,lvl,uvl,tr,save=True)
     plt.title("$\chi^2 = $"+str(round(es_chisq,6)))
     # raise ValueError("stop")
     solution=minimize(CVI_fitfunc,esti,method=met,bounds = ((None,None),(0.1,None),(None,None)),tol=1e-12,
@@ -760,7 +779,7 @@ def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,tstop,bg,
         sol=solution.x
         # print(solution.hess_inv.matmat(np.eye(3)))
         CVI_fitfunc_plot(measured.data,measured.error,lambd,sol[0],sol[1],sol[2],
-                         expe_id,grid,ws,roi,tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr)
+                         expe_id,grid,ws,roi,tstart,tstop,bg,B,theta,lvl,uvl,tr)
         err = error_from_hesse(sol,solution.fun,h)
         print(err)
         # stepsize = 1
@@ -771,7 +790,7 @@ def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,tstop,bg,
         # N = 1000
         # tempfit_error_curve(sol,stepsize,N)
         
-def CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+def CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                        tstop,bg,B,theta,lvl,uvl,tr,scalef,errparam,plots=False):
     measured=flap.load("CVI_529nm_P0"+str(roi)+"_1200g_per_mm_measurement.dat")
     lamb = measured.coordinate("Wavelength")[0]
@@ -826,7 +845,7 @@ def CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
         
     return calculated,err
 
-def CVI_line_simulator_me(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+def CVI_line_simulator_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                        tstop,bg,B,theta,lvl,uvl,tr,scalef,plots=False):
     measured=flap.load("CVI_529nm_P0"+str(roi)+"_1200g_per_mm_measurement.dat")
     lamb = measured.coordinate("Wavelength")[0]
@@ -880,13 +899,13 @@ def CVI_line_simulator_me(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
         
     return calculated,err
 
-def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                      tstop,bg,B,theta,lvl,uvl,tr,scalef,errparam,iter_num,plots = False):
     spectra = get_spectra(expe_id, "1200g_per_mm", ws, roi)
     met="Powell"
     h = np.array([1e-5,1e-3,1e-8])
     line_param = np.array([mu_add,kbt,A])
-    measured = active_passive_with_error(spectra,roi,tstart,tstop,tshift,expe_id,
+    measured = active_passive_with_error(spectra,roi,tstart,tstop,expe_id,
                                          tr,bg_wls=bg,plots=False)
     measured = measured.slice_data(slicing={"Wavelength":flap.Intervals(lvl, uvl)})
     save_spectral_config([grid,roi,B,theta,ws,lvl,uvl])
@@ -899,7 +918,7 @@ def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
     
     for i in range(iter_num):
         print("Iteration "+str(i))
-        sim,sim_err = CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+        sim,sim_err = CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                                tstop,bg,B,theta,lvl,uvl,tr,scalef,errparam,plots=False)
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",sim)
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",sim_err)
@@ -907,7 +926,7 @@ def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
             wl_values = wavelength_grid_generator(grid,ws,roi)#loading the wavelength grid
             wl_grid0 = wl_values[wl_values > lvl] #slicing the wavelength grid
             lambd = wl_grid0[uvl > wl_grid0]
-            es_chisq=CVI_fitfunc_plot(sim,sim_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+            es_chisq=CVI_fitfunc_plot(sim,sim_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                                       tstop,bg,B,theta,lvl,uvl,tr,save=True)
             plt.title("$\chi^2 = $"+str(round(es_chisq,6)))
         solution=minimize(CVI_fitfunc,line_param,method=met,bounds = ((None,None),(0.1,None),(None,None)),tol=1e-8,
@@ -925,7 +944,7 @@ def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
         chisq[i] = solution.fun
         if(plots == True):
             CVI_fitfunc_plot(sim,sim_err,lambd,sol[0],sol[1],sol[2],expe_id,grid,ws,roi,
-                             tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr)
+                             tstart,tstop,bg,B,theta,lvl,uvl,tr)
             R_plot = round(spectra.coordinate("Device R")[0][0,(roi-1),0],4)
             plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ "+str(round(err,2))+" ev")
             
@@ -944,13 +963,13 @@ def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
     print("STD of chi square:")
     print(np.std(chisq))
     
-def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                      tstop,bg,B,theta,lvl,uvl,tr,scalef,errparam,iter_num,plots = False):
     spectra = get_spectra(expe_id, "1200g_per_mm", ws, roi)
     met="Powell"
     h = np.array([1e-5,1e-3,1e-8])
     line_param = np.array([mu_add,kbt,A])
-    measured = active_passive_with_error(spectra,roi,tstart,tstop,tshift,expe_id,
+    measured = active_passive_with_error(spectra,roi,tstart,tstop,expe_id,
                                          tr,bg_wls=bg,plots=False)
     measured = measured.slice_data(slicing={"Wavelength":flap.Intervals(lvl, uvl)})
     save_spectral_config([grid,roi,B,theta,ws,lvl,uvl])
@@ -963,7 +982,7 @@ def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
     
     for i in range(iter_num):
         print("Iteration "+str(i))
-        sim,sim_err = CVI_line_simulator_me(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+        sim,sim_err = CVI_line_simulator_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                                tstop,bg,B,theta,lvl,uvl,tr,scalef,plots=False)
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",sim)
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",sim_err)
@@ -971,7 +990,7 @@ def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
             wl_values = wavelength_grid_generator(grid,ws,roi)#loading the wavelength grid
             wl_grid0 = wl_values[wl_values > lvl] #slicing the wavelength grid
             lambd = wl_grid0[uvl > wl_grid0]
-            es_chisq=CVI_fitfunc_plot(sim,sim_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
+            es_chisq=CVI_fitfunc_plot(sim,sim_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                                       tstop,bg,B,theta,lvl,uvl,tr,save=True)
             plt.title("$\chi^2 = $"+str(round(es_chisq,6)))
         solution=minimize(CVI_fitfunc,line_param,method=met,bounds = ((None,None),(0.1,None),(None,None)),tol=1e-8,
@@ -989,7 +1008,7 @@ def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tshift,tstart,
         chisq[i] = solution.fun
         if(plots == True):
             CVI_fitfunc_plot(sim,sim_err,lambd,sol[0],sol[1],sol[2],expe_id,grid,ws,roi,
-                             tshift,tstart,tstop,bg,B,theta,lvl,uvl,tr)
+                            tstart,tstop,bg,B,theta,lvl,uvl,tr)
             R_plot = round(spectra.coordinate("Device R")[0][0,(roi-1),0],4)
             plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ "+str(round(err,2))+" ev")
             
