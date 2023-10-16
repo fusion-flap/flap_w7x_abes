@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.optimize import minimize
 from scipy import interpolate
+from scipy import sparse as sp
 import flap
 import flap_w7x_abes
     
@@ -117,11 +118,12 @@ def interval_shift(expe_id):
     elif(expe_id[:8]=="20230316"):
         shift = -0.05012562814070352
     elif(expe_id[:8]=="20230323"):
-        shift = -0.0592
+        # shift = 0.038
+        shift = 0.07025#-0.0592
     elif(expe_id[:8]=="20230328"):
         shift = 0.051633
     elif(expe_id[:8]=="20230330"):
-        shift = 0.051633
+        shift = 0.05275551102204408#0.051633
     
     return shift
     
@@ -566,6 +568,171 @@ def normed_intensity(qsi_cxrs,t_start,t_stop,expe_id,timerange,bg_wls):
         lineint.append(line)
     lineint = np.array(lineint)
     return lineint/int_calib
+
+def Li_spectrum (B,E,v,n,isotopemass):
+    # input parameters: (they are lists, so they are not vectors or matrices)
+    # B = [Bx,By,Bz]    Cartesian components of the magneric field vector (in Tesla) in the laboratory frame
+    # E = [Ex,Ey,Ez]    Cartesian components of the electric field vector (in V/m) in the laboratory frame 
+    # v = [vx,vy,vz]    Cartesian components of the atomic velocity (in m/s) in the laboratory frame
+    # n = [nx,ny,nz]    Cartesian components of the viewing direction in the laboratory frame 
+    # (direction TO detector, i.e. propagation direction of light)
+        
+    # output: structure spectrum with the following fields:
+    # lambdas           the wavelengths of the spectral lines in nm
+    # intensities       the relative intensities 
+    
+    # isotopemass       6 or 7, the mass of the isotope considered.
+    
+    B=np.array(B)
+    E=np.array(E)
+    v=np.array(v)
+    n=np.array(n)
+
+    # n is normalized, just in case:
+    
+    n = n/np.sqrt(sum(n**2))
+    
+    # physical constants:
+    c = 299792458; # vacuum light speed in m/s
+    muB = 9.27400915e-24; # Bohr magneton in J/T
+    hbar = 1.05457172600000e-34;
+    muB_per_h = 1e10*9.27400915/(2 * np.pi*1.054571726)
+    h = hbar * 2 * np.pi;
+    
+    # relevant Li parameters
+    gS = 2.0023193043622; # electron spin g-factor  
+    gL = 0.99997613; # electron orbital g-factor 
+    
+    if(isotopemass == 6):
+        E_D1 = 446.789598e12; # 6Li 3P1/2 excited state energy relative to ground state (E/h) in Hz
+        E_D2 = 446.799650e12; # 6Li 3P3/2 excited state energy relative to ground state (E/h) in Hz
+    elif(isotopemass == 7):
+        E_D1 = 446.800132e12; # 7Li 3P1/2 excited state energy relative to ground state (E/h) in Hz
+        E_D2 = 446.810184e12; # 7Li 3P3/2 excited state energy relative to ground state (E/h) in Hz
+    else:
+        raise ValueError("Isotope index invalid!")
+        
+    # calculating the fields in a reference frame moving with v:
+    vabs = np.sqrt(sum(v**2))
+    gam = 1/np.sqrt(1-(vabs**2)/c**2)
+    if (vabs > 0):
+        Lambda = np.matrix([[ gam , -gam*v[0]/c , -gam*v[1]/c , -gam*v[2]/c], # Lorentz boost tensor
+                [-gam*v[0]/c , 1+(gam-1)*v[0]**2 / vabs**2 , v[0]*v[1]*(gam-1) / vabs**2 , v[0]*v[2]*(gam-1) / vabs**2], 
+                [-gam*v[1]/c , v[0]*v[1]*(gam-1) / vabs**2 , 1+(gam-1)*v[1]**2/ vabs**2 , v[1]*v[2]*(gam-1) / vabs**2],
+                [-gam*v[2]/c , v[0]*v[2]*(gam-1) / vabs**2 , v[1]*v[2]*(gam-1) / vabs**2 , 1+(gam-1)*v[2]**2 / vabs**2]])
+    else:
+        Lambda = sp.dia_matrix((np.ones((4)),0),shape=(4,4)).todense()
+        
+    F_lab = np.matrix([[0, -E[0]/c, -E[1]/c, -E[2]/c],      # laboratry frame electromagnetic tensor
+                   [E[0]/c, 0, -B[2], B[1]],
+                   [E[1]/c, B[2], 0, -B[0]],
+                   [E[2]/c, -B[1], B[0], 0]])
+    
+    
+    # the moving frame field electromagnetic tensor:
+    F_mf = np.matmul(Lambda,(np.conjugate(np.matmul(Lambda,(np.conjugate(F_lab).T))).T))
+    B_mf = np.array([F_mf[3,2],-F_mf[3,1],F_mf[2,1]])        # moving frame B field
+    B_abs = np.sqrt(sum(B_mf**2))                          # magnitude of B in moving frame
+    if (B_abs > 0):
+        e_Bmf = B_mf/B_abs                     # unit vector along moving frame B
+    else: 
+        e_Bmf = np.array([0,0,1])
+    
+    # Calculating the Zeeman shifted energies:
+    # we are working in an LS basis, the labeling of the states is as follows:
+    # | g/e , m_L , 2*m_S >
+    # e.g. g_m1_p1   means ground state, m_L=-1, m_S=1/2
+
+    # Zeeman shifted ground-state energies:
+    E_g_m1 = gS * (-1/2) * B_abs*muB_per_h; 
+    E_g_p1 = gS * (1/2) * B_abs*muB_per_h;
+    
+    # for the excited state shitfs we diagonalize the fine-structure + Zeeman Hamiltonian
+    H0 = np.diag(E_D1*np.ones(6));
+    H_hf2 = (E_D2-E_D1)*np.array([[1,0,0,0,0,0], [0, 1/3, np.sqrt(2)/3, 0,0,0],
+    [0, np.sqrt(2)/3,2/3,0,0,0],[0,0,0,2/3,np.sqrt(2)/3,0], [0,0,0,np.sqrt(2)/3,1/3,0], [0,0,0,0,0,1]])
+    H_B = (muB * B_abs / h) * np.diag([ gL*(-1)+gS*(-1/2), gL*(-1)+gS*(1/2),
+    gL*(0)+gS*(-1/2), gL*(0)+gS*(1/2), gL*(1)+gS*(-1/2), gL*(1)+gS*(1/2)]);
+    H0 = np.matrix(H0)
+    H_hf2 = np.matrix(H_hf2)
+    H_B = np.matrix(H_B)
+    
+    ax1 = (H_B+H_hf2); # E/h now in units of Hz
+    [vals,vecs] = np.linalg.eig(ax1);
+    idx = vals.argsort()#[::-1]   
+    vals = vals[idx]
+    vecs = vecs[:,idx]
+    vecs=np.matrix(vecs)
+    energies = vals; # the energies of the excited states, E/h in Hz
+    
+    freqs = np.zeros(12)
+    freqs[0:6] = E_D1 + energies - E_g_m1;
+    freqs[6:12] = E_D1 + energies - E_g_p1;
+    
+    dipoleblock = np.matrix([[1,0,1,0,1,0], [0,1,0,1,0,1]])
+    #the nondiagonal block of the dipole operator matrix on the LS basis
+    
+    matrixelements = np.zeros(12);  # transition matrix elements:
+    
+    matrixelements[:6] = np.matrix(dipoleblock[0,:])*vecs;
+    matrixelements[6:12] = np.matrix(dipoleblock[1,:])*vecs;
+    
+    # to get the parity of the transitions, we calculate the expectation value of the J_z = L_z + S_z operator and
+    # compute delta m_J
+    J_z = np.matrix(np.diag([-3/2,-1/2,-1/2,1/2,1/2,3/2])); # the m_J operator is diagonal on our base
+    deltam = np.zeros(12);
+        
+    for i in range(6):
+        deltam[i] = (-1/2) - np.transpose(vecs[:,i])*(J_z*vecs[:,i]); # decaying to state |g,0,-1>
+        deltam[i+6] = (1/2) - np.transpose(vecs[:,i])*(J_z*vecs[:,i]); # decaying to state |g,0,1>
+   
+    # and we exclude the forbidden transitions from the lists (which would have delta m_J=+-2)
+
+    indices = np.nonzero(np.abs((np.round(deltam)).astype(int))<=1)[0]
+        
+    freqs = freqs[indices];
+    matrixelements2 = matrixelements[indices];
+    deltam = np.round(deltam[indices])
+    
+    # indices for sigmaplus, pi and sigmaminus polarizations:
+    index_sp = np.nonzero(deltam==-1)[0]
+    index_pi = np.nonzero(deltam==0)[0]
+    index_sm = np.nonzero(deltam==1)[0]
+       
+    lambdas = c/freqs;
+    wavevectors = 2*np.pi/lambdas
+    Dopplershifts = sum(n*v)*wavevectors
+    freqs = freqs + Dopplershifts;
+    
+    # finally the detected wavelengths in nm
+    flambdas = (1e9/freqs)*c;
+    
+    # Calculation of the relative intensities:
+    costheta = sum(n*e_Bmf);   # angle between B and detector direction 
+    sigmapdist = (1/4)*(1+costheta**2); # the angular distributions
+    sigmamdist = (1/4)*(1+costheta**2);
+    pidist = (1/2)*(1-costheta**2);
+    angular_dist = np.zeros(10);
+    angular_dist[index_sp] = sigmapdist;
+    angular_dist[index_pi] = pidist;
+    angular_dist[index_sm] = sigmamdist;
+    
+    intensities = angular_dist*(matrixelements2**2)/2; 
+    # we divide by 2 so that the overall sum is 1
+    return flambdas,intensities
+
+def mintavetel(R,M):
+    pontokR = [0]
+    pontokphi = [0]
+    for i in range(M+1):
+        if(i > 0):
+            for j in range(i):
+                pontokR.append(i*R/(M))
+                pontokphi.append(2*np.pi*(j/i) + np.pi*i/2)
+    return np.array(pontokR),np.array(pontokphi)
+
+def polardescart3d(R,phi):
+    return np.array([R*np.cos(phi),R*np.sin(phi),0])
     
 def save_spectral_config(lis):
     with open('spectral_fit_config.cfg', 'w') as f:
@@ -620,6 +787,109 @@ def CVI_529_line_generator(grid,roi,B,theta,wavelength_setting,lower_wl_lim,uppe
     
     return complete_spectrum
 
+def Li_line_generator(B,roi,grid,wavelength_setting,lower_wl_lim,upper_wl_lim,mu_add,A):
+    E = np.array([0,0,0])
+    centre_of_lens = np.array([1.305624,6.094843,-3.013095])
+    rois_positions = np.array([[1.91089568, 5.87253068, 0],
+                                [1.91391106, 5.88175452, 0],
+                                [1.91353862, 5.89390765, 0],
+                                [1.91983473, 5.90358337, 0]]).T
+    isomass = 7
+    v_direction = rois_positions[:,0] - rois_positions[:,1]
+    v_direction = v_direction / np.sqrt(np.sum(v_direction**2))
+
+    m_iso = 1.0
+    if(isomass == 6):
+        m_iso = 6.015122
+    elif(isomass==7):
+        m_iso = 7.016003
+    v_abs = np.sqrt(16.02177/(1.660539*m_iso))*1e6
+    v = v_direction*v_abs
+    n = rois_positions[:,roi-1] - centre_of_lens
+    spectrum=Li_spectrum (B,E,v,n,isomass)
+
+    #loading the wavelength grid
+    wl_values = flap_w7x_abes.wavelength_grid_generator(grid,wavelength_setting,roi)
+
+    #slicing the wavelength grid
+    wl_grid0 = wl_values[wl_values > lower_wl_lim]
+    wl_grid = wl_grid0[upper_wl_lim > wl_grid0]
+
+    #projecting the loaded spectrum into the grid
+    projection = np.zeros((wl_grid.shape[0]))
+
+    locations = spectrum[0]
+    intensities = spectrum[1]
+
+    locations = locations + mu_add
+
+    for i in range(len(intensities)):
+        diff = abs(wl_grid - locations[i])
+        sor = np.argsort(diff)
+        closest_ind = sor[:2]
+        distance = diff[sor[:2]]
+        I2 = intensities[i] / (1 + distance[1]/distance[0])
+        projection[closest_ind[1]] += I2
+        projection[closest_ind[0]] += intensities[i] - I2
+
+    instr = np.load("instr_funcs/"+grid+"_P0"+str(roi)+".npy").ravel()
+    return A*np.convolve(projection, instr, mode = "same")
+
+def Li_line_generator2(B,roi,grid,wavelength_setting,lower_wl_lim,upper_wl_lim,mu_add,A,R,M):
+    E = np.array([0,0,0])
+    centre_of_lens = np.array([1.305624,6.094843,-3.013095])
+    rois_positions = np.array([[1.91089568, 5.87253068, 0],
+                                [1.91391106, 5.88175452, 0],
+                                [1.91353862, 5.89390765, 0],
+                                [1.91983473, 5.90358337, 0]]).T
+    isomass = 6
+    v_direction = rois_positions[:,0] - rois_positions[:,1]
+    v_direction = v_direction / np.sqrt(np.sum(v_direction**2))
+
+    m_iso = 1.0
+    if(isomass == 6):
+        m_iso = 6.015122
+    elif(isomass==7):
+        m_iso = 7.016003
+    v_abs = np.sqrt(16.02177/(1.660539*m_iso))*1e6
+    v = v_direction*v_abs
+    n = rois_positions[:,roi-1] - centre_of_lens
+    
+    K = np.array([-(n[0]+n[1])/n[2],1,1])
+    K = K/np.sqrt(sum(K**2))
+    L = np.cross(n,K)
+    L = L/np.sqrt(sum(L**2))
+    minta = mintavetel(R,M)
+    szegmensek = np.array(np.zeros((minta[0].shape[0],3)))
+    for i in range(minta[0].shape[0]):
+        popt = polardescart3d(minta[0][i],minta[1][i])
+        szegmensek[i,:] = n + popt[0]*K + popt[1]*L
+        
+    #loading the wavelength grid
+    wl_values = flap_w7x_abes.wavelength_grid_generator(grid,wavelength_setting,roi)
+
+    #slicing the wavelength grid
+    wl_grid0 = wl_values[wl_values > lower_wl_lim]
+    wl_grid = wl_grid0[upper_wl_lim > wl_grid0]
+    projection = np.zeros((wl_grid.shape[0]))
+    
+    for k in range(szegmensek.shape[0]):
+        spectrum=Li_spectrum (B,E,v,szegmensek[k,:],isomass)
+        locations = spectrum[0]
+        intensities = spectrum[1]
+        locations = locations + mu_add
+        for i in range(len(intensities)):
+            diff = abs(wl_grid - locations[i])
+            sor = np.argsort(diff)
+            closest_ind = sor[:2]
+            distance = diff[sor[:2]]
+            I2 = intensities[i] / (1 + distance[1]/distance[0])
+            projection[closest_ind[1]] += I2
+            projection[closest_ind[0]] += intensities[i] - I2
+        
+    instr = np.load("instr_funcs/"+grid+"_P0"+str(roi)+".npy").ravel()
+    return A*np.convolve(projection, instr, mode = "same")
+
 def CVI_fitfunc(esti):
     mu_add = esti[0]
     kbt = esti[1]
@@ -641,6 +911,26 @@ def CVI_fitfunc(esti):
     C = (modelled - measured)/error
     return (np.dot(C,C) - 3) / measured.shape[0]
 
+def Li_fitfunc(esti):
+    mu_add = esti[0]
+    A = esti[1]
+    B = np.array([esti[2],esti[3],esti[4]])
+    
+    param = load_spectral_config()
+    grid = param[0]
+    roi = int(param[1])
+    wavelength_setting = float(param[2])
+    lower_wl_lim = float(param[3])
+    upper_wl_lim = float(param[4])
+    R = float(param[5])
+    M = int(param[6])
+    
+    modelled = Li_line_generator2(B,roi,grid,wavelength_setting,lower_wl_lim,upper_wl_lim,mu_add,A,R,M)
+    measured=np.load("Li_670nm_P0"+str(roi)+"_"+grid+"_measurement.npy")
+    error=np.load("Li_670nm_P0"+str(roi)+"_"+grid+"_measurement_error.npy")
+    C = (modelled - measured)/error
+    return (np.dot(C,C) - 5) / measured.shape[0]
+
 def CVI_fitfunc_plot(measured,measured_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                      tstop,bg,B,theta,lvl,uvl,tr,save=False):
     
@@ -654,6 +944,44 @@ def CVI_fitfunc_plot(measured,measured_err,lambd,mu_add,kbt,A,expe_id,grid,ws,ro
     plt.grid()
     plt.legend(["Calculated","Measured"],loc = "best",fontsize = (fs-2))
     return sum(((modelled - measured)/measured_err)**2) / measured.shape[0]
+
+def Li_fitfunc_plot(measured,measured_err,lambd,mu_add,A,expe_id,grid,ws,roi,tstart,
+                     tstop,bg,B,lvl,uvl,tr,R,M):
+    
+    modelled = Li_line_generator2(B,roi,grid,ws,lvl,uvl,mu_add,A,R,M)
+    fs = 15
+    plt.figure()
+    plt.errorbar(lambd,measured, measured_err,color = "blue")
+    plt.plot(lambd,modelled,color = "red")
+    plt.xlabel("Wavelength [nm]",fontsize = fs)
+    plt.ylabel("Intensity [a.u.]",fontsize = fs)
+    plt.grid()
+    plt.legend(["Calculated","Measured"],loc = "best",fontsize = (fs-2))
+    return sum(((modelled - measured)/measured_err)**2) / measured.shape[0]
+
+def Li_Bfit(spectra,mu_add,A,expe_id,grid,ws,roi,tstart,tstop,bg,B,lvl,uvl,tr,R,M):
+    
+    met="Powell"
+    esti = np.array([mu_add,A,B[0],B[1],B[2]])
+    measured = active_passive_with_error(spectra,roi,tstart,tstop,expe_id,
+                                         tr,bg_wls=bg,plots=False)
+    measured = measured.slice_data(slicing={"Wavelength":flap.Intervals(lvl, uvl)})
+    save_spectral_config([grid,roi,ws,lvl,uvl,R,M])
+    np.save("Li_670nm_P0"+str(roi)+"_"+grid+"_measurement",measured.data)
+    np.save("Li_670nm_P0"+str(roi)+"_"+grid+"_measurement_error",measured.error)
+        
+    lambd = measured.coordinate("Wavelength")[0]
+    es_chisq=Li_fitfunc_plot(measured.data,measured.error,lambd,mu_add,A,expe_id,grid,ws,roi,tstart,
+                         tstop,bg,B,lvl,uvl,tr,R,M)
+    plt.title("$\chi^2 = $"+str(round(es_chisq,6)))
+    # raise ValueError("stop")
+    solution=minimize(Li_fitfunc,esti,method=met,tol=1e-8,options={"maxiter":1000})
+    print(solution)
+    if(solution.success == True):
+        sol=solution.x
+        # print(solution.hess_inv.matmat(np.eye(3)))
+        Li_fitfunc_plot(measured.data,measured.error,lambd,sol[0],sol[1],expe_id,grid,ws,roi,tstart,
+                             tstop,bg,np.array([sol[2],sol[3],sol[4]]),lvl,uvl,tr)
 
 def tempfit_error(sol,fmin,stepsize):
     s = sol[1]
