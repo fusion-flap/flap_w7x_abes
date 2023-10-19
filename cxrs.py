@@ -115,11 +115,13 @@ def interval_shift(expe_id):
         shift = -0.0509
     elif(expe_id[:8]=="20230315"):
         shift = -0.05087939698492462
+    elif(expe_id=="20230316.043"):
+        shift = -0.037
     elif(expe_id=="20230316.072"):
         shift = -0.05012562814070352
     elif(expe_id[:8]=="20230323"):
-        # shift = 0.038
-        shift = 0.07025#-0.0592
+        shift = 0.04764529058116232
+        # shift = -0.07229458917835671#-0.0592
     elif(expe_id[:8]=="20230328"):
         shift = 0.051633
     elif(expe_id[:8]=="20230330"):
@@ -249,7 +251,7 @@ def spectral_error_calc(spec):
     #     spec_perint[i,:] = spec_perint[i,:] - linear(np.arange(0,spec.data.shape[2],1), *popt)
     return np.sqrt(spec_perint.var(axis = 1)/ (spec.data.shape[2]))
 
-def get_line_intensity(spectra,roi,t_start,t_stop,el,expe_id,timerange,lstart,lstop,bg_wls=[0],plots=False):
+def get_line_intensity(spectra,roi,t_start,t_stop,expe_id,timerange,lstart,lstop,bg_wls=[0],plots=False):
     d_beam_on=flap.get_data('W7X_ABES',exp_id=expe_id,name='Chopper_time',
                              options={'State':{'Chop': 0, 'Defl': 0}},\
                              object_name='Beam_on',
@@ -259,7 +261,7 @@ def get_line_intensity(spectra,roi,t_start,t_stop,el,expe_id,timerange,lstart,ls
                              options={'State':{'Chop': 1, 'Defl': 0}},\
                              object_name='Beam_off',
                              coordinates={'Time': timerange})
-    
+    el = interval_shift(expe_id)
     #correcting the timescales
     c=d_beam_on.get_coordinate_object("Time")
     c.start = c.start + el
@@ -276,8 +278,8 @@ def get_line_intensity(spectra,roi,t_start,t_stop,el,expe_id,timerange,lstart,ls
                                         "Wavelength":flap.Intervals(bg_wls[0], bg_wls[1])},
                                         summing = {"Wavelength":"Mean","Time":"Mean"})
         ROI1.data[:,:] = ROI1.data[:,:] - ROI1_witbg.data
-    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Sum"})
-    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Sum"})
+    s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Mean"})
+    s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Mean"})
     
     lambd = s_on.coordinate("Wavelength")[0]
     gaus = lambda x,A,s,mu : A*np.e**(-(((x-mu)**2)/s**2))
@@ -549,7 +551,7 @@ def autocorr(qsi_cxrs,roi,t_start,t_stop,lstart,lstop,expe_id):
     plt.grid()
     
     
-def normed_intensity(qsi_cxrs,t_start,t_stop,expe_id,timerange,bg_wls):
+def normed_intensity(qsi_cxrs,grid,t_start,t_stop,expe_id,timerange,lstart,lstop,bg_wls):
     d_beam_on=flap.get_data('W7X_ABES',exp_id=expe_id,name='Chopper_time',
                              options={'State':{'Chop': 0, 'Defl': 0}},\
                              object_name='Beam_on',
@@ -576,15 +578,35 @@ def normed_intensity(qsi_cxrs,t_start,t_stop,expe_id,timerange,bg_wls):
     s_subs = s_on
     s_subs.data = s_on.data-s_off.data
     
+    s_subs = s_subs.slice_data(slicing={"Wavelength" :flap.Intervals(lstart, lstop)})
+    
+    gridfac = 0
+    if(grid == "1200g_per_mm"):
+        gridfac = 1
+    elif(grid == "1800g_per_mm"):
+        gridfac = 12572/12974
+    elif(grid == "2400g_per_mm"):
+        gridfac = 7620/12572
+        
+    lambd = s_on.coordinate("Wavelength")[0]
+    gaus = lambda x,A,s,mu,C : C + A*np.e**(-(((x-mu)**2)/s**2))/s
+    
     lineint = []
     int_calib = np.array([5961,5667,1209,3367])/5961
     for i in range(4):
-        line = max(s_subs.data[i,300:800])
-        lineint.append(line)
+        y = s_subs.data[i,:].ravel()
+        lambd = s_subs.coordinate("Wavelength")[0][i,:]
+        popton, pcovon = curve_fit(gaus,lambd, y,p0 = [max(y),0.1,lambd.mean(),0])
+        # plt.figure()
+        # plt.plot(lambd,y,"b+")
+        # plt.plot(lambd,gaus(lambd,*popton))
+        lineint.append(max(gaus(lambd,*popton)))
+        print(popton[3])
     lineint = np.array(lineint)
-    return lineint/int_calib
+    print(lineint)
+    return gridfac*lineint/int_calib
 
-def Li_spectrum (B,E,v,n,isotopemass):
+def Li_spectrum(B,E,v,n,isotopemass):
     # input parameters: (they are lists, so they are not vectors or matrices)
     # B = [Bx,By,Bz]    Cartesian components of the magneric field vector (in Tesla) in the laboratory frame
     # E = [Ex,Ey,Ez]    Cartesian components of the electric field vector (in V/m) in the laboratory frame 
