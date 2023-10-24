@@ -22,7 +22,7 @@ def parab(x,a,b,c):
 
 def gauss(lambd,s,A,up,down):
     centr = (up + down) / 2
-    return A*np.e**(-(((lambd-centr)**2)/s**2)) / s
+    return A*np.e**(-(((lambd-centr)**2)/s**2))
 
 def doppler_broadening(kbt,a): #pontosítandó
     M = 19.9419 
@@ -819,7 +819,7 @@ def CVI_529_line_generator(grid,roi,B,theta,wavelength_setting,lower_wl_lim,uppe
     doppler_spectrum = np.convolve(projection, gaussian, mode = "same")
     
     #convolution with instrumental function
-    instr = np.load("instr_funcs/"+grid+"_P03"+"_"+str(int(dslit))+"micron_slit.npy").ravel()
+    instr = np.load("instr_funcs/"+grid+"_P0"+str(roi)+"_"+str(int(dslit))+"micron_slit.npy").ravel()
     complete_spectrum = np.convolve(doppler_spectrum, instr, mode = "same")
     
     return complete_spectrum
@@ -902,9 +902,9 @@ def Li_line_generator2(B,roi,grid,wavelength_setting,lower_wl_lim,upper_wl_lim,m
         popt = polardescart3d(minta[0][i],minta[1][i])
         szegmensek[i,:] = n + popt[0]*K + popt[1]*L
         
-    # fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-    # ax.plot(minta[1],minta[0],marker = "o",linestyle="")
-    # raise ValueError("stop")
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    ax.plot(minta[1],minta[0],marker = "o",linestyle="")
+    raise ValueError("stop")
     
     #loading the wavelength grid
     wl_values = flap_w7x_abes.wavelength_grid_generator(grid,wavelength_setting,roi)
@@ -1216,7 +1216,8 @@ def CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
     gridfac = grid_slit_intensity(grid,dslit)
         
     calculated=CVI_529_line_generator(grid,roi,B,theta,ws,lvl,uvl,mu_add,kbt,A,dslit)
-    calculated = gridfac*scalef*popt[0]*calculated/max(calculated)
+    calculated=calculated/max(calculated)
+    calculated = gridfac*scalef*popt[0]*calculated
     
     if(plots == True):
         plt.figure()
@@ -1263,14 +1264,9 @@ def CVI_line_simulator_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
         plt.legend(["Data","Fit"],fontsize = fs-2)
         plt.title(expe_id+", Beam on line intensity fit")
     
-    gridfac = 1
-    if(grid == "1800g_per_mm"):
-        gridfac = 69/48
+    gridfac = grid_slit_intensity(grid,dslit)
         
-    elif(grid == "2400g_per_mm"):
-        gridfac = 3171/4800
-        
-    calculated=CVI_529_line_generator(grid,roi,B,theta,ws,lvl,uvl,mu_add,kbt,A,dslit)
+    calculated=CVI_529_line_generator(grid,roi,B,theta,ws,lvl,uvl,mu_add,kbt,A,100)
     calculated = gridfac*scalef*popt[0]*calculated/max(calculated)
     
     if(plots == True):
@@ -1362,7 +1358,7 @@ def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
     print(np.std(chisq))
     
 def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
-                     tstop,bg,B,theta,lvl,uvl,tr,scalef,errparam,iter_num,plots = False):
+                     tstop,bg,B,theta,lvl,uvl,tr,scalef,errparam,iter_num,dslit,plots = False):
     spectra = get_spectra(expe_id, "1200g_per_mm", ws, roi)
     met="Powell"
     h = np.array([1e-5,1e-3,1e-8])
@@ -1370,7 +1366,7 @@ def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
     measured = active_passive_with_error(spectra,roi,tstart,tstop,expe_id,
                                          tr,bg_wls=bg,plots=False)
     measured = measured.slice_data(slicing={"Wavelength":flap.Intervals(lvl, uvl)})
-    save_spectral_config([grid,roi,B,theta,ws,lvl,uvl])
+    save_spectral_config([grid,roi,B,theta,ws,lvl,uvl,dslit])
     np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",measured.data)
     np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",measured.error)
     
@@ -1381,7 +1377,7 @@ def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
     for i in range(iter_num):
         print("Iteration "+str(i))
         sim,sim_err = CVI_line_simulator_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
-                               tstop,bg,B,theta,lvl,uvl,tr,scalef,plots=False)
+                               tstop,bg,B,theta,lvl,uvl,tr,scalef,dslit,plots=False)
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",sim)
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",sim_err)
         if(plots == True):
@@ -1389,7 +1385,7 @@ def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
             wl_grid0 = wl_values[wl_values > lvl] #slicing the wavelength grid
             lambd = wl_grid0[uvl > wl_grid0]
             es_chisq=CVI_fitfunc_plot(sim,sim_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
-                                      tstop,bg,B,theta,lvl,uvl,tr,save=True)
+                                      tstop,bg,B,theta,lvl,uvl,tr,dslit,save=True)
             plt.title("$\chi^2 = $"+str(round(es_chisq,6)))
         solution=minimize(CVI_fitfunc,line_param,method=met,bounds = ((None,None),(0.1,None),(None,None)),tol=1e-8,
                                                                 options={"maxiter":2000})
@@ -1406,7 +1402,7 @@ def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
         chisq[i] = solution.fun
         if(plots == True):
             CVI_fitfunc_plot(sim,sim_err,lambd,sol[0],sol[1],sol[2],expe_id,grid,ws,roi,
-                            tstart,tstop,bg,B,theta,lvl,uvl,tr)
+                            tstart,tstop,bg,B,theta,lvl,uvl,tr,dslit)
             R_plot = round(spectra.coordinate("Device R")[0][0,(roi-1),0],4)
             plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ "+str(round(err,2))+" ev")
             
