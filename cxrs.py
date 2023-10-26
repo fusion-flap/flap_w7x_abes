@@ -115,6 +115,8 @@ def interval_shift(expe_id):
         shift = -0.0509
     elif(expe_id[:8]=="20230315"):
         shift = -0.05087939698492462
+    if(expe_id[:8]=="20230316"):
+        shift = -0.05012562814070352
     elif(expe_id=="20230316.043"):
         shift = -0.037
     elif(expe_id=="20230316.072"):
@@ -238,13 +240,24 @@ def active_passive(spectra,roi,t_start,t_stop,expe_id,timerange):
     
 def spectral_error_calc(spec):
     spec_perint = np.zeros((spec.data.shape[0],spec.data.shape[2]))
-    # avg_int_length = 0
+    avg_int_length = 0
+    # print(spec.data.shape)
+    # raise ValueError("Stop")
     for i in range(spec.data.shape[2]):
-        ind = np.nonzero(abs(spec.data[10,:,i]) > 1e-10)
-        # avg_int_length += len(ind[0]) / spec.data.shape[2]
-        for j in ind[0]:
-            spec_perint[:,i] = spec_perint[:,i] + spec.data[:,j,i] / len(ind[0])
-            
+        ind = np.nonzero(abs(spec.data[10,:,i]))
+        avg_int_length += len(ind[0]) / spec.data.shape[2]
+        for j in range(1,max(ind[0]+1)):
+            # if(j > 0):
+            #     #print(j)
+            spec_perint[:,i] = spec_perint[:,i] + (spec.data[:,j,i] / (len(ind[0])-1))
+    for i in range(spec.data.shape[2]):
+        if(sum(spec_perint[:,i]) == 0 and i >0):
+            spec_perint[:,i] = spec_perint[:,i-1]
+        if(sum(spec_perint[:,i]) == 0 and i == 0):
+            spec_perint[:,i] = spec_perint[:,i+1]
+    # plt.figure()
+    # plt.plot(spec_perint[780,:])
+    # raise ValueError("Stop")      
     # linear = lambda x,a,b : a*x + b
     # for i in range(spec.data.shape[0]):
     #     popt,param = curve_fit(linear, np.arange(0,spec.data.shape[2],1), spec_perint[i,:])
@@ -310,8 +323,15 @@ def indep_spectral_error_calc(spec):
     spec_perint = np.zeros((spec.data.shape[0],spec.data.shape[2]))
     for i in range(spec.data.shape[2]):
         ind = np.nonzero(abs(spec.data[10,:,i]) > 1e-10)
-        for j in ind[0]:
-            spec_perint[:,i] = spec_perint[:,i] + spec.data[:,j,i] / len(ind[0])
+        for j in range(1,max(ind[0]+1)):
+            # if(j > 0):
+            #     #print(j)
+            spec_perint[:,i] = spec_perint[:,i] + (spec.data[:,j,i] / (len(ind[0])-1))
+    for i in range(spec.data.shape[2]):
+        if(sum(spec_perint[:,i]) == 0 and i >0):
+            spec_perint[:,i] = spec_perint[:,i-1]
+        if(sum(spec_perint[:,i]) == 0 and i == 0):
+            spec_perint[:,i] = spec_perint[:,i+1]
     # for i in range(spec_perint.shape[0]):
     #       spec_perint[i,:] = spec_perint[i,:] - spec_perint[i,:].mean()
          
@@ -458,6 +478,7 @@ def error_distr(spectra,roi,t_start,t_stop,expe_id,minint,timerange,lstart,lstop
         plt.ylabel("Error",fontsize = fs)
         plt.legend(["Data","Fit"],fontsize = fs-2)
         plt.grid()
+        plt.title(expe_id+", ROI"+str(roi)+", t = ["+str(t_start)+","+str(t_stop)+"] s",fontsize = fs)
     return popt
 
 def passive(qsi_cxrs,roi,t_start,t_stop,expe_id):
@@ -819,7 +840,7 @@ def CVI_529_line_generator(grid,roi,B,theta,wavelength_setting,lower_wl_lim,uppe
     doppler_spectrum = np.convolve(projection, gaussian, mode = "same")
     
     #convolution with instrumental function
-    instr = np.load("instr_funcs/"+grid+"_P0"+str(roi)+"_"+str(int(dslit))+"micron_slit.npy").ravel()
+    instr = np.load("instr_funcs/"+grid+"_P03_"+str(int(dslit))+"micron_slit.npy").ravel()
     complete_spectrum = np.convolve(doppler_spectrum, instr, mode = "same")
     
     return complete_spectrum
