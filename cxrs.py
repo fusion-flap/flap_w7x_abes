@@ -909,7 +909,7 @@ def Li_line_generator2(B,roi,grid,wavelength_setting,lower_wl_lim,upper_wl_lim,m
         m_iso = 6.015122
     elif(isomass==7):
         m_iso = 7.016003
-    v_abs = np.sqrt((3/11)*16.02177/(1.660539*m_iso))*1e6
+    v_abs = np.sqrt(16.02177/(1.660539*m_iso))*1e6
     v = v_direction*v_abs
     n = rois_positions[:,roi-1] - centre_of_lens
     
@@ -923,9 +923,9 @@ def Li_line_generator2(B,roi,grid,wavelength_setting,lower_wl_lim,upper_wl_lim,m
         popt = polardescart3d(minta[0][i],minta[1][i])
         szegmensek[i,:] = n + popt[0]*K + popt[1]*L
         
-    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-    ax.plot(minta[1],minta[0],marker = "o",linestyle="")
-    raise ValueError("stop")
+    # fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    # ax.plot(minta[1],minta[0],marker = "o",linestyle="")
+    # raise ValueError("stop")
     
     #loading the wavelength grid
     wl_values = flap_w7x_abes.wavelength_grid_generator(grid,wavelength_setting,roi)
