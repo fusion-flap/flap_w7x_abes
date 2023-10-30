@@ -113,12 +113,16 @@ def interval_shift(expe_id):
     shift = 0
     if(expe_id[:8]=="20230314"):
         shift = -0.0509
+    elif(expe_id[:8]=="20230314.025"):
+        shift = -0.06718436873747495
     elif(expe_id[:8]=="20230315"):
         shift = -0.05087939698492462
     if(expe_id[:8]=="20230316"):
         shift = -0.05012562814070352
     elif(expe_id=="20230316.043"):
         shift = -0.037
+    elif(expe_id=="20230316.047"):
+        shift = -0.058466933867735466
     elif(expe_id=="20230316.072"):
         shift = -0.05012562814070352
     elif(expe_id[:8]=="20230323"):
