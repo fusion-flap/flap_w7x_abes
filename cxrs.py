@@ -810,24 +810,31 @@ def load_spectral_config():
         lis = file.readlines()
         lis = [line.strip() for line in lis]
     return lis
-        
 
-def CVI_529_line_generator(grid,roi,B,theta,wavelength_setting,lower_wl_lim,upper_wl_lim,mu_add,kbt,A,dslit):
+def get_zsplit_cvi(B,theta):
     # location where the web service is hosted
     pc_location = 'http://sv-coda-wsvc-28.ipp-hgw.mpg.de:6055'
 
     # fetching the fine structure of the predefined line
     fine_structure_query = '/getZeeman.json?name=C-VI-5291&B='+str(B)+'&theta1='+str(theta)
     fine_structure = requests.get(pc_location + fine_structure_query).json()
+    
+    locations = np.array(fine_structure['wavelengths'])/10
+    dat = np.zeros((locations.shape[0],2))
+    dat[:,0] = locations
+    dat[:,1] = np.array(fine_structure['amplitude'])
+    return dat
+
+def CVI_529_line_generator(grid,roi,wavelength_setting,lower_wl_lim,upper_wl_lim,mu_add,kbt,A,dslit,zsplit):
+
+    locations = zsplit[0]
+    intensities = zsplit[1]
+        
     wl_values = wavelength_grid_generator(grid,wavelength_setting,roi)#loading the wavelength grid
     wl_grid0 = wl_values[wl_values > lower_wl_lim] #slicing the wavelength grid
     wl_grid = wl_grid0[upper_wl_lim > wl_grid0]
-    
-    #projecting the loaded spectrum into the grid
-    projection = np.zeros((wl_grid.shape[0]))
-    locations = np.array(fine_structure['wavelengths'])/10
-    intensities = np.array(fine_structure['amplitude'])
     locations = locations + mu_add #Doppler shift + calibration uncertainty
+    projection = np.zeros((wl_grid.shape[0]))
     mu = np.dot(locations,intensities)/sum(intensities)
     for i in range(len(intensities)):
         diff = abs(wl_grid - locations[i])
@@ -844,7 +851,7 @@ def CVI_529_line_generator(grid,roi,B,theta,wavelength_setting,lower_wl_lim,uppe
     doppler_spectrum = np.convolve(projection, gaussian, mode = "same")
     
     #convolution with instrumental function
-    instr = np.load("instr_funcs/"+grid+"_P03_"+str(int(dslit))+"micron_slit.npy").ravel()
+    instr = np.load("instr_funcs/"+grid+"_P0"+str(roi)+"_"+str(int(dslit))+"micron_slit.npy").ravel()
     complete_spectrum = np.convolve(doppler_spectrum, instr, mode = "same")
     
     return complete_spectrum
@@ -970,8 +977,8 @@ def CVI_fitfunc(esti):
     lower_wl_lim = float(param[5])
     upper_wl_lim = float(param[6])
     dslit = int(param[7])
-    
-    modelled=CVI_529_line_generator(grid,roi,B,theta,wavelength_setting,lower_wl_lim,upper_wl_lim,mu_add,kbt,A,dslit)
+    zspl = np.loadtxt("current_zeeman_components.txt")
+    modelled=CVI_529_line_generator(grid,roi,wavelength_setting,lower_wl_lim,upper_wl_lim,mu_add,kbt,A,dslit,zspl)
     # measured = flap.load("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement.dat")
     measured=np.load("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement.npy")
     error=np.load("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error.npy")
@@ -1000,8 +1007,8 @@ def Li_fitfunc(esti):
 
 def CVI_fitfunc_plot(measured,measured_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                      tstop,bg,B,theta,lvl,uvl,tr,dslit,save=False):
-    
-    modelled = CVI_529_line_generator(grid,roi,B,theta,ws,lvl,uvl,mu_add,kbt,A,dslit)
+    zspl = np.loadtxt("current_zeeman_components.txt")
+    modelled = CVI_529_line_generator(grid,roi,ws,lvl,uvl,mu_add,kbt,A,dslit,zspl)
     fs = 15
     plt.figure()
     plt.errorbar(lambd,measured, measured_err,color = "blue")
@@ -1159,6 +1166,8 @@ def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,tstop,bg,B,theta
                                          tr,bg_wls=bg,plots=False)
     measured = measured.slice_data(slicing={"Wavelength":flap.Intervals(lvl, uvl)})
     save_spectral_config([grid,roi,B,theta,ws,lvl,uvl,dslit])
+    zc = get_zsplit_cvi(B, theta)
+    np.savetxt("current_zeeman_components.txt",zc)
     np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",measured.data)
     np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",measured.error)
         
@@ -1181,7 +1190,7 @@ def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,tstop,bg,B,theta
         # err = tempfit_error_fit(sol,solution.fun,met)#tempfit_error(sol,solution.fun,stepsize)
         R_plot = round(spectra.coordinate("Device R")[0][0,(roi-1),0],4)
         # plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2)))
-        plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ "+str(round(err[1,1],2))+" ev")
+        plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ 78.65 ev")
         # N = 1000
         # tempfit_error_curve(sol,stepsize,N)
         
@@ -1239,7 +1248,6 @@ def CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
         plt.title(expe_id+", Beam on line intensity fit")
     
     gridfac = grid_slit_intensity(grid,dslit)
-        
     calculated=CVI_529_line_generator(grid,roi,B,theta,ws,lvl,uvl,mu_add,kbt,A,dslit)
     calculated=calculated/max(calculated)
     calculated = gridfac*scalef*popt[0]*calculated
@@ -1270,7 +1278,7 @@ def CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
     return calculated,err
 
 def CVI_line_simulator_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
-                       tstop,bg,B,theta,lvl,uvl,tr,scalef,dslit,plots=False):
+                       tstop,bg,lvl,uvl,tr,scalef,dslit,plots=False):
     measured=flap.load("CVI_529nm_P0"+str(roi)+"_1200g_per_mm_measurement.dat")
     lamb = measured.coordinate("Wavelength")[0]
     gaus = lambda x,A,s,mu : A*np.e**(-(((x-mu)**2)/s**2))
@@ -1290,8 +1298,8 @@ def CVI_line_simulator_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
         plt.title(expe_id+", Beam on line intensity fit")
     
     gridfac = grid_slit_intensity(grid,dslit)
-        
-    calculated=CVI_529_line_generator(grid,roi,B,theta,ws,lvl,uvl,mu_add,kbt,A,100)
+    zc=np.loadtxt("current_zeeman_components.txt")
+    calculated=CVI_529_line_generator(grid,roi,ws,lvl,uvl,mu_add,kbt,A,100,zc)
     calculated = gridfac*scalef*popt[0]*calculated/max(calculated)
     
     if(plots == True):
@@ -1392,6 +1400,8 @@ def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                                          tr,bg_wls=bg,plots=False)
     measured = measured.slice_data(slicing={"Wavelength":flap.Intervals(lvl, uvl)})
     save_spectral_config([grid,roi,B,theta,ws,lvl,uvl,dslit])
+    zc = get_zsplit_cvi(B, theta)
+    np.savetxt("current_zeeman_components.txt",zc)
     np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",measured.data)
     np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",measured.error)
     
@@ -1402,7 +1412,7 @@ def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
     for i in range(iter_num):
         print("Iteration "+str(i))
         sim,sim_err = CVI_line_simulator_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
-                               tstop,bg,B,theta,lvl,uvl,tr,scalef,dslit,plots=False)
+                               tstop,bg,lvl,uvl,tr,scalef,dslit,plots=False)
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",sim)
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",sim_err)
         if(plots == True):
