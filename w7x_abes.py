@@ -303,7 +303,7 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
     # Doing the calibration
     data_err = np.zeros(data_arr.shape)
     if (data_arr.dtype.kind != 'f'):
-        data_arr = float(data_arr)
+            data_arr = float(data_arr)
     for i in range(len(index_start)):
         # Collecting the calibration factors andd errors
         calfac_act = np.empty(len(signal_proc),dtype=float)
@@ -318,10 +318,10 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
                 if (signal_proc[i_ch][0:5] == 'ABES-'):
                     raise ValueError("No calibration data for signal "+signal_proc[i_ch])
             if (data_arr.ndim == 2):
-                data_arr[index_start[i]:index_stop[i], i_ch] /= calfac[i][i_cal]
+                data_arr[index_start[i]:index_stop[i], i_ch] /= calfac[i][i_cal].astype("float")
                 data_err[index_start[i]:index_stop[i], i_ch] = data_arr[index_start[i]:index_stop[i], i_ch] / calfac[i][i_cal] * calfac_err[i][i_cal]
             else:
-                data_arr[index_start[i]:index_stop[i]] /= calfac[i][i_cal]
+                data_arr[index_start[i]:index_stop[i]] /= calfac[i][i_cal].astype("float")
                 data_err[index_start[i]:index_stop[i]] = data_arr[index_start[i]:index_stop[i]] / calfac[i][i_cal] * calfac_err[i][i_cal]
     return data_arr, data_err, calfac_err_dataobject
 

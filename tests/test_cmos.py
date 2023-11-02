@@ -17,6 +17,7 @@ flap_w7x_abes.register()
 
 if __name__ == "__main__":
     shotID = "20230316.089"
+    shotID="20230307.059"
     # shotID = '20230316.016'
     flap.config.read()
 
@@ -93,7 +94,10 @@ if __name__ == "__main__":
     # plt.savefig("res.pdf")
     
     #obtaining the light profile at the channels
-    light_profile=cmos.get_channel_signal()
+    cmos_on = cmos.get_chopstate()
+    cmos_off = cmos.get_chopstate(chop=1)
+    cmos_on.data -= cmos_off.data
+    light_profile=cmos_on.get_channel_signal()
     light = np.zeros([light_profile.data.shape[0], 40])
     light_l = np.zeros([light_profile.data.shape[0], 8])
     light_r = np.zeros([light_profile.data.shape[0], 8])
@@ -115,7 +119,7 @@ if __name__ == "__main__":
     # rel_bg_channel = (np.arange(40)+1)//6
     # for channel in range(40):
     #     light[:,channel] -= bg[:,rel_bg_channel[channel]]
-    light = light-np.min(cmos.data)
+    # light = light-np.min(cmos.data)
     
     timeindex=10
     fig=plt.figure(figsize=[6.5,3])
