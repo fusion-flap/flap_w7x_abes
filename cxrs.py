@@ -1190,7 +1190,7 @@ def CVI_tempfit(spectra,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,tstop,bg,B,theta
         # err = tempfit_error_fit(sol,solution.fun,met)#tempfit_error(sol,solution.fun,stepsize)
         R_plot = round(spectra.coordinate("Device R")[0][0,(roi-1),0],4)
         # plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2)))
-        plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ 78.65 ev")
+        plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ 78.65 eV")
         # N = 1000
         # tempfit_error_curve(sol,stepsize,N)
         
@@ -1228,7 +1228,7 @@ def grid_slit_intensity(grid,dslit):
         raise ValueError("Wrong grid or slit size.")
         
 def CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
-                       tstop,bg,B,theta,lvl,uvl,tr,scalef,errparam,dslit,plots=False):
+                       tstop,bg,lvl,uvl,tr,scalef,errparam,dslit,plots=False):
     measured=flap.load("CVI_529nm_P0"+str(roi)+"_1200g_per_mm_measurement.dat")
     lamb = measured.coordinate("Wavelength")[0]
     gaus = lambda x,A,s,mu : A*np.e**(-(((x-mu)**2)/s**2))
@@ -1248,7 +1248,8 @@ def CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
         plt.title(expe_id+", Beam on line intensity fit")
     
     gridfac = grid_slit_intensity(grid,dslit)
-    calculated=CVI_529_line_generator(grid,roi,B,theta,ws,lvl,uvl,mu_add,kbt,A,dslit)
+    zsplit = np.loadtxt("current_zeeman_components.txt")
+    calculated=CVI_529_line_generator(grid,roi,ws,lvl,uvl,mu_add,kbt,A,dslit,zsplit)
     calculated=calculated/max(calculated)
     calculated = gridfac*scalef*popt[0]*calculated
     
@@ -1336,6 +1337,8 @@ def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
                                          tr,bg_wls=bg,plots=False)
     measured = measured.slice_data(slicing={"Wavelength":flap.Intervals(lvl, uvl)})
     save_spectral_config([grid,roi,B,theta,ws,lvl,uvl,dslit])
+    zc = get_zsplit_cvi(B, theta)
+    np.savetxt("current_zeeman_components.txt",zc)
     np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",measured.data)
     np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",measured.error)
     
@@ -1346,7 +1349,7 @@ def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
     for i in range(iter_num):
         print("Iteration "+str(i))
         sim,sim_err = CVI_line_simulator(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
-                               tstop,bg,B,theta,lvl,uvl,tr,scalef,errparam,dslit,plots=False)
+                               tstop,bg,lvl,uvl,tr,scalef,errparam,dslit,plots=False)
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",sim)
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",sim_err)
         if(plots == True):
@@ -1362,18 +1365,19 @@ def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
             raise ValueError("Failed T_i fit")
         # print(solution)
         sol=solution.x
-        H = error_from_hesse(sol,solution.fun,h)
-        err = H[1,1]
-        print(H)
+        # H = error_from_hesse(sol,solution.fun,h)
+        # err = H[1,1]
+        # print(H)
         print(sol[1])
         T_i[i] = sol[1]
-        T_i_err[i] = err
+        # T_i_err[i] = err
         chisq[i] = solution.fun
         if(plots == True):
             CVI_fitfunc_plot(sim,sim_err,lambd,sol[0],sol[1],sol[2],expe_id,grid,ws,roi,
                              tstart,tstop,bg,B,theta,lvl,uvl,tr,dslit)
             R_plot = round(spectra.coordinate("Device R")[0][0,(roi-1),0],4)
-            plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ "+str(round(err,2))+" ev")
+            #plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_C$ = "+str(round(sol[1],2))+" $\pm$ "+str(round(err,2))+" ev")
+            plt.title("R = "+str(R_plot)+" m, $\chi^2 = $"+str(round(solution.fun,6))+", $T_{C6+}$ = "+str(round(sol[1],2)))
             
     print("Average T_i:")
     print(T_i.mean())
