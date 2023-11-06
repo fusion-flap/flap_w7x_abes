@@ -15,8 +15,9 @@ from scipy.ndimage import median_filter
 
 if __name__ == '__main__':
 
-    shotID = '20230307.047'
+    shotID = '20240307.047'
     a = flap_w7x_abes.ShotSpatCal(shotID)
+    sdf
     images = a.calc_chan_range()
     adf
     # full_calib = True

@@ -120,7 +120,7 @@ def cxrs_add_coordinate(data_object,
                       options={'Scale Time': True,
                                'Cache Data': _options["Cache data"]},
                       object_name="ROIs")
-    patch_config = cxrs_util.read_fibre_config(exp_id)
+    patch_config, temp1, temp2 = cxrs_util.read_fibre_config(exp_id)
     roi_names = [ROI.split(",")[0] for ROI in d.data[0].split("{")[2:]]
     if int(exp_id[:4])<2024:
         roi_names = ["A."+str(roi[-1]).zfill(2) for roi in roi_names]

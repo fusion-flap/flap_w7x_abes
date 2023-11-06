@@ -17,6 +17,8 @@ flap_w7x_abes.register()
 
 if __name__ == "__main__":
     shotID = "20230316.089"
+    shotID = "20230323.018"
+
     # shotID = '20230316.016'
     flap.config.read()
 
@@ -115,7 +117,7 @@ if __name__ == "__main__":
     # rel_bg_channel = (np.arange(40)+1)//6
     # for channel in range(40):
     #     light[:,channel] -= bg[:,rel_bg_channel[channel]]
-    light = light-np.min(cmos.data)
+    # light = light-np.min(cmos.data)
     
     timeindex=10
     fig=plt.figure(figsize=[6.5,3])

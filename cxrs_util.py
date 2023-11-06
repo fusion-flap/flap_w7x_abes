@@ -67,7 +67,7 @@ def read_fibre_config(exp_id=None, year=None):
                patch_oc_spectf[patch_fibers_oc[fiber]] = patch_fibers_spectf[fiber]
         except KeyError:
             pass
-    return patch_oc_spectf
+    return patch_oc_spectf, patch_fibers_spectf, patch_fibers_oc
 
 def plot_fibre_config(patch_oc_spectf):
     xstep = 3
@@ -84,10 +84,13 @@ def plot_fibre_config(patch_oc_spectf):
         starter_loc_y = [9, 16.5, 23.5,30.5, 38]
         starter_loc = np.array([starter_loc_x[side_oc_id%2], starter_loc_y[side_oc_id//2]])
         for fibers in np.arange(4)+1:
-            locations[naming[side_oc_id]+str(fibers)] = [starter_loc[0]+(fibers-1)%2, starter_loc[1]+(fibers-1)//2]
+            if (fibers-1)//2 == 0:
+                locations[naming[side_oc_id]+str(fibers)] = [starter_loc[0]+(fibers-1)%2, starter_loc[1]+(fibers-1)//2]
+            else:
+                locations[naming[side_oc_id]+str(fibers)] = [starter_loc[0]+(fibers)%2, starter_loc[1]+(fibers-1)//2]
 
     from matplotlib import pyplot as plt
-    color = {'A':'tab:blue', 'H':'tab:green'}
+    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple'}
     pointid=0
     x = [xstep*locations[channel][0] for channel in locations.keys()]
     y = [ystep*locations[channel][1] for channel in locations.keys()]
@@ -106,12 +109,53 @@ def plot_fibre_config(patch_oc_spectf):
     plt.axis('equal')
     plt.xlim([-5,5])
     plt.axis("off")
-    plt.text(5, 0, 'Optical channel / Alkali patchpanel number', c=color['A'])
-    plt.text(5, 1, 'Optical channel / Helium patchpanel number', c=color['H'])
+    plt.text(5, 0, 'Optical channel / Alkali fiber number', c=color['A'])
+    plt.text(5, 1, 'Optical channel / Helium fiber number', c=color['H'])
+    plt.text(5, 2, 'Optical channel / Helium Filterscope fiber number', c=color['HF'])
+    plt.text(5, 3, 'Optical channel / Zeff fiber number', c=color['Z'])
     plt.tight_layout()
     # plt.gca().invert_yaxis()
     plt.ylim([46*ystep, -2*ystep])
 
+def plot_patchpanel_spectrometer_config(spect_config):
+    from matplotlib import pyplot as plt
+    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple'}
+    plt.figure(figsize=[13,5])
+    for key in spect_config.keys():
+        stringkey = str(key)
+        if "N.A" not in stringkey:
+            panel = int(stringkey.split(".")[0])
+            location = int(stringkey.split(".")[1])
+            plt.scatter(panel*10+(location-1)%8*1.1-10, -location//8, alpha=0)
+            plt.text(panel*10+(location-1)%8*1.1-10, -location//8, str(location)+"/"+spect_config[key],
+                     color=color[spect_config[key].split('.')[0]])
+    plt.title("Patchpanel locations/Spectrometer channels")
+    plt.axis('equal')
+    plt.tight_layout()
+    plt.axis('off')
+    
+def plot_patchpanel_optical_channel_config(spect_config, patchp_config):
+    from matplotlib import pyplot as plt
+    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple'}
+    plt.figure(figsize=[12,5])
+    for key in patchp_config.keys():
+        stringkey = str(key)
+        if "S" not in stringkey:
+            panel = int(str(key).split(".")[0])
+            location = int(str(key).split(".")[1])
+            plt.scatter(panel*10+(location-1)%8, -location//8, alpha=0)
+            # plt.text(panel*10+(location-1)%8, -location//8, str(location)+"/"+spect_config[key],
+            #          color=color[spect_config[key].split('.')[0]])
+            if key in spect_config.keys():
+                plt.text(panel*10+(location-1)%8, -location//8, str(location)+"/"+patchp_config[key],
+                         color=color[spect_config[key].split('.')[0]])
+            else:
+                plt.text(panel*10+(location-1)%8, -location//8, str(location)+"/"+patchp_config[key],
+                          color="black")
+    plt.title("Patchpanel locations/Optical channels")
+    plt.axis('equal')
+    plt.tight_layout()
+    plt.axis('off')
 def spect_calib_cxrs_op21():
     dataset = dict()
     dataset["grating_check"] = [[datetime.datetime(2023, 4, 27, 10, 43, 00),

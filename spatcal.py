@@ -620,7 +620,7 @@ class ShotSpatCalCXRS(ShotSpatCal):
 
         # Calculating the position of the channels on the CMOS image
         from .cxrs_util import read_fibre_config
-        patch_dict = read_fibre_config(self.calibration_id)
+        patch_dict, patch_dict_sp, patch_dict_oc = read_fibre_config(self.calibration_id)
         connected = [key for key in patch_dict.keys() if ('N.A' not in patch_dict[key].upper()
                                                           and 'N.A' not in patch_dict[key].upper())]
         
@@ -706,7 +706,12 @@ class ShotSpatCalCXRS(ShotSpatCal):
         object_dict.update(object_dict_update)
         flap.save(object_dict, shotspatcal_filename)
 
+
+        clusters = ["A", "B","C","D","E","F","G","H","I","J",]
         if options['Plot'] is True:
+            colors = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple'}
+            
+            
             plt.figure()
             # Plotting the image coordinates
             plt.subplot(1, 3, 1)
@@ -730,17 +735,29 @@ class ShotSpatCalCXRS(ShotSpatCal):
                         cmos_cxrs_trans_mat, np.array([a_del, b_del]))
                     curr_chan_cent = np.asarray([lab_config[2]+chan_cent_move[0],
                                                  lab_config[3]+chan_cent_move[1]])
+                    if key[0] in clusters and key[1] == "1":
+                        clusters.remove(key[0])
+                        plt.text(curr_chan_cent[0]-7, curr_chan_cent[1]+3, key[0], color='black')
+                    # if key == "H4" or key == "J2" or key == "B4" or key == "J1":
+                    #     print(key)
+                    #     plt.scatter(curr_chan_cent[0], curr_chan_cent[1], color='tab:red')
+                    # else:     
                     plt.scatter(curr_chan_cent[0], curr_chan_cent[1], color='gray', alpha=0.5)
-            plt.scatter(fibre_coords_im[0],
-                    fibre_coords_im[1], color='tab:red')
+            # plt.scatter(fibre_coords_im[0],
+            #         fibre_coords_im[1], color='tab:red')
             index = 0
             for channel in object_dict['Channels']:
-                plt.text(fibre_coords_im[0][index]+5,
-                      fibre_coords_im[1][index], str(channel).split('.')[1], color='tab:red')
+                if str(channel).split('.')[0] == "A":
+                    plt.scatter(fibre_coords_im[0][index],
+                            fibre_coords_im[1][index], color=colors[str(channel).split('.')[0]])
+                else:
+                    plt.scatter(fibre_coords_im[0][index],
+                            fibre_coords_im[1][index], color=colors[str(channel).split('.')[0]])
                 index += 1
             plt.plot(np.asarray([beam_im[0, 0], beam_im[1, 0]]), [
-                     beam_im[0, 1], beam_im[1, 1]], color='tab:blue')
-            plt.scatter(beam_im[0, 0], beam_im[0, 1], color='tab:blue')
+                     beam_im[0, 1], beam_im[1, 1]], color='tab:orange')
+            
+            plt.scatter(beam_im[0, 0], beam_im[0, 1], color='tab:orange')
             plt.axis('equal')
             plt.xlim([np.min(fibre_coords_im[0])-50, np.max(fibre_coords_im[0])+50])
             plt.ylim([beam_im[0, 1]-50, np.max(fibre_coords_im[1])+50])
@@ -750,20 +767,38 @@ class ShotSpatCalCXRS(ShotSpatCal):
             points = np.sort(
                 np.sqrt(fibre_coords_xyz[0]**2+fibre_coords_xyz[1]**2))
             points = fibre_coords_beam
-            plt.scatter(points[0], points[1], label='new', color="tab:red")
+            index = 0
+            for channel in object_dict['Channels']:
+                plt.scatter(points[0][index], points[1][index], color=colors[str(channel).split('.')[0]])
+                index += 1
             # Plotting the machine coordinates
             plt.subplot(1, 3, 3)
             plt.title("Location in real space")
-            plt.scatter(fibre_coords_xyz[0],
-                        fibre_coords_xyz[1], color='tab:red')
+            # plt.scatter(fibre_coords_xyz[0],
+            #             fibre_coords_xyz[1], color='tab:red')
             index = 0
             for channel in object_dict['Channels']:
-                plt.text(fibre_coords_xyz[0][index]+0.003,
-                      fibre_coords_xyz[1][index], f"{str(channel).split('.')[1]}: {fibre_coords_xyz[0][index], fibre_coords_xyz[1][index]}", color='tab:red')
+                if str(channel).split('.')[0] == "A":
+                    plt.scatter(fibre_coords_xyz[0][index],
+                            fibre_coords_xyz[1][index], color=colors[str(channel).split('.')[0]])
+                    plt.text(fibre_coords_xyz[0][index]+0.003,
+                          fibre_coords_xyz[1][index], f"{str(channel).split('.')[1]}",
+                          color=colors[str(channel).split('.')[0]])
+                    if int(str(channel).split('.')[1])<27:
+                        plt.text(1.9,
+                              6.05-int(str(channel).split('.')[1])*0.003, f"{str(channel).split('.')[1]}: {int(fibre_coords_xyz[0][index]*1000)/1000, int(fibre_coords_xyz[1][index]*1000)/1000}",
+                              color=colors[str(channel).split('.')[0]], fontsize=10)
+                    else:
+                        plt.text(1.94,
+                                 6.0-int(str(channel).split('.')[1])*0.003, f"{str(channel).split('.')[1]}: {int(fibre_coords_xyz[0][index]*1000)/1000, int(fibre_coords_xyz[1][index]*1000)/1000}",
+                                 color=colors[str(channel).split('.')[0]], fontsize=10)
+                else:
+                    plt.scatter(fibre_coords_xyz[0][index],
+                            fibre_coords_xyz[1][index], color=colors[str(channel).split('.')[0]], alpha=0.3)
                 index += 1
             plt.plot([beam_start[0], beam_end[0]], [
-                        beam_start[1], beam_end[1]], color='tab:blue')
-            plt.scatter(beam_start[0], beam_start[1], color='tab:blue')
+                        beam_start[1], beam_end[1]], color='tab:orange')
+            plt.scatter(beam_start[0], beam_start[1], color='tab:orange')
             plt.show(block=False)
             plt.pause(0.01)
             
@@ -1517,8 +1552,8 @@ class CalcCalibration:
         #         if len(line) != 0:
         #             head_config_map.update({line[1]: line[0]})
         
-        from .cxrs import read_fibre_config
-        patch_dict = read_fibre_config(self.calibration_id)
+        from .cxrs_util import read_fibre_config
+        patch_dict, spect_config, patchp_config = read_fibre_config(self.calibration_id)
 
         self.cxrs_chan_cent = {}
         for chan in chan_cent.keys():
