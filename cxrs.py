@@ -16,17 +16,6 @@ from scipy import interpolate
 from scipy import sparse as sp
 import flap
 import flap_w7x_abes
-    
-def parab(x,a,b,c):
-    return a*x**2 + b*x + c
-
-def gauss(lambd,s,A,up,down):
-    centr = (up + down) / 2
-    return A*np.e**(-(((lambd-centr)**2)/s**2))
-
-def doppler_broadening(kbt,a): #pontosítandó
-    M = 19.9419 
-    return a*np.sqrt(2*1.602176487*abs(kbt)/M) / 30000
 
 def wavelength_grid_generator(grid,wavelength_setting,roi):
     calib_array = np.loadtxt("wavelength_calib_2023_"+grid+".txt") #loading the calibration coeffs
@@ -548,7 +537,7 @@ def tshif(qsi_cxrs,roi,t_start,t_stop,expe_id,timerange,wstart,wstop,N,bg_wls = 
     
     print("The best temporal shift length in second:")
     print(tsh[np.argmax(lineint)])
-    
+
 def autocorr(qsi_cxrs,roi,t_start,t_stop,lstart,lstop,expe_id):
     ROI1 = qsi_cxrs.slice_data(slicing={"ROI" :"P0"+str(roi),"Time":flap.Intervals(t_start, t_stop)})
     dt = np.mean(ROI1.coordinate("Time")[0][1:,0]-ROI1.coordinate("Time")[0][:-1,0])
@@ -562,6 +551,7 @@ def autocorr(qsi_cxrs,roi,t_start,t_stop,lstart,lstop,expe_id):
     c.start = 0.0
     c.dimension_list = [0]
     t = ROI1.coordinate("Time")[0][:,0]
+    parab = lambda x,a,b,c: a*x**2 + b*x + c
     popt, pcov = curve_fit(parab, t, line.data)
     std_mea = line.data - parab(t,*popt)
     v = std_mea.var()
@@ -845,9 +835,11 @@ def CVI_529_line_generator(grid,roi,wavelength_setting,lower_wl_lim,upper_wl_lim
         I2 = intensities[i] / (1 + distance[1]/distance[0])
         projection[closest_ind[1]] += I2
         projection[closest_ind[0]] += intensities[i] - I2
-        
+
     #addition of the Doppler broadening
+    doppler_broadening = lambda kbt,a: a*np.sqrt(2*1.602176487*abs(kbt)/19.9419 ) / 30000
     s = doppler_broadening(kbt,mu)
+    gauss = lambda lambd,s,A,up,down: A*np.e**(-(((lambd-(up + down) / 2)**2)/s**2))
     gaussian = gauss(wl_grid,s,A,upper_wl_lim,lower_wl_lim)
     doppler_spectrum = np.convolve(projection, gaussian, mode = "same")
     
