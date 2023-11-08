@@ -17,7 +17,7 @@ from scipy import sparse as sp
 import flap
 import flap_w7x_abes
 
-def wavelength_grid_generator(grid,wavelength_setting,roi):
+def wavelength_grid_generator_op21(grid,wavelength_setting,roi):
     calib_array = np.loadtxt("wavelength_calib_2023_"+grid+".txt") #loading the calibration coeffs
     c0 = calib_array[roi-1,0]
     c1 = calib_array[roi-1,2]
@@ -25,6 +25,255 @@ def wavelength_grid_generator(grid,wavelength_setting,roi):
     c3 = calib_array[roi-1,6] #writing the out to clear variables
     pix_values = np.arange(0,1024,1) - 511 
     return c3*pix_values**3 + c2*pix_values**2 + c1*pix_values + c0 + wavelength_setting
+
+def interval_shift(expe_id):
+    shift = 0
+    if(expe_id[:8]=="20230314"):
+        shift = -0.0509
+    elif(expe_id[:8]=="20230314.025"):
+        shift = -0.06718436873747495
+    elif(expe_id[:8]=="20230315"):
+        shift = -0.05087939698492462
+    if(expe_id[:8]=="20230316"):
+        shift = -0.05012562814070352
+    elif(expe_id=="20230316.043"):
+        shift = -0.037
+    elif(expe_id=="20230316.047"):
+        shift = -0.058466933867735466
+    elif(expe_id=="20230316.072"):
+        shift = -0.05012562814070352
+    elif(expe_id[:8]=="20230323"):
+        shift = 0.04764529058116232
+        # shift = -0.07229458917835671#-0.0592
+    elif(expe_id[:8]=="20230328"):
+        shift = 0.051633
+    elif(expe_id[:8]=="20230330"):
+        shift = 0.05275551102204408#0.051633
+    
+    return shift
+
+def spectral_error_calc_op21(spec):
+    spec_perint = np.zeros((spec.data.shape[0],spec.data.shape[2]))
+    for i in range(spec.data.shape[2]):
+        ind = np.nonzero(abs(spec.data[10,:,i]))
+        for j in range(1,max(ind[0]+1)):
+            spec_perint[:,i] = spec_perint[:,i] + (spec.data[:,j,i] / (len(ind[0])-1))
+    for i in range(spec.data.shape[2]):
+        if(sum(spec_perint[:,i]) == 0 and i >0):
+            spec_perint[:,i] = spec_perint[:,i-1]
+        if(sum(spec_perint[:,i]) == 0 and i == 0):
+            spec_perint[:,i] = spec_perint[:,i+1]
+
+    return np.sqrt(spec_perint.var(axis = 1)/ (spec.data.shape[2]))
+
+def indep_spectral_error_calc(spec):
+    spec_perint = np.zeros((spec.data.shape[0],spec.data.shape[2]))
+    for i in range(spec.data.shape[2]):
+        ind = np.nonzero(abs(spec.data[10,:,i]) > 1e-10)
+        for j in range(1,max(ind[0]+1)):
+            spec_perint[:,i] = spec_perint[:,i] + (spec.data[:,j,i] / (len(ind[0])-1))
+    for i in range(spec.data.shape[2]):
+        if(sum(spec_perint[:,i]) == 0 and i >0):
+            spec_perint[:,i] = spec_perint[:,i-1]
+        if(sum(spec_perint[:,i]) == 0 and i == 0):
+            spec_perint[:,i] = spec_perint[:,i+1]
+         
+    HR = np.zeros((spec.data.shape[0]))
+    HL = np.zeros((spec.data.shape[0]))
+    for i in range(1,spec_perint.shape[0]-1):
+        M1 = spec_perint[i,:]
+        HR[i]=np.mean(M1**2)-np.mean(M1*spec_perint[i+1,:])*M1.mean()/spec_perint[i+1,:].mean()
+        HL[i]=np.mean(M1**2)-np.mean(M1*spec_perint[i-1,:])*M1.mean()/spec_perint[i-1,:].mean()
+    H = (HR + HL) / 2
+    M1 = spec_perint[0,:]
+    H[0] = np.mean(M1**2)-np.mean(M1*spec_perint[1,:])*M1.mean()/spec_perint[1,:].mean()
+    M1 = spec_perint[-1,:]
+    H[-1] = np.mean(M1**2)-np.mean(M1*spec_perint[-2,:])*M1.mean()/spec_perint[-2,:].mean()
+    err = np.sqrt( abs(H) / (spec_perint.shape[1]))
+    return err
+
+class spectra:
+    
+    def __init__(self, data_source, expe_id,grid,wavelength_setting,
+                 get_data = "by shotID",campaign = "OP2.1",spatcal = True):
+        self.data_source = data_source
+        self.expe_id = expe_id
+        self.campaign = campaign
+        if(data_source == 'W7X_WEBAPI' and get_data == "by shotID" and
+            campaign == "OP2.1"):
+            self.dataobj = flap.get_data(data_source,
+                        name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
+                        exp_id=expe_id,
+                        options={'Scale Time': True,
+                        'Cache Data': False},
+                        object_name='QSI_spectral_data')
+        else:
+            raise ValueError("Undefined data source or loading process.")
+            
+        if(self.campaign == "OP2.1"):
+            self.APDCAM_timerange = [1,40]
+            
+        if(spatcal == True and self.campaign == "OP2.1"):
+            #changing to ROI coord
+            roi_coord_flap = flap.Coordinate(name='ROI', unit="1",
+                            mode=flap.CoordinateMode(equidistant=False), shape=(6),
+                            values=["P01","P02","P03","P04","P05","P06"], 
+                            dimension_list=[1])
+            self.dataobj.add_coordinate_object(roi_coord_flap)
+            self.dataobj.del_coordinate("Coord 1")
+            
+            #adding coordinate Device R
+            R_coord_flap = flap.Coordinate(name='Device R', unit="m",
+                            mode=flap.CoordinateMode(equidistant=False), shape=(6),
+                            values=[6.175608381963992,6.18531258540187,6.196755395927777,
+                            6.207903188440903,6.22187706429289,6.241915857714211],
+                            dimension_list=[1])
+            self.dataobj.add_coordinate_object(R_coord_flap)
+
+            #correcting time coordinate
+            c=self.dataobj.get_coordinate_object("Time")
+            c.values = c.values + 1
+            c=self.dataobj.get_coordinate_object("Time")
+            
+        elif(spatcal == True and self.campaign != "OP2.1"):
+            raise ValueError("Spatial for that campaign has not been implemented yet.")
+            
+            
+    def wavelength_calibration(self,grid,wavelength_setting):
+        self.grid = grid
+        self.wavelength_setting = wavelength_setting
+        if(self.campaign == "OP2.1"):
+            wl_values = np.zeros((6,1024))
+            for i in range(1,7):
+                wl_values[i-1,:] = wavelength_grid_generator_op21(grid,wavelength_setting,i)
+            
+            wl_coord_flap = flap.Coordinate(name='Wavelength', unit="nm", 
+                                            mode=flap.CoordinateMode(equidistant=False), shape=(6,1024),
+                                          values=wl_values, dimension_list=[1,2])
+            self.dataobj.add_coordinate_object(wl_coord_flap)
+            self.dataobj.del_coordinate("Coord 2")
+            
+        else:
+            raise ValueError("Wavelength calibration for that campaign has not been implemented yet.")
+            
+    def slice_by_wl(self,roi,wavelength):
+        """
+        It can get and plot the temporal evolution of 1 pixel (closest to the given wavelength).
+        spectra: dataobject containing the wavelength calibrated spectra
+        wavelength: the wavelength along wich the dataobject is sliced
+        roi: region of interest - in other words, channel.
+        """
+        spectra_1w = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi)})
+        spectra_1w = spectra_1w.slice_data(slicing={"Wavelength" : wavelength})
+        plt.figure()
+        spectra_1w.plot(axes="Time")
+        plt.xlabel("Time [s]",fontsize = 15)
+        plt.ylabel("Intensity",fontsize = 15)
+        plt.title("Temporal evolution of the pixel at wavelength "+str(wavelength)+" nm")
+        
+    def passive(self,roi,t_start,t_stop):
+        
+        ROI1 = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi),
+                                        "Time":flap.Intervals(t_start, t_stop)})
+        avg_spectrum=ROI1.slice_data(summing = {"Time":"Mean"})
+        
+        plt.figure()
+        avg_spectrum.plot(axes = "Wavelength")
+        plt.title(self.expe_id,fontsize = 15)
+        plt.title(self.expe_id+", averaged spectra, ROI = P0"+str(roi),fontsize = 15)
+        plt.grid()
+        
+    def slice_by_wl_range(self,wstart,wstop,roi):
+        spectra_1w = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi)})
+        spectra_1w = spectra_1w.slice_data(
+            slicing={"Wavelength" : flap.Intervals(wstart, wstop)},
+            summing = {"Wavelength":"Mean"})
+        
+        plt.figure()
+        spectra_1w.plot(axes="Time")
+        plt.xlabel("Time [s]",fontsize = 15)
+        plt.ylabel("Intensity",fontsize = 15)
+        tit="Avg. temporal evolution of pixels between wavelength ["
+        plt.title(tit+str(wstart)+", "+str(wstop)+"] nm")
+        
+    def active_passive(self,roi,t_start,t_stop,background_interval=[0],
+                       error=False,plotting=True):
+        if(self.campaign == "OP2.1"):
+            d_beam_on=flap.get_data('W7X_ABES',exp_id=self.expe_id,name='Chopper_time',
+                                     options={'State':{'Chop': 0, 'Defl': 0}},\
+                                     object_name='Beam_on',
+                                     coordinates={'Time': self.APDCAM_timerange})
+    
+            d_beam_off=flap.get_data('W7X_ABES',exp_id=self.expe_id,name='Chopper_time',
+                                     options={'State':{'Chop': 1, 'Defl': 0}},\
+                                     object_name='Beam_off',
+                                     coordinates={'Time': self.APDCAM_timerange})
+            
+            #correcting the timescales
+            el = interval_shift(self.expe_id)
+            c=d_beam_on.get_coordinate_object("Time")
+            c.start = c.start + el
+            c=d_beam_off.get_coordinate_object("Time")
+            c.start = c.start + el
+            
+            
+            #slicing the data
+            ROI1 = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi),
+                                    "Time":flap.Intervals(t_start, t_stop)})
+            error_on = None
+            error_off = None
+            if(error == True):
+                s_on_sliced=ROI1.slice_data(slicing={'Time':d_beam_on}) #for error calculation
+                s_off_sliced=ROI1.slice_data(slicing={'Time':d_beam_off})
+                
+                #the intervals are taken as independent measurements
+                error_on = spectral_error_calc_op21(s_on_sliced)
+                error_off = spectral_error_calc_op21(s_off_sliced)
+                
+            if(background_interval != [0]):
+                ROI1_witbg = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi),
+                            "Wavelength":flap.Intervals(background_interval[0],
+                            background_interval[1])},
+                            summing = {"Wavelength":"Mean","Time":"Mean"})
+                ROI1.data[:,:] = ROI1.data[:,:] - ROI1_witbg.data
+                
+            s_on_intervals_full=ROI1.slice_data(slicing={'Time':d_beam_on})
+            s_off_intervals_full=ROI1.slice_data(slicing={'Time':d_beam_off})
+            s_on_intervals = s_on_intervals_full.data[:,1:,].mean(axis = 1)
+            s_off_intervals = s_off_intervals_full.data[:,1:,].mean(axis = 1)
+            s_on_data = s_on_intervals.mean(axis = 1)
+            s_off_data = s_off_intervals.mean(axis = 1)
+            s_on=ROI1.slice_data(slicing={'Time':d_beam_on},
+                                 summing = {"Rel. Time in int(Time)":"Mean"})
+            s_off=ROI1.slice_data(slicing={'Time':d_beam_off},
+                                  summing = {"Rel. Time in int(Time)":"Mean"})
+            s_on.data = s_on_data
+            s_off.data = s_off_data
+            
+            if(plotting==True):
+                plt.figure()
+                s_on.plot(axes = "Wavelength")
+                s_off.plot(axes = "Wavelength")
+                legend = ["beam on","beam off"]
+                plt.legend(legend)
+                plt.title(self.expe_id+", averaged spectra, ROI = P0"+str(roi),
+                          fontsize = 15)
+                plt.grid()
+            
+            s_subs = s_on
+            s_subs.data = s_on.data-s_off.data #gaining the active spectrum
+            if(error==True):
+                s_subs.error = np.sqrt(error_on**2 + error_off**2)
+                print(s_subs.error.max())
+            
+            if(plotting==True):
+                plt.figure()
+                s_subs.plot(axes = "Wavelength")
+                plt.title(self.expe_id+", active spectrum, ROI = P0"+str(roi),
+                          fontsize = 15)
+                plt.grid()
+            
+            return s_subs
 
 def wavelength_calib(dataobj,grid,roi,wl):
     """
@@ -35,7 +284,7 @@ def wavelength_calib(dataobj,grid,roi,wl):
     roi: region of interest - in other words, channel. It can be P01-P06
     wl: central wavelength setting during the corresponding discharge
     """
-    wl_values = wavelength_grid_generator(grid,wl,roi) #calibration
+    wl_values = wavelength_grid_generator_op21(grid,wl,roi) #calibration
     
     wl_coord_flap = flap.Coordinate(name='Wavelength', unit="nm", 
                                     mode=flap.CoordinateMode(equidistant=False), shape=(1024),
@@ -97,32 +346,6 @@ def slice_by_wl(spectra,w,expe_id,roi):
     plt.xlabel("Time [s]",fontsize = 15)
     plt.ylabel("Intensity",fontsize = 15)
     plt.title("Time evolution of a pixel at wavelength "+str(w)+" nm")
-    
-def interval_shift(expe_id):
-    shift = 0
-    if(expe_id[:8]=="20230314"):
-        shift = -0.0509
-    elif(expe_id[:8]=="20230314.025"):
-        shift = -0.06718436873747495
-    elif(expe_id[:8]=="20230315"):
-        shift = -0.05087939698492462
-    if(expe_id[:8]=="20230316"):
-        shift = -0.05012562814070352
-    elif(expe_id=="20230316.043"):
-        shift = -0.037
-    elif(expe_id=="20230316.047"):
-        shift = -0.058466933867735466
-    elif(expe_id=="20230316.072"):
-        shift = -0.05012562814070352
-    elif(expe_id[:8]=="20230323"):
-        shift = 0.04764529058116232
-        # shift = -0.07229458917835671#-0.0592
-    elif(expe_id[:8]=="20230328"):
-        shift = 0.051633
-    elif(expe_id[:8]=="20230330"):
-        shift = 0.05275551102204408#0.051633
-    
-    return shift
     
 def slice_by_wl_range(spectra,wstart,wstop,expe_id,roi,timerange):
     spectra_1w = spectra.slice_data(slicing={"ROI" :"P0"+str(roi)})
@@ -821,7 +1044,7 @@ def CVI_529_line_generator(grid,roi,wavelength_setting,lower_wl_lim,upper_wl_lim
     locations = zsplit[0]
     intensities = zsplit[1]
         
-    wl_values = wavelength_grid_generator(grid,wavelength_setting,roi)#loading the wavelength grid
+    wl_values = wavelength_grid_generator_op21(grid,wavelength_setting,roi)#loading the wavelength grid
     wl_grid0 = wl_values[wl_values > lower_wl_lim] #slicing the wavelength grid
     wl_grid = wl_grid0[upper_wl_lim > wl_grid0]
     locations = locations + mu_add #Doppler shift + calibration uncertainty
@@ -1229,7 +1452,7 @@ def CVI_line_simulator(measured0,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
     
     popt, pcov = curve_fit(gaus,lamb, measured.data,p0 = [max(measured.data),0.1,lamb.mean()])
     if(plots == True):
-        wl_values = wavelength_grid_generator(grid,ws,roi)#loading the wavelength grid
+        wl_values = wavelength_grid_generator_op21(grid,ws,roi)#loading the wavelength grid
         wl_grid0 = wl_values[wl_values > lvl] #slicing the wavelength grid
         lambd = wl_grid0[uvl > wl_grid0]
         fs = 15
@@ -1280,7 +1503,7 @@ def CVI_line_simulator_me(measured0,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
     
     popt, pcov = curve_fit(gaus,lamb, measured.data,p0 = [max(measured.data),0.1,lamb.mean()])
     if(plots == True):
-        wl_values = wavelength_grid_generator(grid,ws,roi)#loading the wavelength grid
+        wl_values = wavelength_grid_generator_op21(grid,ws,roi)#loading the wavelength grid
         wl_grid0 = wl_values[wl_values > lvl] #slicing the wavelength grid
         lambd = wl_grid0[uvl > wl_grid0]
         fs = 15
@@ -1347,7 +1570,7 @@ def CVI_Ti_error_sim(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",sim)
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",sim_err)
         if(plots == True):
-            wl_values = wavelength_grid_generator(grid,ws,roi)#loading the wavelength grid
+            wl_values = wavelength_grid_generator_op21(grid,ws,roi)#loading the wavelength grid
             wl_grid0 = wl_values[wl_values > lvl] #slicing the wavelength grid
             lambd = wl_grid0[uvl > wl_grid0]
             es_chisq=CVI_fitfunc_plot(sim,sim_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
@@ -1413,7 +1636,7 @@ def CVI_Ti_error_sim_me(mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement",sim)
         np.save("CVI_529nm_P0"+str(roi)+"_"+grid+"_measurement_error",sim_err)
         if(plots == True):
-            wl_values = wavelength_grid_generator(grid,ws,roi)#loading the wavelength grid
+            wl_values = wavelength_grid_generator_op21(grid,ws,roi)#loading the wavelength grid
             wl_grid0 = wl_values[wl_values > lvl] #slicing the wavelength grid
             lambd = wl_grid0[uvl > wl_grid0]
             es_chisq=CVI_fitfunc_plot(sim,sim_err,lambd,mu_add,kbt,A,expe_id,grid,ws,roi,tstart,
