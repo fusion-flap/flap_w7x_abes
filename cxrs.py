@@ -66,7 +66,7 @@ def spectral_error_calc_op21(spec):
 
     return np.sqrt(spec_perint.var(axis = 1)/ (spec.data.shape[2]))
 
-def indep_spectral_error_calc(spec):
+def indep_spectral_error_calc_op21(spec):
     spec_perint = np.zeros((spec.data.shape[0],spec.data.shape[2]))
     for i in range(spec.data.shape[2]):
         ind = np.nonzero(abs(spec.data[10,:,i]) > 1e-10)
@@ -157,20 +157,24 @@ class spectra:
             raise ValueError("Wavelength calibration for that campaign has not been implemented yet.")
             
     def slice_by_wl(self,roi,wavelength):
-        """
-        It can get and plot the temporal evolution of 1 pixel (closest to the given wavelength).
-        spectra: dataobject containing the wavelength calibrated spectra
-        wavelength: the wavelength along wich the dataobject is sliced
-        roi: region of interest - in other words, channel.
-        """
+
         spectra_1w = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi)})
-        spectra_1w = spectra_1w.slice_data(slicing={"Wavelength" : wavelength})
+        if(type(wavelength) == float or type(wavelength) == int):
+            spectra_1w = spectra_1w.slice_data(slicing={"Wavelength" : wavelength})
+        elif(type(wavelength) == list):
+            spectra_1w = spectra_1w.slice_data(
+            slicing={"Wavelength" : flap.Intervals(wavelength[0], wavelength[1])},
+            summing = {"Wavelength":"Mean"})
         plt.figure()
         spectra_1w.plot(axes="Time")
         plt.xlabel("Time [s]",fontsize = 15)
         plt.ylabel("Intensity",fontsize = 15)
-        plt.title("Temporal evolution of the pixel at wavelength "+str(wavelength)+" nm")
-        
+        if(type(wavelength) == float or type(wavelength) == int):
+            plt.title("Temporal evolution of the pixel() at wavelength "+str(wavelength)+" nm")
+        elif(type(wavelength) == list):
+            tit="Avg. temporal evolution of pixels between wavelength ["
+            plt.title(tit+str(wavelength[0])+", "+str(wavelength[1])+"] nm")
+            
     def passive(self,roi,t_start,t_stop):
         
         ROI1 = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi),
@@ -183,18 +187,89 @@ class spectra:
         plt.title(self.expe_id+", averaged spectra, ROI = P0"+str(roi),fontsize = 15)
         plt.grid()
         
-    def slice_by_wl_range(self,wstart,wstop,roi):
-        spectra_1w = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi)})
-        spectra_1w = spectra_1w.slice_data(
-            slicing={"Wavelength" : flap.Intervals(wstart, wstop)},
-            summing = {"Wavelength":"Mean"})
+    def autocorr(self,roi,t_start,t_stop,lstart,lstop):
+        ROI1 = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi),"Time":flap.Intervals(t_start, t_stop)})
+        dt = np.mean(ROI1.coordinate("Time")[0][1:,0]-ROI1.coordinate("Time")[0][:-1,0])
+        line = ROI1.slice_data(slicing={"Wavelength" :flap.Intervals(lstart, lstop)},
+                               summing ={"Wavelength":"Sum"})
+        flap.list_data_objects(line)
+        c=line.get_coordinate_object("Time")
+        c.mode.equidistant = True
+        c.shape = line.data.shape
+        c.step = dt
+        c.start = 0.0
+        c.dimension_list = [0]
+        t = ROI1.coordinate("Time")[0][:,0]
+        parab = lambda x,a,b,c: a*x**2 + b*x + c
+        popt, pcov = curve_fit(parab, t, line.data)
+        std_mea = line.data - parab(t,*popt)
+        v = std_mea.var()
+        std_mea = std_mea/v
+        tcorr = t-t.mean()
+        corr = np.correlate(std_mea, std_mea,mode = "same")
         
+        fs = 15
         plt.figure()
-        spectra_1w.plot(axes="Time")
-        plt.xlabel("Time [s]",fontsize = 15)
-        plt.ylabel("Intensity",fontsize = 15)
-        tit="Avg. temporal evolution of pixels between wavelength ["
-        plt.title(tit+str(wstart)+", "+str(wstop)+"] nm")
+        plt.plot(tcorr,corr,"bo-")
+        plt.xlabel(r'$\tau [s]$',fontsize = fs)
+        plt.title(self.expe_id+", Auto-correlation, $\lambda = ["+str(lstart)+", "+str(lstop)+"]$ nm")
+        plt.grid()
+        
+    def tshif(self,roi,t_start,t_stop,wstart,wstop,N,background_interval = [0]):
+        if(self.campaign == "OP2.1"):
+            tsh = np.linspace(-0.075,0.075,N)
+            lineint = np.zeros((N))
+            for i in range(len(tsh)):
+                d_beam_on=flap.get_data('W7X_ABES',exp_id=self.expe_id,name='Chopper_time',
+                                         options={'State':{'Chop': 0, 'Defl': 0}},\
+                                         object_name='Beam_on',
+                                         coordinates={'Time': self.APDCAM_timerange})
+            
+                d_beam_off=flap.get_data('W7X_ABES',exp_id=self.expe_id,name='Chopper_time',
+                                         options={'State':{'Chop': 1, 'Defl': 0}},\
+                                         object_name='Beam_off',
+                                         coordinates={'Time': self.APDCAM_timerange})
+                
+                c=d_beam_on.get_coordinate_object("Time")
+                c.start = c.start + tsh[i]
+                c=d_beam_off.get_coordinate_object("Time")
+                c.start = c.start + tsh[i]
+                
+                ROI1 = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi),"Time":flap.Intervals(t_start, t_stop)})
+                if(background_interval != [0]):
+                    ROI1_witbg = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi),
+                                        "Wavelength":flap.Intervals(background_interval[0],
+                                                        background_interval[1])},
+                                        summing = {"Wavelength":"Mean","Time":"Mean"})
+                    ROI1.data[:,:] = ROI1.data[:,:] - ROI1_witbg.data
+                    
+                s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Mean"})
+                s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Mean"})
+                s_on_intervals_full=ROI1.slice_data(slicing={'Time':d_beam_on})
+                s_off_intervals_full=ROI1.slice_data(slicing={'Time':d_beam_off})
+                s_on_intervals = s_on_intervals_full.data[:,1:,].mean(axis = 1)
+                s_off_intervals = s_off_intervals_full.data[:,1:,].mean(axis = 1)
+                s_on_data = s_on_intervals.mean(axis = 1)
+                s_off_data = s_off_intervals.mean(axis = 1)
+                s_on.data = s_on_data
+                s_off.data = s_off_data
+                
+                s_subs = s_on
+                s_subs.data = s_on.data-s_off.data
+                lineint[i] = s_subs.slice_data(slicing={"Wavelength" : flap.Intervals(wstart, wstop)},
+                                               summing = {"Wavelength":"Mean"}).data
+            
+            fs = 15
+            plt.figure()
+            plt.plot(tsh,lineint,marker = "o")
+            plt.xlabel("$t_{shift}$ [s]",fontsize = fs)
+            plt.ylabel("Spectral intensity", fontsize = fs)
+            plt.title("["+str(wstart)+", "+str(wstop)+"] nm, ["+str(t_start)+", "+str(t_stop)+"] s",fontsize = fs)
+            
+            print("The best temporal shift length in second:")
+            print(tsh[np.argmax(lineint)])
+        else:
+            raise ValueError("For that campaign this method is not implemented yet.")
         
     def active_passive(self,roi,t_start,t_stop,background_interval=[0],
                        error=False,plotting=True):
@@ -274,6 +349,135 @@ class spectra:
                 plt.grid()
             
             return s_subs
+        else:
+            raise ValueError("For that campaign this method is not implemented yet.")
+            
+    def get_line_intensity(self,roi,t_start,t_stop,lstart,lstop,
+                           background_interval=[0],plotting=False):
+        if(self.campaign == "OP2.1"):
+            d_beam_on=flap.get_data('W7X_ABES',exp_id=self.expe_id,name='Chopper_time',
+                                     options={'State':{'Chop': 0, 'Defl': 0}},\
+                                     object_name='Beam_on',
+                                     coordinates={'Time': self.APDCAM_timerange})
+    
+            d_beam_off=flap.get_data('W7X_ABES',exp_id=self.expe_id,name='Chopper_time',
+                                     options={'State':{'Chop': 1, 'Defl': 0}},\
+                                     object_name='Beam_off',
+                                     coordinates={'Time': self.APDCAM_timerange})
+            el = interval_shift(self.expe_id)
+            #correcting the timescales
+            c=d_beam_on.get_coordinate_object("Time")
+            c.start = c.start + el
+            c=d_beam_off.get_coordinate_object("Time")
+            c.start = c.start + el
+            
+            #slicing the data
+            ROI1 = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi),"Time":flap.Intervals(t_start, t_stop)})
+            ROI1 = ROI1.slice_data(slicing={"Wavelength" :flap.Intervals(lstart, lstop)})
+            
+            
+            if(background_interval != [0]):
+                ROI1_witbg = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi),
+                                "Wavelength":flap.Intervals(background_interval[0], background_interval[1])},
+                                                summing = {"Wavelength":"Mean","Time":"Mean"})
+                ROI1.data[:,:] = ROI1.data[:,:] - ROI1_witbg.data
+            s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Mean"})
+            s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Mean"})
+            
+            lambd = s_on.coordinate("Wavelength")[0]
+            gaus = lambda x,A,s,mu : A*np.e**(-(((x-mu)**2)/s**2))
+            
+            popton, pcovon = curve_fit(gaus,lambd, s_on.data,p0 = [max(s_on.data),0.1,lambd.mean()])
+            poptoff, pcovoff = curve_fit(gaus,lambd, s_off.data,p0 = [max(s_off.data),0.1,lambd.mean()])
+            if(plotting == True):
+                fs = 15
+                plt.figure()
+                plt.plot(lambd,s_on.data,"+")
+                plt.plot(lambd,gaus(lambd,*popton))
+                plt.xlabel("Wavelength [nm]",fontsize = fs)
+                plt.ylabel("Spectral intensity",fontsize = fs)
+                plt.legend(["Data","Fit"],fontsize = fs-2)
+                plt.title(self.expe_id+", Beam on line intensity fit")
+                
+                plt.figure()
+                plt.plot(lambd,s_off.data,"+")
+                plt.plot(lambd,gaus(lambd,*poptoff))
+                plt.xlabel("Wavelength [nm]",fontsize = fs)
+                plt.ylabel("Spectral intensity",fontsize = fs)
+                plt.legend(["Data","Fit"],fontsize = fs-2)
+                plt.title(self.expe_id+", Beam off line intensity fit")
+                
+            return popton[0], poptoff[0]
+        else:
+            raise ValueError("For that campaign this method is not implemented yet.")
+            
+    def error_distr(self,t_start,t_stop,lstart,lstop,
+                           background_interval=[0],plotting=False):
+        if(self.campaign == "OP2.1"):
+            errorparam = np.zeros((4,2))
+            for roi in range(1,5):
+                d_beam_on=flap.get_data('W7X_ABES',exp_id=self.expe_id,name='Chopper_time',
+                                         options={'State':{'Chop': 0, 'Defl': 0}},\
+                                         object_name='Beam_on',
+                                         coordinates={'Time': self.APDCAM_timerange})
+        
+                d_beam_off=flap.get_data('W7X_ABES',exp_id=self.expe_id,name='Chopper_time',
+                                         options={'State':{'Chop': 1, 'Defl': 0}},\
+                                         object_name='Beam_off',
+                                         coordinates={'Time': self.APDCAM_timerange})
+                el = interval_shift(self.expe_id)
+                c=d_beam_on.get_coordinate_object("Time")
+                c.start = c.start + el
+                c=d_beam_off.get_coordinate_object("Time")
+                c.start = c.start + el
+                
+                #slicing the data
+                ROI1 = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi),"Time":flap.Intervals(t_start, t_stop)})
+                ROI1 = ROI1.slice_data(slicing={"Wavelength" :flap.Intervals(lstart, lstop)})
+                s_on_sliced=ROI1.slice_data(slicing={'Time':d_beam_on}) #for error calculation
+                s_off_sliced=ROI1.slice_data(slicing={'Time':d_beam_off})
+                
+                
+                
+                #the intervals are taken as independent measurements
+                error_on = list(indep_spectral_error_calc_op21(s_on_sliced))
+                error_off = list(indep_spectral_error_calc_op21(s_off_sliced))
+                if(background_interval != [0]):
+                    ROI1_witbg = self.dataobj.slice_data(slicing={"ROI" :"P0"+str(roi),
+                                "Wavelength":flap.Intervals(background_interval[0], background_interval[1])},
+                                            summing = {"Wavelength":"Mean","Time":"Mean"})
+                    ROI1.data[:,:] = ROI1.data[:,:] - ROI1_witbg.data
+                s_on=ROI1.slice_data(slicing={'Time':d_beam_on},summing = {"Rel. Time in int(Time)":"Mean"})
+                s_off=ROI1.slice_data(slicing={'Time':d_beam_off},summing = {"Rel. Time in int(Time)":"Mean"})
+                int_on = list(s_on.data)
+                int_off = list(s_off.data)
+                
+                err = np.array(error_on + error_off)
+                intensity = np.array(int_on + int_off)
+                
+                err = err[intensity.argsort()]
+                intensity = intensity[intensity.argsort()]
+                  
+                
+                sq = lambda x,a,b : a*np.sqrt(x) + b
+                if(plotting == True):
+                    fs = 15
+                    plt.figure()
+                    plt.plot(intensity,err,"+")
+                    popt, pcov = curve_fit(sq, intensity, err,p0=[0.01,0.3])
+                    plt.plot(intensity,sq(intensity,*popt))
+                    plt.xlabel("Spectral intensity",fontsize = fs)
+                    plt.ylabel("Error",fontsize = fs)
+                    plt.legend(["Data","Fit"],fontsize = fs-2)
+                    plt.grid()
+                    plt.title(self.expe_id+", ROI"+str(roi)+", t = ["+str(t_start)+","+str(t_stop)+"] s",fontsize = fs)
+                errorparam[roi-1,0] = popt[0]
+                errorparam[roi-1,1] = popt[1]
+            print(errorparam)
+            print(errorparam.mean(axis = 0))
+            return errorparam.mean(axis = 0)
+        else:
+            raise ValueError("For that campaign this method is not implemented yet.")
 
 def wavelength_calib(dataobj,grid,roi,wl):
     """
@@ -756,7 +960,7 @@ def tshif(qsi_cxrs,roi,t_start,t_stop,expe_id,timerange,wstart,wstop,N,bg_wls = 
     plt.plot(tsh,lineint,marker = "o")
     plt.xlabel("$t_{shift}$ [s]",fontsize = fs)
     plt.ylabel("Spectral intensity", fontsize = fs)
-    plt.title("Na 3s->3p, $\Delta m = 0$, ["+str(t_start)+", "+str(t_stop)+"] s",fontsize = fs)
+    plt.title("["+str(wstart)+", "+str(wstop)+"] nm, ["+str(t_start)+", "+str(t_stop)+"] s",fontsize = fs)
     
     print("The best temporal shift length in second:")
     print(tsh[np.argmax(lineint)])
