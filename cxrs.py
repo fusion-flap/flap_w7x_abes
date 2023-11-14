@@ -762,7 +762,7 @@ class spectra:
 
         return np.std(T_i)
 
-    def tempfit(self,fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,t_start,t_stop,bcg,N):
+    def tempfit(self,fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,t_start,t_stop,bcg,N,plots=False):
         if(self.campaign == "OP2.1"):
             centre_of_lens = np.array([1.305624, 6.094843, -3.013095])
             roi_pos = np.loadtxt("OP21/ROI_pos.txt")
@@ -811,13 +811,14 @@ class spectra:
                 print(solution)
                 if(solution.success == True):
                     sol = solution.x
-                    self.CVI_fitfunc_plot(sol)
                     R_plot = round(self.dataobj.coordinate(
                         "Device R")[0][0, (roi-1), 0], 4)
-                    Terr = self.CVI_Ti_error_sim_me(mu_add,kbt,A,t_start,t_stop,N,plots=False)
-                    plt.title("R = "+str(R_plot)+" m, $\chi^2 = $" +
-                              str(round(solution.fun, 6))+", $T_C$ = "+str(round(sol[1], 2))+
-                              "$\pm$ "+str(round(Terr, 2))+" eV")
+                    Terr = self.CVI_Ti_error_sim_me(sol[0],sol[1],sol[2],t_start,t_stop,N,plots=plots)
+                    self.CVI_fitfunc_plot(sol)
+                    plt.title(self.expe_id+", channel "+str(roi)+
+                              ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
+                              str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
+                              "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
 
 
 def wavelength_calib(dataobj, grid, roi, wl):
