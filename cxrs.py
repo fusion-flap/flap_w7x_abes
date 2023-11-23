@@ -32,7 +32,7 @@ def interval_shift(expe_id):
     if(expe_id[:8] == "20230314"):
         shift = -0.0509
     elif(expe_id[:8] == "20230314.025"):
-        shift = -0.06718436873747495
+        shift = -0.04924242424242424
     elif(expe_id[:8] == "20230315"):
         shift = -0.05087939698492462
     if(expe_id[:8] == "20230316"):
@@ -267,13 +267,9 @@ class spectra:
         c.start = 0.0
         c.dimension_list = [0]
         t = ROI1.coordinate("Time")[0][:, 0]
-        parab = lambda x, a, b, c: a*x**2 + b*x + c
-        popt, pcov = curve_fit(parab, t, line.data)
-        std_mea = line.data - parab(t, *popt)
-        v = std_mea.var()
-        std_mea = std_mea/v
+        norm_sig=(line.data-np.mean(line.data))/(np.std(line.data)*np.sqrt(len(line.data)))
         tcorr = t-t.mean()
-        corr = np.correlate(std_mea, std_mea, mode="same")
+        corr = np.correlate(norm_sig, norm_sig, mode="same")
 
         fs = 15
         plt.figure()
