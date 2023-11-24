@@ -72,7 +72,7 @@ def spectral_error_calc_op21(spec):
 def indep_spectral_error_calc_op21(spec):
     spec_perint = np.zeros((spec.data.shape[0], spec.data.shape[2]))
     for i in range(spec.data.shape[2]):
-        ind = np.nonzero(abs(spec.data[10, :, i]) > 1e-10)
+        ind = np.nonzero(abs(spec.data[0, :, i]) > 1e-10)
         for j in range(1, max(ind[0]+1)):
             spec_perint[:, i] = spec_perint[:, i] + \
                 (spec.data[:, j, i] / (len(ind[0])-1))
@@ -259,7 +259,6 @@ class spectra:
                      0][1:, 0]-ROI1.coordinate("Time")[0][:-1, 0])
         line = ROI1.slice_data(slicing={"Wavelength": flap.Intervals(lstart, lstop)},
                                summing={"Wavelength": "Sum"})
-        flap.list_data_objects(line)
         c = line.get_coordinate_object("Time")
         c.mode.equidistant = True
         c.shape = line.data.shape
@@ -902,7 +901,7 @@ class spectra:
                 plt.title("R = "+str(R_plot)+" m, $\chi^2 = $" +
                           str(round(solution.fun, 6))+", $T_C$ = "+str(round(sol[1], 2)))
 
-        return np.std(T_i)
+        return np.std(T_i), T_i, chisq
 
     def tempfit(self,fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,t_start,t_stop,bcg,N,plots=False):
         if(self.campaign == "OP2.1"):
@@ -955,7 +954,8 @@ class spectra:
                     sol = solution.x
                     R_plot = round(self.dataobj.coordinate(
                         "Device R")[0][0, (roi-1), 0], 4)
-                    Terr = self.CVI_Ti_error_sim_me(sol[0],sol[1],sol[2],t_start,t_stop,N,plots=plots)
+                    Terr, T_iters, chi_iters = self.CVI_Ti_error_sim_me(sol[0],
+                                        sol[1],sol[2],t_start,t_stop,N,plots=plots)
                     h = np.array([1e-5, 1e-3, 1e-8])
                     hessian_error = self.error_from_hesse(sol, solution.fun, h)[1,1]
                     print("Error based on Hessian matrix (in eV):")
@@ -965,6 +965,24 @@ class spectra:
                               ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
                               str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
                               "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
+                    plt.figure()
+                    plt.subplot(211)
+                    plt.ylabel("$T_i [eV]$",fontsize = 15)
+                    plt.grid()
+                    plt.title(self.expe_id+", channel "+str(roi)+
+                              ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
+                              str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
+                              "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
+                    plt.hlines(sol[1], 0, N, color = "red")
+                    plt.fill_between(np.arange(N), sol[1] - Terr, sol[1] + Terr,color='red', alpha=0.2)
+                    plt.plot(np.arange(N),T_iters,marker = "o",linestyle="",color="blue")
+                    plt.xlim(0,N-1)
+                    plt.subplot(212)
+                    plt.plot(np.arange(N),chi_iters,marker = "o",linestyle="",color="green")
+                    plt.ylabel("$\chi^2$",fontsize = 15)
+                    plt.xlabel("number of iterations",fontsize = 15)
+                    plt.xlim(0,N-1)
+                    plt.grid()
 
     def CVI_Ti_error_sim(self,mu_add,kbt,A,tstart,tstop,iter_num,scalef,plots=False):
         met = "Powell"
@@ -972,6 +990,8 @@ class spectra:
 
         T_i = np.zeros((iter_num))
         chisq = np.zeros((iter_num))
+        
+        R_plot = round(self.dataobj.coordinate("Device R")[0][0, (self.current_roi-1), 0], 4)
 
         for i in range(iter_num):
             print("Iteration "+str(i))
@@ -992,10 +1012,28 @@ class spectra:
             chisq[i] = solution.fun
             if(plots == True):
                 self.CVI_fitfunc_plot_sim(sol)
-                R_plot = round(self.dataobj.coordinate("Device R")[0][0, (self.current_roi-1), 0], 4)
                 plt.title("R = "+str(R_plot)+" m, $\chi^2 = $" +
                           str(round(solution.fun, 6))+", $T_C$ = "+str(round(sol[1], 2)))
-        return np.std(T_i)
+        Terr = np.std(T_i)
+        plt.figure()
+        plt.subplot(211)
+        plt.ylabel("$T_i [eV]$",fontsize = 15)
+        plt.grid()
+        plt.title(self.expe_id+", channel "+str(self.current_roi)+
+                  ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
+                  str(round(chisq.mean(), 2))+", $T_C$ = "+str(round(np.mean(T_i), 2))+
+                  "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
+        plt.hlines(np.mean(T_i), 0, iter_num, color = "red")
+        plt.fill_between(np.arange(iter_num), np.mean(T_i) - Terr, np.mean(T_i) + Terr,color='red', alpha=0.2)
+        plt.plot(np.arange(iter_num),T_i,marker = "o",linestyle="",color="blue")
+        plt.xlim(0,iter_num-1)
+        plt.subplot(212)
+        plt.plot(np.arange(iter_num),chisq,marker = "o",linestyle="",color="green")
+        plt.ylabel("$\chi^2$",fontsize = 15)
+        plt.xlabel("number of iterations",fontsize = 15)
+        plt.xlim(0,iter_num-1)
+        plt.grid()
+        return Terr
     
     def Ti_error_simulation(self,fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,
                             t_start,t_stop,bcg,N,simd,simgrid,scalef,plots=False):
