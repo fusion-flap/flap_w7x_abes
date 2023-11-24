@@ -391,8 +391,9 @@ class spectra:
                 s_off.plot(axes="Wavelength")
                 legend = ["beam on", "beam off"]
                 plt.legend(legend)
-                plt.title(self.expe_id+", averaged spectra, ROI = P0"+str(roi),
-                          fontsize=15)
+                plt.title(self.expe_id+", active spectrum, ROI = P0"+str(roi)+
+                          ", ["+str(t_start)+","+str(t_stop)+"] s",fontsize=15)
+                plt.ylabel("Intensity [a.u.]")
                 plt.grid()
 
             s_subs = s_on
@@ -403,8 +404,9 @@ class spectra:
             if(plotting == True):
                 plt.figure()
                 s_subs.plot(axes="Wavelength")
-                plt.title(self.expe_id+", active spectrum, ROI = P0"+str(roi),
-                          fontsize=15)
+                plt.title(self.expe_id+", active spectrum, ROI = P0"+str(roi)+
+                          ", ["+str(t_start)+","+str(t_stop)+"] s",fontsize=15)
+                plt.ylabel("Intensity [a.u.]")
                 plt.grid()
 
             return s_subs
