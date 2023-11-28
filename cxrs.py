@@ -568,6 +568,8 @@ class spectra:
 
             err = err[intensity.argsort()]
             intensity = intensity[intensity.argsort()]
+            
+            # print(err.mean())
 
             def sq(x, a, b): return a*np.sqrt(x) + b
             if(plotting == True):
@@ -747,7 +749,7 @@ class spectra:
         return (np.dot(C, C) - 3) / self.simulated.shape[0]
     
     
-    def CVI_line_simulator(self,mu_add,kbt,A,tstart,tstop,scalef=None,plots=False,sim=False):
+    def C_line_simulator(self,mu_add,kbt,A,tstart,tstop,fittype,scalef=None,plots=False,sim=False):
         gaus = lambda x, A, s, mu: A*np.e**(-(((x-mu)**2)/s**2))
         if(sim==False):
             measured = self.active.slice_data(
@@ -820,162 +822,54 @@ class spectra:
     
             calculated = self.C_line_generator(mu_add, kbt, A,sim=True)
             gridfac = None
-            
-            baseint = 11230
-            if(self.simgrid == "1200g_per_mm" and self.simd == 100):
-                gridfac = 1
-            elif(self.simgrid == "1800g_per_mm" and self.simd == 100):
-                gridfac = 16922/baseint
-            elif(self.simgrid == "2400g_per_mm" and self.simd == 100):
-                gridfac = 10688/baseint
-            elif(self.simgrid == "1200g_per_mm" and self.simd == 70):
-                gridfac = 12810/(baseint*1.5)
-            elif(self.simgrid == "1800g_per_mm" and self.simd == 70):
-                gridfac = 20885/(baseint*1.5)
-            elif(self.simgrid == "2400g_per_mm" and self.simd == 70):
-                gridfac = 13971/(baseint*1.5)
-            elif(self.simgrid == "1200g_per_mm" and self.simd == 50):
-                gridfac = 14715/(baseint*2)
-            elif(self.simgrid == "1800g_per_mm" and self.simd == 50):
-                gridfac = 21279/(baseint*2)
-            elif(self.simgrid == "2400g_per_mm" and self.simd == 50):
-                gridfac = 14274/(baseint*2)
-            elif(self.simgrid == "1200g_per_mm" and self.simd == 35):
-                gridfac = 12470/(baseint*2.8)
-            elif(self.simgrid == "1800g_per_mm" and self.simd == 35):
-                gridfac = 21396/(baseint*2.8)
-            elif(self.simgrid == "2400g_per_mm" and self.simd == 35):
-                gridfac = 16699/(baseint*2.8)
-            else:
-                raise ValueError("Wrong grid or slit size.")
-            
-            calculated = gridfac*scalef*popt[0]*calculated/max(calculated)
-    
-            if(plots == True):
-                plt.figure()
-                plt.plot(lamb, measured.data, "+")
-                plt.plot(lambd, calculated, marker="o", color="black")
-                plt.grid()
-            sq = lambda x, a, b: a*np.sqrt(x) + b
-            err = sq(calculated*15, self.errparam[0], self.errparam[1]) #assuming 15% modulation
-
-            if(plots == True):
-                plt.figure()
-                plt.plot(lamb, measured.data, "o")
-                plt.errorbar(lambd, calculated, err)
-                plt.grid()
-
-            calculated = np.random.normal(loc=calculated, scale=err)
-    
-            if(plots == True):
-                plt.figure()
-                plt.plot(lamb, measured.data, "+")
-                plt.plot(lambd, calculated, marker="o", color="black")
-                plt.grid()
-    
-            return calculated, err
-        
-    def CV_line_simulator(self,mu_add,kbt,A,tstart,tstop,scalef=None,plots=False,sim=False):
-        gaus = lambda x, A, s, mu: A*np.e**(-(((x-mu)**2)/s**2))
-        if(sim==False):
-            measured = self.active.slice_data(
-                slicing={"Wavelength": flap.Intervals(self.wstart, self.wstop)})
-            lamb = measured.coordinate("Wavelength")[0]
-    
-            popt, pcov = curve_fit(gaus, lamb, measured.data, p0=[
-                                   max(measured.data), 0.1, lamb.mean()])
-            if(plots == True):
-                wl_values = wavelength_grid_generator_op21(
-                    self.grid, self.wavelength_setting, self.current_roi)  # loading the wavelength grid
-                wl_grid0 = wl_values[wl_values > self.wstart]  # slicing the wavelength grid
-                lambd = wl_grid0[self.wstop > wl_grid0]
-                fs = 15
-                plt.figure()
-                plt.plot(lamb, measured.data, "+")
-                plt.plot(lambd, gaus(lambd, *popt))
-                plt.xlabel("Wavelength [nm]", fontsize=fs)
-                plt.ylabel("Spectral intensity", fontsize=fs)
-                plt.legend(["Data", "Fit"], fontsize=fs-2)
-                plt.title(self.expe_id+", Beam on line intensity fit")
-    
-            calculated = self.C_line_generator(mu_add, kbt, A)
-            calculated = popt[0]*calculated/max(calculated)
-    
-            if(plots == True):
-                plt.figure()
-                plt.plot(lamb, measured.data, "+")
-                plt.plot(lambd, calculated, marker="o", color="black")
-                plt.grid()
-    
-            err = measured.error
-    
-            if(plots == True):
-                plt.figure()
-                plt.plot(lamb, measured.data, "o")
-                plt.errorbar(lambd, calculated, err)
-                plt.grid()
-    
-            calculated = np.random.normal(loc=calculated, scale=err)
-    
-            if(plots == True):
-                plt.figure()
-                plt.plot(lamb, measured.data, "+")
-                plt.plot(lambd, calculated, marker="o", color="black")
-                plt.grid()
-    
-            return calculated, err
-        
-        if(sim==True):
-            measured = self.active.slice_data(
-                slicing={"Wavelength": flap.Intervals(self.wstart, self.wstop)})
-            lamb = measured.coordinate("Wavelength")[0] 
-    
-            popt, pcov = curve_fit(gaus, lamb, measured.data, p0=[
-                                   max(measured.data), 0.1, lamb.mean()])
-            if(plots == True):
-                wl_values = wavelength_grid_generator_op21(
-                    self.grid, self.wavelength_setting, self.current_roi)  # loading the wavelength grid
-                wl_grid0 = wl_values[wl_values > self.wstart]  # slicing the wavelength grid
-                lambd = wl_grid0[self.wstop > wl_grid0]
-                fs = 15
-                plt.figure()
-                plt.plot(lamb, measured.data, "+")
-                plt.plot(lambd, gaus(lambd, *popt))
-                plt.xlabel("Wavelength [nm]", fontsize=fs)
-                plt.ylabel("Spectral intensity", fontsize=fs)
-                plt.legend(["Data", "Fit"], fontsize=fs-2)
-                plt.title(self.expe_id+", Beam on line intensity fit")
-    
-            calculated = self.C_line_generator(mu_add, kbt, A,sim=True)
-            gridfac = 1#None
-            
-            # baseint = 11230
-            # if(self.simgrid == "1200g_per_mm" and self.simd == 100):
-            #     gridfac = 1
-            # elif(self.simgrid == "1800g_per_mm" and self.simd == 100):
-            #     gridfac = 16922/baseint
-            # elif(self.simgrid == "2400g_per_mm" and self.simd == 100):
-            #     gridfac = 10688/baseint
-            # elif(self.simgrid == "1200g_per_mm" and self.simd == 70):
-            #     gridfac = 12810/(baseint*1.5)
-            # elif(self.simgrid == "1800g_per_mm" and self.simd == 70):
-            #     gridfac = 20885/(baseint*1.5)
-            # elif(self.simgrid == "2400g_per_mm" and self.simd == 70):
-            #     gridfac = 13971/(baseint*1.5)
-            # elif(self.simgrid == "1200g_per_mm" and self.simd == 50):
-            #     gridfac = 14715/(baseint*2)
-            # elif(self.simgrid == "1800g_per_mm" and self.simd == 50):
-            #     gridfac = 21279/(baseint*2)
-            # elif(self.simgrid == "2400g_per_mm" and self.simd == 50):
-            #     gridfac = 14274/(baseint*2)
-            # elif(self.simgrid == "1200g_per_mm" and self.simd == 35):
-            #     gridfac = 12470/(baseint*2.8)
-            # elif(self.simgrid == "1800g_per_mm" and self.simd == 35):
-            #     gridfac = 21396/(baseint*2.8)
-            # elif(self.simgrid == "2400g_per_mm" and self.simd == 35):
-            #     gridfac = 16699/(baseint*2.8)
-            # else:
-            #     raise ValueError("Wrong grid or slit size.")
+            if(fittype == "CVI"):
+                baseint = 11230
+                if(self.simgrid == "1200g_per_mm" and self.simd == 100):
+                    gridfac = 1
+                elif(self.simgrid == "1800g_per_mm" and self.simd == 100):
+                    gridfac = 16922/baseint
+                elif(self.simgrid == "2400g_per_mm" and self.simd == 100):
+                    gridfac = 10688/baseint
+                elif(self.simgrid == "1200g_per_mm" and self.simd == 70):
+                    gridfac = 12810/(baseint*1.5)
+                elif(self.simgrid == "1800g_per_mm" and self.simd == 70):
+                    gridfac = 20885/(baseint*1.5)
+                elif(self.simgrid == "2400g_per_mm" and self.simd == 70):
+                    gridfac = 13971/(baseint*1.5)
+                elif(self.simgrid == "1200g_per_mm" and self.simd == 50):
+                    gridfac = 14715/(baseint*2)
+                elif(self.simgrid == "1800g_per_mm" and self.simd == 50):
+                    gridfac = 21279/(baseint*2)
+                elif(self.simgrid == "2400g_per_mm" and self.simd == 50):
+                    gridfac = 14274/(baseint*2)
+                elif(self.simgrid == "1200g_per_mm" and self.simd == 35):
+                    gridfac = 12470/(baseint*2.8)
+                elif(self.simgrid == "1800g_per_mm" and self.simd == 35):
+                    gridfac = 21396/(baseint*2.8)
+                elif(self.simgrid == "2400g_per_mm" and self.simd == 35):
+                    gridfac = 16699/(baseint*2.8)
+                else:
+                    raise ValueError("Wrong grid or slit size.")
+                    
+            elif(fittype == "CV"):
+                baseint = 3840
+                if(self.simgrid == "1200g_per_mm"):
+                    gridfac = 1
+                elif(self.simgrid == "1800g_per_mm"):
+                    gridfac = 2707/baseint
+                elif(self.simgrid == "2400g_per_mm"):
+                    gridfac = 1505/baseint
+                    
+                slitfac = None
+                if(self.simd == 100):
+                    slitfac = 1
+                elif(self.simd == 70):
+                    slitfac = 0.81823415
+                elif(self.simd == 50):
+                    slitfac = 0.65055357
+                elif(self.simd == 35):
+                    slitfac = 0.46871601   
+                gridfac = gridfac*slitfac
             
             calculated = gridfac*scalef*popt[0]*calculated/max(calculated)
     
@@ -1003,7 +897,7 @@ class spectra:
     
             return calculated, err
     
-    def CVI_Ti_error_sim_me(self,mu_add,kbt,A,tstart,tstop,iter_num,plots=False):
+    def C_Ti_error_sim_me(self,mu_add,kbt,A,tstart,tstop,iter_num,fittype,plots=False):
         met = "Powell"
         line_param = np.array([mu_add, kbt, A])
 
@@ -1012,37 +906,7 @@ class spectra:
 
         for i in range(iter_num):
             print("Iteration "+str(i))
-            self.simulated, self.simulated_error = self.CVI_line_simulator(mu_add, kbt, A, tstart,tstop, plots=False)
-            # raise ValueError("stop")
-            if(plots == True):
-                es_chisq = self.C_fitfunc_plot_sim(line_param)
-                plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
-            solution = minimize(self.C_fitfunc_sim, line_param, method=met, bounds=((None, None), (0.1, None), (None, None)), tol=1e-8,
-                                options={"maxiter": 2000})
-            if(solution.success == False):
-                raise ValueError("Failed T_i fit")
-            sol = solution.x
-            print(sol[1])
-            T_i[i] = sol[1]
-            chisq[i] = solution.fun
-            if(plots == True):
-                self.C_fitfunc_plot_sim(sol)
-                R_plot = round(self.dataobj.coordinate("Device R")[0][0, (self.current_roi-1), 0], 4)
-                plt.title("R = "+str(R_plot)+" m, $\chi^2 = $" +
-                          str(round(solution.fun, 6))+", $T_C$ = "+str(round(sol[1], 2)))
-
-        return np.std(T_i), T_i, chisq
-    
-    def CV_Ti_error_sim_me(self,mu_add,kbt,A,tstart,tstop,iter_num,plots=False):
-        met = "Powell"
-        line_param = np.array([mu_add, kbt, A])
-
-        T_i = np.zeros((iter_num))
-        chisq = np.zeros((iter_num))
-
-        for i in range(iter_num):
-            print("Iteration "+str(i))
-            self.simulated, self.simulated_error = self.CV_line_simulator(mu_add, kbt, A, tstart,tstop, plots=False)
+            self.simulated, self.simulated_error = self.C_line_simulator(mu_add, kbt, A, tstart,tstop,fittype, plots=False)
             # raise ValueError("stop")
             if(plots == True):
                 es_chisq = self.C_fitfunc_plot_sim(line_param)
@@ -1111,8 +975,8 @@ class spectra:
                     sol = solution.x
                     R_plot = round(self.dataobj.coordinate(
                         "Device R")[0][0, (roi-1), 0], 4)
-                    Terr, T_iters, chi_iters = self.CV_Ti_error_sim_me(sol[0],
-                                        sol[1],sol[2],t_start,t_stop,N,plots=plots)
+                    Terr, T_iters, chi_iters = self.C_Ti_error_sim_me(sol[0],
+                                        sol[1],sol[2],t_start,t_stop,N,fittype,plots=plots)
                     h = np.array([1e-5, 1e-3, 1e-8])
                     hessian_error = self.error_from_hesse(sol, solution.fun, h)[1,1]
                     print("Error based on Hessian matrix (in eV):")
@@ -1174,8 +1038,8 @@ class spectra:
                     sol = solution.x
                     R_plot = round(self.dataobj.coordinate(
                         "Device R")[0][0, (roi-1), 0], 4)
-                    Terr, T_iters, chi_iters = self.CVI_Ti_error_sim_me(sol[0],
-                                        sol[1],sol[2],t_start,t_stop,N,plots=plots)
+                    Terr, T_iters, chi_iters = self.C_Ti_error_sim_me(sol[0],
+                                        sol[1],sol[2],t_start,t_stop,N,fittype,plots=plots)
                     h = np.array([1e-5, 1e-3, 1e-8])
                     hessian_error = self.error_from_hesse(sol, solution.fun, h)[1,1]
                     print("Error based on Hessian matrix (in eV):")
@@ -1204,7 +1068,7 @@ class spectra:
                     plt.xlim(0,N-1)
                     plt.grid()
 
-    def CVI_Ti_error_sim(self,mu_add,kbt,A,tstart,tstop,iter_num,scalef,plots=False):
+    def C_Ti_error_sim(self,mu_add,kbt,A,tstart,tstop,iter_num,scalef,fittype,plots=False):
         met = "Powell"
         line_param = np.array([mu_add, kbt, A])
 
@@ -1215,13 +1079,13 @@ class spectra:
 
         for i in range(iter_num):
             print("Iteration "+str(i))
-            self.simulated, self.simulated_error = self.CVI_line_simulator(mu_add,
-                                    kbt, A, tstart,tstop,scalef=scalef, plots=False,sim=True)
+            self.simulated, self.simulated_error = self.C_line_simulator(mu_add,
+                                    kbt, A, tstart,tstop,fittype,scalef=scalef, plots=False,sim=True)
             # raise ValueError("stop")
             if(plots == True):
-                es_chisq = self.CVI_fitfunc_plot_sim(line_param)
+                es_chisq = self.C_fitfunc_plot_sim(line_param)
                 plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
-            solution = minimize(self.CVI_fitfunc_sim, line_param, method=met,
+            solution = minimize(self.C_fitfunc_sim, line_param, method=met,
                                 bounds=((None, None), (0.1, None), (None, None)), tol=1e-8,
                                 options={"maxiter": 2000})
             if(solution.success == False):
@@ -1231,7 +1095,7 @@ class spectra:
             T_i[i] = sol[1]
             chisq[i] = solution.fun
             if(plots == True):
-                self.CVI_fitfunc_plot_sim(sol)
+                self.C_fitfunc_plot_sim(sol)
                 plt.title("R = "+str(R_plot)+" m, $\chi^2 = $" +
                           str(round(solution.fun, 6))+", $T_C$ = "+str(round(sol[1], 2)))
         Terr = np.std(T_i)
@@ -1264,13 +1128,6 @@ class spectra:
                 (roi_pos.shape[0], roi_pos.shape[1]))
             for i in range(roi_pos.shape[1]):
                 self.observation_directions[:,i] = roi_pos[:, i]-centre_of_lens
-            self.B = np.loadtxt("OP21/"+self.expe_id+".txt")
-            self.Babs = np.sqrt(np.sum(self.B[:, roi-1]**2))
-            divider = np.sqrt(
-                np.sum(self.observation_directions[:, roi-1]**2))*self.Babs
-            n = self.observation_directions[:, roi-1]
-            self.current_theta = np.arccos(
-                np.sum(n*self.B[:, roi-1])/divider)*180/np.pi
             self.current_roi = roi
             self.dslit = dslit
             self.wstart = wstart
@@ -1284,7 +1141,37 @@ class spectra:
                                               background_interval=bcg, error=True, plotting=False)
             self.active = self.active.slice_data(
                 slicing={"Wavelength": flap.Intervals(wstart, wstop)})
-            if(fittype == "CVI"):
+            if(fittype == "CV"):
+                self.B = np.loadtxt("OP21/"+self.expe_id+".txt")
+                self.Babs = np.sqrt(np.sum(self.B[:, roi-1]**2))
+                divider = np.sqrt(
+                    np.sum(self.observation_directions[:, roi-1]**2))*self.Babs
+                n = self.observation_directions[:, roi-1]
+                self.current_theta = np.arccos(
+                    np.sum(n*self.B[:, roi-1])/divider)*180/np.pi
+                
+                self.errparam = np.array([0.07875014474033012,0.4501855052541737]) 
+                #on a H line (486 nm), and on the background, respectively, for 9s
+                
+                with open('OP21/getZeeman_CV_ROI'+str(self.current_roi)+'.json', 'r') as f:
+                    datafile = json.load(f)
+                
+                self.zc_locations = np.array(datafile['wavelengths'])/10
+                self.zc_intensities = np.array(datafile['amplitude'])
+                
+                Terr = self.C_Ti_error_sim(mu_add,kbt,A,t_start,t_stop,N,scalef,fittype,plots=plots)
+                print("T_i error with the given parameters:")
+                print(Terr)
+                return Terr
+            
+            elif(fittype == "CVI"):
+                self.B = np.loadtxt("OP21/"+self.expe_id+".txt")
+                self.Babs = np.sqrt(np.sum(self.B[:, roi-1]**2))
+                divider = np.sqrt(
+                    np.sum(self.observation_directions[:, roi-1]**2))*self.Babs
+                n = self.observation_directions[:, roi-1]
+                self.current_theta = np.arccos(
+                    np.sum(n*self.B[:, roi-1])/divider)*180/np.pi
                 self.errparam = np.array([0.08126764,0.44721794]) 
                 #average ROI1-4 error parameters on Sodium lines for 6s
                 
@@ -1300,7 +1187,7 @@ class spectra:
                 self.zc_locations = np.array(fine_structure['wavelengths'])/10
                 self.zc_intensities = np.array(fine_structure['amplitude'])
 
-                Terr = self.CVI_Ti_error_sim(mu_add,kbt,A,t_start,t_stop,N,scalef,plots=plots)
+                Terr = self.C_Ti_error_sim(mu_add,kbt,A,t_start,t_stop,N,scalef,fittype,plots=plots)
                 print("T_i error with the given parameters:")
                 print(Terr)
                 return Terr
