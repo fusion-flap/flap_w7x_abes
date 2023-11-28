@@ -641,7 +641,7 @@ class spectra:
 
         return complete_spectrum
 
-    def CVI_fitfunc(self, esti):
+    def C_fitfunc(self, esti):
         mu_add = esti[0]
         kbt = esti[1]
         A = esti[2]
@@ -649,7 +649,7 @@ class spectra:
         C = (modelled - self.active.data)/self.active.error
         return (np.dot(C, C) - 3) / self.active.data.shape[0]
     
-    def CVI_fitfunc_sim(self, esti):
+    def C_fitfunc_sim(self, esti):
         mu_add = esti[0]
         kbt = esti[1]
         A = esti[2]
@@ -657,42 +657,7 @@ class spectra:
         C = (modelled - self.simulated)/self.simulated_error
         return (np.dot(C, C) - 3) / self.simulated.shape[0]
 
-    def CVI_fitfunc_plot(self, esti):
-        mu_add = esti[0]
-        kbt = esti[1]
-        A = esti[2]
-        modelled = self.C_line_generator(mu_add, kbt, A)
-        C = (modelled - self.active.data)/self.active.error
-
-        lambd = self.active.coordinate("Wavelength")[0]
-
-        fs = 15
-        plt.figure()
-        plt.errorbar(lambd, self.active.data, self.active.error, color="blue")
-        plt.plot(lambd, modelled, color="red")
-        plt.xlabel("Wavelength [nm]", fontsize=fs)
-        plt.ylabel("Intensity [a.u.]", fontsize=fs)
-        plt.grid()
-        plt.legend(["Calculated", "Measured"], loc="best", fontsize=(fs-2))
-        return (np.dot(C, C) - 3) / self.active.data.shape[0]
-    
-    def CV_fitfunc(self, esti):
-        mu_add = esti[0]
-        kbt = esti[1]
-        A = esti[2]
-        modelled = self.C_line_generator(mu_add, kbt, A)
-        C = (modelled - self.active.data)/self.active.error
-        return (np.dot(C, C) - 3) / self.active.data.shape[0]
-    
-    def CV_fitfunc_sim(self, esti):
-        mu_add = esti[0]
-        kbt = esti[1]
-        A = esti[2]
-        modelled = self.C_line_generator(mu_add, kbt, A,sim = True)
-        C = (modelled - self.simulated)/self.simulated_error
-        return (np.dot(C, C) - 3) / self.simulated.shape[0]
-
-    def CV_fitfunc_plot(self, esti):
+    def C_fitfunc_plot(self, esti):
         mu_add = esti[0]
         kbt = esti[1]
         A = esti[2]
@@ -716,8 +681,8 @@ class spectra:
         sol_n = sol.copy()
         sol_p[i] = sol_p[i] + h
         sol_n[i] = sol_n[i] - h
-        fp1 = self.CVI_fitfunc(sol_p)
-        fm1 = self.CVI_fitfunc(sol_n)
+        fp1 = self.C_fitfunc(sol_p)
+        fm1 = self.C_fitfunc(sol_n)
         return (fp1 + fm1 - 2*fmin)/h**2
 
     def partial_cross_deriv(self,sol, fmin, i, j, hi, hj):
@@ -737,10 +702,10 @@ class spectra:
         sol_nn[i] = sol_nn[i] - hi
         sol_nn[j] = sol_nn[j] - hj
 
-        fpp = self.CVI_fitfunc(sol_pp)
-        fpn = self.CVI_fitfunc(sol_pn)
-        fnp = self.CVI_fitfunc(sol_np)
-        fnn = self.CVI_fitfunc(sol_nn)
+        fpp = self.C_fitfunc(sol_pp)
+        fpn = self.C_fitfunc(sol_pn)
+        fnp = self.C_fitfunc(sol_np)
+        fnn = self.C_fitfunc(sol_nn)
 
         return (fpp-fpn-fnp+fnn) / (4*hi*hj)
 
@@ -759,7 +724,7 @@ class spectra:
         I = np.linalg.inv(alpha)
         return np.sqrt(abs(I))
     
-    def CVI_fitfunc_plot_sim(self, esti):
+    def C_fitfunc_plot_sim(self, esti):
         mu_add = esti[0]
         kbt = esti[1]
         A = esti[2]
@@ -781,27 +746,6 @@ class spectra:
         plt.legend(["Calculated", "Measured"], loc="best", fontsize=(fs-2))
         return (np.dot(C, C) - 3) / self.simulated.shape[0]
     
-    def CV_fitfunc_plot_sim(self, esti):
-        mu_add = esti[0]
-        kbt = esti[1]
-        A = esti[2]
-        modelled = self.C_line_generator(mu_add, kbt, A,sim = True)
-        C = (modelled - self.simulated)/self.simulated_error
-
-        wl_values = wavelength_grid_generator_op21(
-            self.simgrid, self.wavelength_setting, self.current_roi)  # loading the wavelength grid
-        wl_grid0 = wl_values[wl_values > self.wstart]  # slicing the wavelength grid
-        lambd = wl_grid0[self.wstop > wl_grid0]
-
-        fs = 15
-        plt.figure()
-        plt.errorbar(lambd, self.simulated, self.simulated_error, color="blue")
-        plt.plot(lambd, modelled, color="red")
-        plt.xlabel("Wavelength [nm]", fontsize=fs)
-        plt.ylabel("Intensity [a.u.]", fontsize=fs)
-        plt.grid()
-        plt.legend(["Calculated", "Measured"], loc="best", fontsize=(fs-2))
-        return (np.dot(C, C) - 3) / self.simulated.shape[0]
     
     def CVI_line_simulator(self,mu_add,kbt,A,tstart,tstop,scalef=None,plots=False,sim=False):
         gaus = lambda x, A, s, mu: A*np.e**(-(((x-mu)**2)/s**2))
@@ -1071,9 +1015,9 @@ class spectra:
             self.simulated, self.simulated_error = self.CVI_line_simulator(mu_add, kbt, A, tstart,tstop, plots=False)
             # raise ValueError("stop")
             if(plots == True):
-                es_chisq = self.CVI_fitfunc_plot_sim(line_param)
+                es_chisq = self.C_fitfunc_plot_sim(line_param)
                 plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
-            solution = minimize(self.CVI_fitfunc_sim, line_param, method=met, bounds=((None, None), (0.1, None), (None, None)), tol=1e-8,
+            solution = minimize(self.C_fitfunc_sim, line_param, method=met, bounds=((None, None), (0.1, None), (None, None)), tol=1e-8,
                                 options={"maxiter": 2000})
             if(solution.success == False):
                 raise ValueError("Failed T_i fit")
@@ -1082,7 +1026,7 @@ class spectra:
             T_i[i] = sol[1]
             chisq[i] = solution.fun
             if(plots == True):
-                self.CVI_fitfunc_plot_sim(sol)
+                self.C_fitfunc_plot_sim(sol)
                 R_plot = round(self.dataobj.coordinate("Device R")[0][0, (self.current_roi-1), 0], 4)
                 plt.title("R = "+str(R_plot)+" m, $\chi^2 = $" +
                           str(round(solution.fun, 6))+", $T_C$ = "+str(round(sol[1], 2)))
@@ -1101,9 +1045,9 @@ class spectra:
             self.simulated, self.simulated_error = self.CV_line_simulator(mu_add, kbt, A, tstart,tstop, plots=False)
             # raise ValueError("stop")
             if(plots == True):
-                es_chisq = self.CV_fitfunc_plot_sim(line_param)
+                es_chisq = self.C_fitfunc_plot_sim(line_param)
                 plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
-            solution = minimize(self.CV_fitfunc_sim, line_param, method=met, bounds=((None, None), (0.1, None), (None, None)), tol=1e-8,
+            solution = minimize(self.C_fitfunc_sim, line_param, method=met, bounds=((None, None), (0.1, None), (None, None)), tol=1e-8,
                                 options={"maxiter": 2000})
             if(solution.success == False):
                 raise ValueError("Failed T_i fit")
@@ -1112,7 +1056,7 @@ class spectra:
             T_i[i] = sol[1]
             chisq[i] = solution.fun
             if(plots == True):
-                self.CV_fitfunc_plot_sim(sol)
+                self.C_fitfunc_plot_sim(sol)
                 R_plot = round(self.dataobj.coordinate("Device R")[0][0, (self.current_roi-1), 0], 4)
                 plt.title("R = "+str(R_plot)+" m, $\chi^2 = $" +
                           str(round(solution.fun, 6))+", $T_C$ = "+str(round(sol[1], 2)))
@@ -1156,9 +1100,9 @@ class spectra:
                 # plt.plot(self.zc_locations,self.zc_intensities,"+")
                 
                 esti = np.array([mu_add, kbt, A])
-                es_chisq = self.CV_fitfunc_plot(esti)
+                es_chisq = self.C_fitfunc_plot(esti)
                 plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
-                solution = minimize(self.CV_fitfunc, esti, method="Powell",
+                solution = minimize(self.C_fitfunc, esti, method="Powell",
                                     bounds=((None, None), (0.1, None), (None, None)), tol=1e-12,
                                     options={"maxiter": 2000})
 
@@ -1173,7 +1117,7 @@ class spectra:
                     hessian_error = self.error_from_hesse(sol, solution.fun, h)[1,1]
                     print("Error based on Hessian matrix (in eV):")
                     print(hessian_error)
-                    self.CV_fitfunc_plot(sol)
+                    self.C_fitfunc_plot(sol)
                     plt.title(self.expe_id+", channel "+str(roi)+
                               ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
                               str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
@@ -1219,9 +1163,9 @@ class spectra:
                 self.zc_intensities = np.array(fine_structure['amplitude'])
                 
                 esti = np.array([mu_add, kbt, A])
-                es_chisq = self.CVI_fitfunc_plot(esti)
+                es_chisq = self.C_fitfunc_plot(esti)
                 plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
-                solution = minimize(self.CVI_fitfunc, esti, method="Powell",
+                solution = minimize(self.C_fitfunc, esti, method="Powell",
                                     bounds=((None, None), (0.1, None), (None, None)), tol=1e-12,
                                     options={"maxiter": 2000})
 
@@ -1236,7 +1180,7 @@ class spectra:
                     hessian_error = self.error_from_hesse(sol, solution.fun, h)[1,1]
                     print("Error based on Hessian matrix (in eV):")
                     print(hessian_error)
-                    self.CVI_fitfunc_plot(sol)
+                    self.C_fitfunc_plot(sol)
                     plt.title(self.expe_id+", channel "+str(roi)+
                               ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
                               str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
@@ -1335,15 +1279,15 @@ class spectra:
             self.simgrid = simgrid
             # self.errparam = np.array([0.05397319090280941,0.5316958506860017]) 
             # #ROI4 CVI line error between 528.7 and 529.3 for 6s
-            
-            self.errparam = np.array([0.08126764,0.44721794]) 
-            #average ROI1-4 error parameters on Sodium lines for 6s
 
             self.active = self.active_passive(roi, t_start, t_stop,
                                               background_interval=bcg, error=True, plotting=False)
             self.active = self.active.slice_data(
                 slicing={"Wavelength": flap.Intervals(wstart, wstop)})
             if(fittype == "CVI"):
+                self.errparam = np.array([0.08126764,0.44721794]) 
+                #average ROI1-4 error parameters on Sodium lines for 6s
+                
                 # location where the web service is hosted
                 pc_location = 'http://sv-coda-wsvc-28.ipp-hgw.mpg.de:6055'
 
