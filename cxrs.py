@@ -1134,8 +1134,6 @@ class spectra:
             self.wstop = wstop
             self.simd = simd
             self.simgrid = simgrid
-            # self.errparam = np.array([0.05397319090280941,0.5316958506860017]) 
-            # #ROI4 CVI line error between 528.7 and 529.3 for 6s
 
             self.active = self.active_passive(roi, t_start, t_stop,
                                               background_interval=bcg, error=True, plotting=False)
