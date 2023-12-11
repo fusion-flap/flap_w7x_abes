@@ -45,7 +45,7 @@ def interval_shift(expe_id):
     elif(expe_id == "20230316.072"):
         shift = -0.05012562814070352
     elif(expe_id[:8] == "20230323"):
-        shift = 0.04764529058116232
+        shift = -0.075
         # shift = -0.07229458917835671#-0.0592
     elif(expe_id[:8] == "20230328"):
         shift = 0.051633
@@ -418,45 +418,39 @@ class spectra:
     def get_line_intensity(self, roi, t_start, t_stop, lstart, lstop,
                            background_interval=[0], plotting=False):
         if(self.campaign == "OP2.1"):
-            d_beam_on = flap.get_data('W7X_ABES', exp_id=self.expe_id, name='Chopper_time',
-                                      options={
-                                          'State': {'Chop': 0, 'Defl': 0}},
-                                      object_name='Beam_on',
-                                      coordinates={'Time': self.APDCAM_timerange})
-
-            d_beam_off = flap.get_data('W7X_ABES', exp_id=self.expe_id, name='Chopper_time',
-                                       options={
-                                           'State': {'Chop': 1, 'Defl': 0}},
-                                       object_name='Beam_off',
-                                       coordinates={'Time': self.APDCAM_timerange})
-            el = interval_shift(self.expe_id)
-            # correcting the timescales
-            c = d_beam_on.get_coordinate_object("Time")
-            c.start = c.start + el
-            c = d_beam_off.get_coordinate_object("Time")
-            c.start = c.start + el
-
             # slicing the data
-            ROI1 = self.dataobj.slice_data(
-                slicing={"ROI": "P0"+str(roi), "Time": flap.Intervals(t_start, t_stop)})
-            ROI1 = ROI1.slice_data(
-                slicing={"Wavelength": flap.Intervals(lstart, lstop)})
+            ROI1 = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
+                                        "Time": flap.Intervals(t_start, t_stop),
+                                        "Wavelength": flap.Intervals(lstart,lstop)})
 
             if(background_interval != [0]):
                 ROI1_witbg = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
-                                                              "Wavelength": flap.Intervals(background_interval[0], background_interval[1])},
+                                                              "Wavelength": flap.Intervals(background_interval[0],
+                                                                                           background_interval[1])},
                                                      summing={"Wavelength": "Mean", "Time": "Mean"})
                 ROI1.data[:, :] = ROI1.data[:, :] - ROI1_witbg.data
-            s_on = ROI1.slice_data(slicing={'Time': d_beam_on}, summing={
-                                   "Rel. Time in int(Time)": "Mean"})
-            s_off = ROI1.slice_data(slicing={'Time': d_beam_off}, summing={
-                                    "Rel. Time in int(Time)": "Mean"})
+
+            s_on_intervals_full = ROI1.slice_data(
+                slicing={'Time': self.d_beam_on})
+            s_off_intervals_full = ROI1.slice_data(
+                slicing={'Time': self.d_beam_off})
+            s_on_intervals = s_on_intervals_full.data[:, 1:, ].mean(axis=1)
+            s_off_intervals = s_off_intervals_full.data[:, 1:, ].mean(axis=1)
+            s_on_data = s_on_intervals.mean(axis=1)
+            s_off_data = s_off_intervals.mean(axis=1)
+            s_on = ROI1.slice_data(slicing={'Time': self.d_beam_on},
+                                   summing={"Rel. Time in int(Time)": "Mean"})
+            s_off = ROI1.slice_data(slicing={'Time': self.d_beam_off},
+                                    summing={"Rel. Time in int(Time)": "Mean"})
+            s_on.data = s_on_data
+            s_off.data = s_off_data
 
             lambd = s_on.coordinate("Wavelength")[0]
             def gaus(x, A, s, mu): return A*np.e**(-(((x-mu)**2)/s**2))
 
             popton, pcovon = curve_fit(gaus, lambd, s_on.data, p0=[
                                        max(s_on.data), 0.1, lambd.mean()])
+            print(popton[0])
             poptoff, pcovoff = curve_fit(gaus, lambd, s_off.data, p0=[
                                          max(s_off.data), 0.1, lambd.mean()])
             if(plotting == True):
