@@ -5,6 +5,7 @@ Created on Tue Aug 8 15:27:49 2023
 @author: bcsillag
 
 Data processing code for Wendelstein 7-X QSI CXRS spectra measured during OP2.1
+It can be modified easely to process data from later campaigns as well
 """
 
 import requests
@@ -17,18 +18,46 @@ import pandas as pd
 import flap
 
 
-def wavelength_grid_generator_op21(grid, wavelength_setting, roi):
-    # loading the calibration coeffs
+def wavelength_grid_generator_op21(grid, w_s, roi):
+    """
+    Generates a wavelength grid for spectra measured by IsoPlane using 
+    coefficients that were fitted by calibration (which assumed third-order
+    polynomial relation between the wavelength values and the pixels). This
+    wavelength grid is only valid for the given ROI (channel).
+    
+    INPUT:
+        grid: "1200g_per_mm", "1800g_per_mm" or "2400g_per_mm"
+        w_s: central wavelength setting of the measurement (float)
+        roi: Region Of Interest (ROI), which belongs to the channel in question (int)
+    OUTPUT:
+        1D numpy array with the calibrated wavelength values
+    """
+    
     calib_array = np.loadtxt("wavelength_calib_2023_"+grid+".txt")
+    # loading the calibration coeffs
     c0 = calib_array[roi-1, 0]
     c1 = calib_array[roi-1, 2]
     c2 = calib_array[roi-1, 4]
     c3 = calib_array[roi-1, 6]  # writing the out to clear variables
-    pix_values = np.arange(0, 1024, 1) - 511
-    return c3*pix_values**3 + c2*pix_values**2 + c1*pix_values + c0 + wavelength_setting
+    pix_values = np.arange(0, 1024, 1) - 511 #centralizing the pixel range
+    return c3*pix_values**3 + c2*pix_values**2 + c1*pix_values + c0 + w_s
 
 
 def interval_shift(expe_id):
+    """
+    A function to correct the discrepancies between the clock of the CMOS and
+    the spectrometer camera. It can be determined using the spectra.tshif()
+    function.
+    
+    Parameters
+    ----------
+    expe_id : string, experiment ID or shot ID
+
+    Returns
+    -------
+    shift: temporal shift between the two clocks (float).
+
+    """
     shift = 0
     if(expe_id[:8] == "20230314"):
         shift = -0.0509
@@ -55,6 +84,20 @@ def interval_shift(expe_id):
     return shift
 
 def spectral_error_calc_op21(spec):
+    """
+    Intensity error calculation function for spectra averaged over intervals.
+    It calculates the uncertainty based on the temporal variance of the
+    intensity, and it takes a beam interval as one measurement.
+
+    Parameters
+    ----------
+    spec : spectra class object.
+
+    Returns
+    -------
+    A 2D numpy array with the errors.
+
+    """
     spec_perint = np.zeros((spec.data.shape[0], spec.data.shape[2]))
     for i in range(spec.data.shape[2]):
         ind = np.nonzero(abs(spec.data[10, :, i]))
@@ -71,6 +114,20 @@ def spectral_error_calc_op21(spec):
 
 
 def indep_spectral_error_calc_op21(spec):
+    """
+    Intensity error calculation function for spectra averaged over intervals.
+    It calculates the uncertainty based on the INDEPENDENT temporal variance of 
+    the intensity - which means it does not consider the joint changing of the
+    spectral line as error. It takes a beam interval as one measurement.
+
+    Parameters
+    ----------
+    spec : spectra class object.
+
+    Returns
+    -------
+    A 2D numpy array with the errors.
+    """
     spec_perint = np.zeros((spec.data.shape[0], spec.data.shape[2]))
     for i in range(spec.data.shape[2]):
         ind = np.nonzero(abs(spec.data[0, :, i]) > 1e-10)
@@ -99,12 +156,26 @@ def indep_spectral_error_calc_op21(spec):
     H[-1] = np.mean(M1**2)-np.mean(M1*spec_perint[-2, :]) * \
         M1.mean()/spec_perint[-2, :].mean()
     err = np.sqrt(abs(H) / (spec_perint.shape[1]))
+    
     return err
 
 class spectra:
+    """
+    A class for storing and manipulating measured spectra. At the definition
+    one has to add the following parameters:
+        data_source: string, data source (usually 'W7X_WEBAPI')
+        expe_id: string, experiment ID or shot ID
+    The optional parameters are:
+        get_data: string, the way to reach data for the object - default: "by shotID"
+        campaign: string, label of the operation phase - default: "OP2.1"
+        spatcal: Boolean, wether or not add spatial coordinates to the 
+                 dataobject - default: False
+        time_correction: Boolean, whether or not perform correction on the
+                         time axis using interval_shift()
+    """
 
     def __init__(self, data_source, expe_id, get_data="by shotID",
-                 campaign="OP2.1", spatcal=True, time_correction=True):
+                 campaign="OP2.1", spatcal=False, time_correction=False):
         self.data_source = data_source
         self.expe_id = expe_id
         self.campaign = campaign
@@ -131,12 +202,12 @@ class spectra:
 
         if(data_source == 'W7X_WEBAPI' and get_data == "by shotID" and
                 campaign == "OP2.1"):
+            #loading data
             self.dataobj = flap.get_data(data_source,
-                                         name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
-                                         exp_id=expe_id,
-                                         options={'Scale Time': True,
-                                                  'Cache Data': False},
-                                         object_name='QSI_spectral_data')
+                            name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
+                            exp_id=expe_id,
+                            options={'Scale Time': True,'Cache Data': False},
+                            object_name='QSI_spectral_data')
         else:
             raise ValueError("Undefined data source or loading process.")
 
@@ -146,39 +217,39 @@ class spectra:
         if(spatcal == True and self.campaign == "OP2.1"):
             # changing to ROI coord
             roi_coord_flap = flap.Coordinate(name='ROI', unit="1",
-                                             mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                             values=["P01", "P02", "P03",
-                                                     "P04", "P05", "P06"],
-                                             dimension_list=[1])
+                            mode=flap.CoordinateMode(equidistant=False),
+                            shape=(6),values=["P01", "P02", "P03",
+                            "P04", "P05", "P06"],dimension_list=[1])
             self.dataobj.add_coordinate_object(roi_coord_flap)
             self.dataobj.del_coordinate("Coord 1")
 
             # adding coordinate Device R
             R_coord_flap = flap.Coordinate(name='Device R', unit="m",
-                                           mode=flap.CoordinateMode(equidistant=False), shape=(6),
-                                           values=[6.175608381963992, 6.18531258540187, 6.196755395927777,
-                                                   6.207903188440903, 6.22187706429289, 6.241915857714211],
-                                           dimension_list=[1])
+                        mode=flap.CoordinateMode(equidistant=False), shape=(6),
+                        values=[6.175608381963992,6.18531258540187,6.196755395927777,
+                        6.207903188440903,6.22187706429289,6.241915857714211],
+                        dimension_list=[1])
             self.dataobj.add_coordinate_object(R_coord_flap)
 
-            # correcting time coordinate
+            # correcting a systematic error on the time coordinate
             c = self.dataobj.get_coordinate_object("Time")
             c.values = c.values + 1
             c = self.dataobj.get_coordinate_object("Time")
 
         elif(spatcal == True and self.campaign != "OP2.1"):
             raise ValueError(
-                "Spatial for that campaign has not been implemented yet.")
+            "Spatial calibration for that campaign has not been implemented yet.")
 
         if(self.campaign == "OP2.1" and time_correction == True):
-            d_beam_on = flap.get_data('W7X_ABES', exp_id=self.expe_id, name='Chopper_time',
-                                      options={
+            #getting beam intervals
+            d_beam_on = flap.get_data('W7X_ABES', exp_id=self.expe_id, 
+                                      name='Chopper_time',options={
                                           'State': {'Chop': 0, 'Defl': 0}},
                                       object_name='Beam_on',
                                       coordinates={'Time': self.APDCAM_timerange})
 
-            d_beam_off = flap.get_data('W7X_ABES', exp_id=self.expe_id, name='Chopper_time',
-                                       options={
+            d_beam_off = flap.get_data('W7X_ABES', exp_id=self.expe_id, 
+                                       name='Chopper_time', options={
                                            'State': {'Chop': 1, 'Defl': 0}},
                                        object_name='Beam_off',
                                        coordinates={'Time': self.APDCAM_timerange})
@@ -193,8 +264,21 @@ class spectra:
             self.d_beam_on = d_beam_on
             self.d_beam_off = d_beam_off
 
-    def wavelength_calibration(self, grid=None, wavelength_setting=None):
-        if(self.campaign == "OP2.1"):
+    def wavelength_calibration(self,man=False,grid=None,wavelength_setting=None):
+        """
+        Changes the pixel coordinate axis to wavelength.
+        
+        INPUT:
+            man: Boolean, whether or not one wants to give the calibration settings
+                 manually
+            grid: "1200g_per_mm", "1800g_per_mm" or "2400g_per_mm", but it only
+                  matters when man = True - the default is None
+            w_s: floot, central wavelength setting of the measurement, but it only
+                  matters when man = True - the default is None
+        OUTPUT:
+            1D numpy array with the calibrated wavelength values
+        """
+        if(self.campaign == "OP2.1"): #for OP2.1 a table contains the values
             settings_df = pd.read_excel(
                 "OP21/discharge_table_for_spectral_measurements.xlsx")
             settings = settings_df.loc[settings_df["Discharge"] == float(
@@ -202,21 +286,27 @@ class spectra:
             self.grid = str(settings["Grid [g/mm]"].to_numpy()[0])+"g_per_mm"
             self.wavelength_setting = float(
                 settings["Wavelength setting [nm]"])
-            if(self.campaign == "OP2.1"):
-                wl_values = np.zeros((6, 1024))
-                for i in range(1, 7):
-                    wl_values[i-1, :] = wavelength_grid_generator_op21(
-                        self.grid, self.wavelength_setting, i)
 
-                wl_coord_flap = flap.Coordinate(name='Wavelength', unit="nm",
-                                                mode=flap.CoordinateMode(equidistant=False), shape=(6, 1024),
-                                                values=wl_values, dimension_list=[1, 2])
-                self.dataobj.add_coordinate_object(wl_coord_flap)
-                self.dataobj.del_coordinate("Coord 2")
-
-        else:
+        if(man == True): #these can also be added manually for other measurements
             self.grid = grid
             self.wavelength_setting = wavelength_setting
+            
+        if(self.campaign == "OP2.1"):
+            wl_values = np.zeros((6, 1024))
+            for i in range(1, 7):
+                wl_values[i-1, :] = wavelength_grid_generator_op21(
+                    self.grid, self.wavelength_setting, i)
+
+            wl_coord_flap = flap.Coordinate(name='Wavelength', unit="nm",
+                            mode=flap.CoordinateMode(equidistant=False),
+                            shape=(6,1024),values=wl_values,dimension_list=[1,2])
+            self.dataobj.add_coordinate_object(wl_coord_flap)
+            self.dataobj.del_coordinate("Coord 2")
+            
+        elif(self.campaign != "OP2.1"):
+            raise ValueError(
+            "Wavelength calibration for that campaign has not been implemented yet.")
+                
 
     def slice_by_wl(self, roi, wavelength):
 
