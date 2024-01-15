@@ -309,7 +309,16 @@ class spectra:
                 
 
     def slice_by_wl(self, roi, wavelength):
-
+        """
+        It slices the temporal signal out in the corresponding wavelength, averages
+        it if an interval was given, then it plots the result.
+        
+        INPUT:
+            roi: Region Of Interest (ROI), in other words spectral channel (int)
+            wavelength: at which the changes over time are important (float).
+                        If it is a list two floats, then the function first slices,
+                        then averages the signal between the two wavelengths.
+        """
         spectra_1w = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi)})
         if(type(wavelength) == float or type(wavelength) == int):
             spectra_1w = spectra_1w.slice_data(
@@ -331,7 +340,15 @@ class spectra:
             plt.title(tit+str(wavelength[0])+", "+str(wavelength[1])+"] nm")
 
     def passive(self, roi, t_start, t_stop):
-
+        """
+        It averages the spectra in the given time interval, then it plots the result.
+        
+        INPUT:
+            roi: Region Of Interest (ROI), in other words spectral channel (int)
+            t_start: beginning of the interval (float)
+            t_stop: end of the interval (float)
+            
+        """
         ROI1 = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
                                                 "Time": flap.Intervals(t_start, t_stop)})
         avg_spectrum = ROI1.slice_data(summing={"Time": "Mean"})
@@ -344,23 +361,34 @@ class spectra:
         plt.grid()
 
     def autocorr(self, roi, t_start, t_stop, lstart, lstop):
+        """
+        It averages the spectra in the given wavelength interval, slices them into 
+        the given time interval, then calculates the temporal autocorrelation of the 
+        signal. Finally, it plots the result.
+        
+        INPUT:
+            roi: Region Of Interest (ROI), in other words spectral channel (int)
+            t_start: beginning of the time interval (float)
+            t_stop: end of the time interval (float)
+            lstart: beginning of the wavelength interval (float)
+            lstop: end of the wavelength interval (float)
+        """
+        
+        #slicing
         ROI1 = self.dataobj.slice_data(
             slicing={"ROI": "P0"+str(roi), "Time": flap.Intervals(t_start, t_stop)})
-        dt = np.mean(ROI1.coordinate("Time")[
-                     0][1:, 0]-ROI1.coordinate("Time")[0][:-1, 0])
         line = ROI1.slice_data(slicing={"Wavelength": flap.Intervals(lstart, lstop)},
                                summing={"Wavelength": "Sum"})
-        c = line.get_coordinate_object("Time")
-        c.mode.equidistant = True
-        c.shape = line.data.shape
-        c.step = dt
-        c.start = 0.0
-        c.dimension_list = [0]
-        t = ROI1.coordinate("Time")[0][:, 0]
-        norm_sig=(line.data-np.mean(line.data))/(np.std(line.data)*np.sqrt(len(line.data)))
-        tcorr = t-t.mean()
-        corr = np.correlate(norm_sig, norm_sig, mode="same")
 
+        #calculating the correlation after normalization
+        norm_sig=(line.data-np.mean(line.data))/(np.std(line.data)*np.sqrt(len(line.data)))
+        corr = np.correlate(norm_sig, norm_sig, mode="same")
+        
+        #time axis for the correlation
+        t = ROI1.coordinate("Time")[0][:, 0]
+        tcorr = t-t.mean()
+
+        #plotting
         fs = 15
         plt.figure()
         plt.plot(tcorr, corr, "bo-")
@@ -370,10 +398,33 @@ class spectra:
         plt.grid()
 
     def tshif(self, roi, t_start, t_stop, wstart, wstop, N, background_interval=[0]):
+        """
+        It averages the spectra in the given wavelength interval, then it slices and
+        averages it along the time axis in the intervals when the beam was on and off,
+        and it subtracts the two. This process is done multiple times while the temporal
+        shift between the spectral data time axis and the beam interval times is varying.
+        Finally, it plots the average spectral intensity / frame in the given intervals
+        in the subtracted spectra vs the temporalshifts.
+
+        Parameters
+        ----------
+        roi : Region Of Interest (ROI), in other words spectral channel (int)
+        t_start : beginning of the time interval (for APDCAM and CXRS data both) (float)
+        t_stop : end of the time interval (for APDCAM and CXRS data both) (float)
+        wstart : Lower end of the wavelength interval of the spectral line (float)
+        wstop : Higher end of the wavelength interval of the spectral line (float)
+        N : number of iterations for the temporal shift varying
+        background_interval : A spectral interval that does not contain any notable
+        spectra lines (list with two elements)
+            DESCRIPTION. The default is [0].
+
+        """
         if(self.campaign == "OP2.1"):
-            tsh = np.linspace(-0.075, 0.075, N)
+            tsh = np.linspace(-0.075, 0.075, N) #temporal shifts
             lineint = np.zeros((N))
             for i in range(len(tsh)):
+                
+                #getting the beam intervals
                 d_beam_on = flap.get_data('W7X_ABES', exp_id=self.expe_id, name='Chopper_time',
                                           options={
                                               'State': {'Chop': 0, 'Defl': 0}},
@@ -386,18 +437,19 @@ class spectra:
                                            object_name='Beam_off',
                                            coordinates={'Time': self.APDCAM_timerange})
 
-                c = d_beam_on.get_coordinate_object("Time")
+                c = d_beam_on.get_coordinate_object("Time") #shifting them
                 c.start = c.start + tsh[i]
                 c = d_beam_off.get_coordinate_object("Time")
                 c.start = c.start + tsh[i]
-
+                
+                #slicing
                 ROI1 = self.dataobj.slice_data(
                     slicing={"ROI": "P0"+str(roi), "Time": flap.Intervals(t_start, t_stop)})
                 if(background_interval != [0]):
                     ROI1_witbg = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
-                                                                  "Wavelength": flap.Intervals(background_interval[0],
-                                                                                               background_interval[1])},
-                                                         summing={"Wavelength": "Mean", "Time": "Mean"})
+                                "Wavelength": flap.Intervals(background_interval[0],
+                                background_interval[1])},summing={"Wavelength": "Mean",
+                                                                  "Time": "Mean"})
                     ROI1.data[:, :] = ROI1.data[:, :] - ROI1_witbg.data
 
                 s_on = ROI1.slice_data(slicing={'Time': d_beam_on}, summing={
@@ -408,6 +460,8 @@ class spectra:
                     slicing={'Time': d_beam_on})
                 s_off_intervals_full = ROI1.slice_data(
                     slicing={'Time': d_beam_off})
+                
+                #averaging over the intervals (first elements are taken out)
                 s_on_intervals = s_on_intervals_full.data[:, 1:, ].mean(axis=1)
                 s_off_intervals = s_off_intervals_full.data[:, 1:, ].mean(
                     axis=1)
@@ -421,7 +475,7 @@ class spectra:
                 lineint[i] = s_subs.slice_data(slicing={"Wavelength": flap.Intervals(wstart, wstop)},
                                                summing={"Wavelength": "Mean"}).data
 
-            fs = 15
+            fs = 15 #plotting
             plt.figure()
             plt.plot(tsh, lineint, marker="o")
             plt.xlabel("$t_{shift}$ [s]", fontsize=fs)
@@ -437,6 +491,27 @@ class spectra:
 
     def active_passive(self, roi, t_start, t_stop, background_interval=[0],
                        error=False, plotting=True):
+        """
+        It slices and averages it along the time axis in the intervals when the beam
+        was on and off, and it subtracts the two.
+
+        Parameters
+        ----------
+        roi : Region Of Interest (ROI), in other words spectral channel (int)
+        t_start : beginning of the time interval (for APDCAM and CXRS data both) (float)
+        t_stop : end of the time interval (for APDCAM and CXRS data both) (float)
+        background_interval : A spectral interval that does not contain any notable
+        spectra lines (list with two elements). The default is [0], which means no
+        interval is given.
+        error : wether one would like to perform error calculation or not (Boolean).
+        The default is False.
+        plotting : wether it should plot the results or not (Boolean). The default is True.
+
+        Returns
+        -------
+        s_subs : subtracted spectrum
+
+        """
         if(self.campaign == "OP2.1"):
 
             # slicing the data
@@ -456,11 +531,12 @@ class spectra:
 
             if(background_interval != [0]):
                 ROI1_witbg = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
-                                                              "Wavelength": flap.Intervals(background_interval[0],
-                                                                                           background_interval[1])},
-                                                     summing={"Wavelength": "Mean", "Time": "Mean"})
+                            "Wavelength": flap.Intervals(background_interval[0],
+                             background_interval[1])},
+                             summing={"Wavelength": "Mean", "Time": "Mean"})
                 ROI1.data[:, :] = ROI1.data[:, :] - ROI1_witbg.data
 
+            #averaging over the intervals (first elements are taken out)
             s_on_intervals_full = ROI1.slice_data(
                 slicing={'Time': self.d_beam_on})
             s_off_intervals_full = ROI1.slice_data(
@@ -482,7 +558,7 @@ class spectra:
                 s_off.plot(axes="Wavelength")
                 legend = ["beam on", "beam off"]
                 plt.legend(legend)
-                plt.title(self.expe_id+", active spectrum, ROI = P0"+str(roi)+
+                plt.title(self.expe_id+", beam on and off spectra, ROI = "+str(roi)+
                           ", ["+str(t_start)+","+str(t_stop)+"] s",fontsize=15)
                 plt.ylabel("Intensity [a.u.]")
                 plt.grid()
@@ -507,19 +583,40 @@ class spectra:
 
     def get_line_intensity(self, roi, t_start, t_stop, lstart, lstop,
                            background_interval=[0], plotting=False):
+        """
+        It slices and averages it along the time axis in the intervals when the beam
+        was on and off, and it subtracts the two. Finally, it calculates the line
+        intensity in the given wavelength interval for both by fitting a Gaussian.
+
+        Parameters
+        ----------
+        roi : Region Of Interest (ROI), in other words spectral channel (int)
+        t_start : beginning of the time interval (for APDCAM and CXRS data both) (float)
+        t_stop : end of the time interval (for APDCAM and CXRS data both) (float)
+        lstart : Lower end of the wavelength interval of the spectral line (float)
+        lstop : higher end of the wavelength interval of the spectral line (float)
+        background_interval : A spectral interval that does not contain any notable
+        spectra lines (list with two elements). The default is [0], which means no
+        interval is given.
+        plotting : wether it should plot the results or not (Boolean). The default is True.
+
+        Returns
+        -------
+        Average maximum line intensity at beam on and off
+
+        """
         if(self.campaign == "OP2.1"):
             # slicing the data
             ROI1 = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
                                         "Time": flap.Intervals(t_start, t_stop),
                                         "Wavelength": flap.Intervals(lstart,lstop)})
 
-            if(background_interval != [0]):
+            if(background_interval != [0]): #continuous background subtraction
                 ROI1_witbg = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
                                                               "Wavelength": flap.Intervals(background_interval[0],
                                                                                            background_interval[1])},
                                                      summing={"Wavelength": "Mean", "Time": "Mean"})
                 ROI1.data[:, :] = ROI1.data[:, :] - ROI1_witbg.data
-
             s_on_intervals_full = ROI1.slice_data(
                 slicing={'Time': self.d_beam_on})
             s_off_intervals_full = ROI1.slice_data(
@@ -535,15 +632,16 @@ class spectra:
             s_on.data = s_on_data
             s_off.data = s_off_data
 
+            #fitting Gaussians to the lines
             lambd = s_on.coordinate("Wavelength")[0]
-            def gaus(x, A, s, mu): return A*np.e**(-(((x-mu)**2)/s**2))
+            gaus = lambda x, A, s, mu: A*np.e**(-(((x-mu)**2)/s**2))
 
             popton, pcovon = curve_fit(gaus, lambd, s_on.data, p0=[
                                        max(s_on.data), 0.1, lambd.mean()])
             print(popton[0])
             poptoff, pcovoff = curve_fit(gaus, lambd, s_off.data, p0=[
                                          max(s_off.data), 0.1, lambd.mean()])
-            if(plotting == True):
+            if(plotting == True): #plotting the results
                 fs = 15
                 plt.figure()
                 plt.plot(lambd, s_on.data, "+")
@@ -568,6 +666,30 @@ class spectra:
 
     def error_distr(self, t_start, t_stop, lstart, lstop,
                     background_interval=[0], plotting=False, ROI="ALL"):
+        """
+        Error(Intensity) distribution calculator function. It assumes that the
+        fluctuations in spectra which affect more than one point are not errors. It
+        also fits a root square function to the results, assuming only electronic and
+        photonic error.
+        
+        Parameters
+        ----------
+        t_start : beginning of the time interval (float)
+        t_stop : end of the time interval (float)
+        lstart : lower end of the wavelength interval of the spectral line (float)
+        lstop : higher end of the wavelength interval of the spectral line (float)
+        background_interval : A spectral interval that does not contain any notable
+        spectra lines (list with two elements). The default is [0], which means no
+        interval is given.
+        plotting : wether it should plot the results or not (Boolean). The default is False.
+        ROI : Region Of Interest, in other words spectral channel (int or string).
+        The default is "ALL". Besides that, it can be 1,2,3 or 4.
+        
+        Returns
+        -------
+        Fitted average coefficients (a,b) of the E(I) = a*sqrt(I)+b function
+
+        """
         if(self.campaign == "OP2.1" and ROI == "ALL"):
             errorparam = np.zeros((4, 2))
             for roi in range(1, 5):
@@ -585,24 +707,28 @@ class spectra:
                 # the intervals are taken as independent measurements
                 error_on = list(indep_spectral_error_calc_op21(s_on_sliced))
                 error_off = list(indep_spectral_error_calc_op21(s_off_sliced))
-                if(background_interval != [0]):
+                
+                if(background_interval != [0]): #constant background removal
                     ROI1_witbg = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
                                                                   "Wavelength": flap.Intervals(background_interval[0], background_interval[1])},
                                                          summing={"Wavelength": "Mean", "Time": "Mean"})
                     ROI1.data[:, :] = ROI1.data[:, :] - ROI1_witbg.data
+                    
+                #averaging
                 s_on = ROI1.slice_data(slicing={'Time': self.d_beam_on}, summing={
                                        "Rel. Time in int(Time)": "Mean"})
                 s_off = ROI1.slice_data(slicing={'Time': self.d_beam_off}, summing={
                                         "Rel. Time in int(Time)": "Mean"})
+                
+                #adding the errors and creating the distribution
                 int_on = list(s_on.data)
                 int_off = list(s_off.data)
-
                 err = np.array(error_on + error_off)
                 intensity = np.array(int_on + int_off)
-
                 err = err[intensity.argsort()]
                 intensity = intensity[intensity.argsort()]
 
+                #fitting the funcion
                 sq = lambda x, a, b: a*np.sqrt(x) + b
                 if(plotting == True):
                     fs = 15
@@ -635,27 +761,29 @@ class spectra:
             # the intervals are taken as independent measurements
             error_on = list(indep_spectral_error_calc_op21(s_on_sliced))
             error_off = list(indep_spectral_error_calc_op21(s_off_sliced))
-            if(background_interval != [0]):
+            
+            if(background_interval != [0]): #constant background removal
                 ROI1_witbg = self.dataobj.slice_data(slicing={"ROI": "P0"+str(ROI),
                                                               "Wavelength": flap.Intervals(background_interval[0], background_interval[1])},
                                                      summing={"Wavelength": "Mean", "Time": "Mean"})
                 ROI1.data[:, :] = ROI1.data[:, :] - ROI1_witbg.data
+            
+            #averaging
             s_on = ROI1.slice_data(slicing={'Time': self.d_beam_on}, summing={
                                    "Rel. Time in int(Time)": "Mean"})
             s_off = ROI1.slice_data(slicing={'Time': self.d_beam_off}, summing={
                                     "Rel. Time in int(Time)": "Mean"})
+            
+            #adding the errors and creating the distribution
             int_on = list(s_on.data)
             int_off = list(s_off.data)
-
             err = np.array(error_on + error_off)
             intensity = np.array(int_on + int_off)
-
             err = err[intensity.argsort()]
             intensity = intensity[intensity.argsort()]
             
-            # print(err.mean())
-
-            def sq(x, a, b): return a*np.sqrt(x) + b
+            #fitting the funcion
+            sq = lambda x, a, b: a*np.sqrt(x) + b
             if(plotting == True):
                 fs = 15
                 plt.figure()
