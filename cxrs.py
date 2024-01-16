@@ -415,8 +415,7 @@ class spectra:
         wstop : Higher end of the wavelength interval of the spectral line (float)
         N : number of iterations for the temporal shift varying
         background_interval : A spectral interval that does not contain any notable
-        spectra lines (list with two elements)
-            DESCRIPTION. The default is [0].
+        spectra lines (list with two elements). The default is [0].
 
         """
         if(self.campaign == "OP2.1"):
@@ -613,9 +612,9 @@ class spectra:
 
             if(background_interval != [0]): #continuous background subtraction
                 ROI1_witbg = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
-                                                              "Wavelength": flap.Intervals(background_interval[0],
-                                                                                           background_interval[1])},
-                                                     summing={"Wavelength": "Mean", "Time": "Mean"})
+                            "Wavelength": flap.Intervals(background_interval[0],
+                             background_interval[1])},
+                             summing={"Wavelength": "Mean", "Time": "Mean"})
                 ROI1.data[:, :] = ROI1.data[:, :] - ROI1_witbg.data
             s_on_intervals_full = ROI1.slice_data(
                 slicing={'Time': self.d_beam_on})
@@ -710,8 +709,9 @@ class spectra:
                 
                 if(background_interval != [0]): #constant background removal
                     ROI1_witbg = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
-                                                                  "Wavelength": flap.Intervals(background_interval[0], background_interval[1])},
-                                                         summing={"Wavelength": "Mean", "Time": "Mean"})
+                                "Wavelength": flap.Intervals(background_interval[0],
+                                 background_interval[1])},summing={"Wavelength":"Mean",
+                                 "Time":"Mean"})
                     ROI1.data[:, :] = ROI1.data[:, :] - ROI1_witbg.data
                     
                 #averaging
@@ -764,8 +764,9 @@ class spectra:
             
             if(background_interval != [0]): #constant background removal
                 ROI1_witbg = self.dataobj.slice_data(slicing={"ROI": "P0"+str(ROI),
-                                                              "Wavelength": flap.Intervals(background_interval[0], background_interval[1])},
-                                                     summing={"Wavelength": "Mean", "Time": "Mean"})
+                             "Wavelength": flap.Intervals(background_interval[0],
+                             background_interval[1])},summing={"Wavelength": "Mean",
+                             "Time": "Mean"})
                 ROI1.data[:, :] = ROI1.data[:, :] - ROI1_witbg.data
             
             #averaging
@@ -804,6 +805,26 @@ class spectra:
                 "For that campaign this method is not implemented yet.")
 
     def C_line_generator(self, mu_add, kbt, A,sim=False):
+        """
+        A function to generate theoretical carbon ion line shapes based on the Zeeman
+        components of the line which are defined elsewhere.
+
+        Parameters
+        ----------
+        mu_add : a term that constitutes from the Doppler shift of the line, and the
+        wavelength uncertainty of the spectrometer (float)
+        kbt : temperature times Boltzmann constant (float)
+        A : Line intensity factor (float)
+        sim : (Boolean) Wether the function is used for simulating experiments, or fitting
+        measurements. The code reads the instrumental functions from different places
+        in these two cases, and generates different wavelength grids. The default is
+        False.
+
+        Returns
+        -------
+        complete_spectrum : Theoretical spectrum in case of the given parameters
+
+        """
         wl_grid = None
         if(sim==False):
             wl_values = wavelength_grid_generator_op21(
@@ -850,12 +871,24 @@ class spectra:
                 instr = np.load("instr_funcs/"+self.simgrid+"_P03" +
                             "_"+str(int(self.simd))+"micron_slit.npy").ravel()
                 
-        # instr = np.load("instr_funcs/"+self.grid+"_P03_"+str(int(self.dslit))+"micron_slit.npy").ravel()
         complete_spectrum = np.convolve(doppler_spectrum, instr, mode="same")
 
         return complete_spectrum
 
     def C_fitfunc(self, esti):
+        """
+        It computes the weighted, squared, summed difference between the measured
+        and the generated spectral line.
+
+        Parameters
+        ----------
+        esti : (np.array) a vector that contains relevant parameters in the following 
+        way: np.array([mu_add, kbt, A]) - see the variables above
+
+        Returns
+        -------
+        chi^2 (normalized by # of parameters, data points)
+        """
         mu_add = esti[0]
         kbt = esti[1]
         A = esti[2]
@@ -864,6 +897,19 @@ class spectra:
         return (np.dot(C, C) - 3) / self.active.data.shape[0]
     
     def C_fitfunc_sim(self, esti):
+        """
+        It computes the weighted, squared, summed difference between the simulated
+        and the generated spectral line.
+
+        Parameters
+        ----------
+        esti : (np.array) a vector that contains relevant parameters in the following 
+        way: np.array([mu_add, kbt, A]) - see the variables above
+
+        Returns
+        -------
+        chi^2 (normalized by # of parameters, data points)
+        """
         mu_add = esti[0]
         kbt = esti[1]
         A = esti[2]
@@ -872,6 +918,20 @@ class spectra:
         return (np.dot(C, C) - 3) / self.simulated.shape[0]
 
     def C_fitfunc_plot(self, esti):
+        """
+        It computes the weighted, squared, summed difference between the measured
+        and the generated spectral line. It also plots the measured and the generated
+        lines.
+
+        Parameters
+        ----------
+        esti : (np.array) a vector that contains relevant parameters in the following 
+        way: np.array([mu_add, kbt, A]) - see the variables above
+
+        Returns
+        -------
+        chi^2 (normalized by # of parameters, data points)
+        """
         mu_add = esti[0]
         kbt = esti[1]
         A = esti[2]
@@ -891,6 +951,11 @@ class spectra:
         return (np.dot(C, C) - 3) / self.active.data.shape[0]
     
     def second_deriv(self,sol, fmin, h, i):
+        """
+        It is part of an error calculation algorithm that is based on the Hessian matrix
+        of chi^2. However, this algorithm gave unreasonably large errors, therefore it
+        is not in use
+        """
         sol_p = sol.copy()
         sol_n = sol.copy()
         sol_p[i] = sol_p[i] + h
@@ -900,6 +965,11 @@ class spectra:
         return (fp1 + fm1 - 2*fmin)/h**2
 
     def partial_cross_deriv(self,sol, fmin, i, j, hi, hj):
+        """
+        It is part of an error calculation algorithm that is based on the Hessian matrix
+        of chi^2. However, this algorithm gave unreasonably large errors, therefore it
+        is not in use
+        """
         sol_pp = sol.copy()
         sol_pn = sol.copy()
         sol_np = sol.copy()
@@ -924,6 +994,11 @@ class spectra:
         return (fpp-fpn-fnp+fnn) / (4*hi*hj)
 
     def hesse(self,sol, fmin, h):
+        """
+        It is part of an error calculation algorithm that is based on the Hessian matrix
+        of chi^2. However, this algorithm gave unreasonably large errors, therefore it
+        is not in use
+        """
         hess = np.matrix(np.zeros((3, 3)))
         for i in range(3):
             for j in range(3):
@@ -934,19 +1009,39 @@ class spectra:
         return hess
 
     def error_from_hesse(self,sol,fmin, h):
+        """
+        It is part of an error calculation algorithm that is based on the Hessian matrix
+        of chi^2. However, this algorithm gave unreasonably large errors, therefore it
+        is not in use
+        """
         alpha = self.hesse(sol, fmin, h)
         I = np.linalg.inv(alpha)
         return np.sqrt(abs(I))
     
     def C_fitfunc_plot_sim(self, esti):
+        """
+        It computes the weighted, squared, summed difference between the simulated
+        and the generated spectral line. It also plots the simulated and the generated
+        lines.
+
+        Parameters
+        ----------
+        esti : (np.array) a vector that contains relevant parameters in the following 
+        way: np.array([mu_add, kbt, A]) - see the variables above
+
+        Returns
+        -------
+        chi^2 (normalized by # of parameters, data points)
+        """
         mu_add = esti[0]
         kbt = esti[1]
         A = esti[2]
         modelled = self.C_line_generator(mu_add, kbt, A,sim = True)
         C = (modelled - self.simulated)/self.simulated_error
 
+        # loading the wavelength grid
         wl_values = wavelength_grid_generator_op21(
-            self.simgrid, self.wavelength_setting, self.current_roi)  # loading the wavelength grid
+            self.simgrid, self.wavelength_setting, self.current_roi)
         wl_grid0 = wl_values[wl_values > self.wstart]  # slicing the wavelength grid
         lambd = wl_grid0[self.wstop > wl_grid0]
 
@@ -961,19 +1056,49 @@ class spectra:
         return (np.dot(C, C) - 3) / self.simulated.shape[0]
     
     
-    def C_line_simulator(self,mu_add,kbt,A,tstart,tstop,fittype,scalef=None,plots=False,sim=False):
+    def C_line_simulator(self,mu_add,kbt,A,fittype,scalef=None,plots=False,sim=False):
+        """
+        A function that generates a realistic Carbon ion line spectrum including 
+        noise. 
+
+        Parameters
+        ----------
+        mu_add : a term that constitutes from the Doppler shift of the line, and the
+        wavelength uncertainty of the spectrometer (float)
+        kbt : temperature times Boltzmann constant (float)
+        A : Line intensity factor (float)
+        fittype : (string) The kind of line that is to be generated. At the moment, 
+        it can be "CV","CVI", or None. The default is None.
+        scalef : scaling number between the measured and to be generated line intensity
+        (float). Only relevant when sim=True. The default is None.
+        plots : (Boolean) wether plot the generated spectrum (during the generation
+        stages and afterwards) or not. The default is False.
+        sim : (Boolean) wether the function is used for simulating experiments, or fitting
+        measurements. The code reads the instrumental functions from different places
+        in these two cases, and generates different wavelength grids. The default is
+        False.
+
+        Returns
+        -------
+        calculated : generated realistic spectrum (np.array)
+        err : uncertainties of the spectrum (np.array)
+
+        """
         gaus = lambda x, A, s, mu: A*np.e**(-(((x-mu)**2)/s**2))
         if(sim==False):
+            #slicing to the wavelength interval
             measured = self.active.slice_data(
                 slicing={"Wavelength": flap.Intervals(self.wstart, self.wstop)})
+            
+            #calculating the measured line intensity maximum by fitting a Gaussian
             lamb = measured.coordinate("Wavelength")[0]
-    
             popt, pcov = curve_fit(gaus, lamb, measured.data, p0=[
                                    max(measured.data), 0.1, lamb.mean()])
             if(plots == True):
+                #loading the wavelength grid
                 wl_values = wavelength_grid_generator_op21(
-                    self.grid, self.wavelength_setting, self.current_roi)  # loading the wavelength grid
-                wl_grid0 = wl_values[wl_values > self.wstart]  # slicing the wavelength grid
+                    self.grid, self.wavelength_setting, self.current_roi)
+                wl_grid0=wl_values[wl_values>self.wstart] #slicing the wavelength grid
                 lambd = wl_grid0[self.wstop > wl_grid0]
                 fs = 15
                 plt.figure()
@@ -984,6 +1109,7 @@ class spectra:
                 plt.legend(["Data", "Fit"], fontsize=fs-2)
                 plt.title(self.expe_id+", Beam on line intensity fit")
     
+            #generating a line with the same maximum intensity as the measured
             calculated = self.C_line_generator(mu_add, kbt, A)
             calculated = popt[0]*calculated/max(calculated)
     
@@ -993,6 +1119,7 @@ class spectra:
                 plt.plot(lambd, calculated, marker="o", color="black")
                 plt.grid()
     
+            #the error of the generated spectra is the same as for the measured
             err = measured.error
     
             if(plots == True):
@@ -1001,6 +1128,7 @@ class spectra:
                 plt.errorbar(lambd, calculated, err)
                 plt.grid()
     
+            #adding noise to the generated spectra based on its errors
             calculated = np.random.normal(loc=calculated, scale=err)
     
             if(plots == True):
@@ -1012,16 +1140,19 @@ class spectra:
             return calculated, err
         
         if(sim==True):
+            #slicing to the wavelength interval
             measured = self.active.slice_data(
                 slicing={"Wavelength": flap.Intervals(self.wstart, self.wstop)})
+            
+            #calculating the measured line intensity maximum by fitting a Gaussian
             lamb = measured.coordinate("Wavelength")[0] 
-    
             popt, pcov = curve_fit(gaus, lamb, measured.data, p0=[
                                    max(measured.data), 0.1, lamb.mean()])
             if(plots == True):
+                #loading the wavelength grid
                 wl_values = wavelength_grid_generator_op21(
-                    self.grid, self.wavelength_setting, self.current_roi)  # loading the wavelength grid
-                wl_grid0 = wl_values[wl_values > self.wstart]  # slicing the wavelength grid
+                    self.grid, self.wavelength_setting, self.current_roi)
+                wl_grid0=wl_values[wl_values>self.wstart] #slicing the wavelength grid
                 lambd = wl_grid0[self.wstop > wl_grid0]
                 fs = 15
                 plt.figure()
@@ -1033,7 +1164,11 @@ class spectra:
                 plt.title(self.expe_id+", Beam on line intensity fit")
     
             calculated = self.C_line_generator(mu_add, kbt, A,sim=True)
-            gridfac = None
+            
+            gridfac = None 
+            #grid and slit width factor for cases when one would like to generate 
+            #a spectrum by different grid or slit (or both) than the measured
+            #it depends on the wavelength
             if(fittype == "CVI"):
                 baseint = 11230
                 if(self.simgrid == "1200g_per_mm" and self.simd == 100):
@@ -1083,6 +1218,7 @@ class spectra:
                     slitfac = 0.46871601   
                 gridfac = gridfac*slitfac
             
+            #generating the line spectrum with the given parameters
             calculated = gridfac*scalef*popt[0]*calculated/max(calculated)
     
             if(plots == True):
@@ -1090,8 +1226,10 @@ class spectra:
                 plt.plot(lamb, measured.data, "+")
                 plt.plot(lambd, calculated, marker="o", color="black")
                 plt.grid()
+                
             sq = lambda x, a, b: a*np.sqrt(x) + b
-            err = sq(calculated*15, self.errparam[0], self.errparam[1]) #assuming 15% modulation
+            #assuming 15% modulation
+            err = sq(calculated*15, self.errparam[0], self.errparam[1])
 
             if(plots == True):
                 plt.figure()
@@ -1099,6 +1237,7 @@ class spectra:
                 plt.errorbar(lambd, calculated, err)
                 plt.grid()
 
+            #adding noise
             calculated = np.random.normal(loc=calculated, scale=err)
     
             if(plots == True):
@@ -1109,8 +1248,35 @@ class spectra:
     
             return calculated, err
     
-    def C_Ti_error_sim_me(self,mu_add,kbt,A,tstart,tstop,iter_num,fittype,plots=False):
-        met = "Powell"
+    def C_Ti_error_sim_me(self,mu_add,kbt,A,iter_num,fittype,plots=False):
+        """
+        Function for calculating uncertainty of kb*T_i for a spectra fitted on measured
+        data. It uses Monte Carlo error calculation.
+
+        Parameters
+        ----------
+        mu_add : a term that constitutes from the Doppler shift of the line, and the
+        wavelength uncertainty of the spectrometer (float)
+        kbt : temperature times Boltzmann constant (float)
+        A : Line intensity factor (float)
+        iter_num : Number of iterations for the Monte Carlo error calculation process
+        (int)
+        fittype : (string) The kind of line that is to be generated. At the moment, 
+        it can be "CV" or "CVI".
+        plots : (Boolean) wether plot the generated spectra during the error calculation
+        process or not. The default is False.
+
+        Returns
+        -------
+        float
+            Standard deviation of the fitted temperatures to the generated spectra.
+        T_i : np.array with size iter_num
+            Fitted temperatures to the generated spectra.
+        chisq : np.array with size iter_num
+            Chi^2 from every iteration.
+
+        """
+        met = "Powell" #as far as I know that is the best choice for such purpose
         line_param = np.array([mu_add, kbt, A])
 
         T_i = np.zeros((iter_num))
@@ -1118,12 +1284,17 @@ class spectra:
 
         for i in range(iter_num):
             print("Iteration "+str(i))
-            self.simulated, self.simulated_error = self.C_line_simulator(mu_add, kbt, A, tstart,tstop,fittype, plots=False)
-            # raise ValueError("stop")
-            if(plots == True):
+            #simulating same spectrum as the measured based on its maximum 
+            #intensity and its errors
+            self.simulated, self.simulated_error = self.C_line_simulator(mu_add, kbt, A,
+                                                                    fittype, plots=False)
+            if(plots == True): #plot with initial parameters before fit
                 es_chisq = self.C_fitfunc_plot_sim(line_param)
                 plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
-            solution = minimize(self.C_fitfunc_sim, line_param, method=met, bounds=((None, None), (0.1, None), (None, None)), tol=1e-8,
+            
+            #minimizing the chi^2 using scipy.optimize.minimize
+            solution = minimize(self.C_fitfunc_sim, line_param, method=met,
+                                bounds=((None,None),(0.1,None),(None,None)),tol=1e-8,
                                 options={"maxiter": 2000})
             if(solution.success == False):
                 raise ValueError("Failed T_i fit")
@@ -1131,7 +1302,7 @@ class spectra:
             print(sol[1])
             T_i[i] = sol[1]
             chisq[i] = solution.fun
-            if(plots == True):
+            if(plots == True): #plotting the line shape with the fitted parameters
                 self.C_fitfunc_plot_sim(sol)
                 R_plot = round(self.dataobj.coordinate("Device R")[0][0, (self.current_roi-1), 0], 4)
                 plt.title("R = "+str(R_plot)+" m, $\chi^2 = $" +
@@ -1139,9 +1310,40 @@ class spectra:
 
         return np.std(T_i), T_i, chisq
 
-    def tempfit(self,fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,t_start,t_stop,bcg,N,plots=False):
+    def tempfit(self,fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,t_start,t_stop,bcg,N,
+                plots=False):
+        """
+        A function for fitting the ion temperature (among A, mu_add) by modelling the
+        line shape. The uncertainties are gained by Monte Carlo error calculation.
+        The function prints the results, and also plots the fitted line upon request.
+
+        Parameters
+        ----------
+        fittype : (string) The kind of line that is to be generated. At the moment, 
+        it can be "CV" or "CVI".
+        roi : Region Of Interest, in other words spectral channel (int).
+        wstart : lower end of the wavelength interval of the spectral line (float)
+        wstop : higher end of the wavelength interval of the spectral line (float)
+        mu_add : initial guess for a term that constitutes from the Doppler shift of 
+        the line, and the wavelength uncertainty of the spectrometer (float)
+        kbt : initial guess for temperature times Boltzmann constant (float)
+        A : initial guess for line intensity factor (float)
+        dslit : slit width in the spectrometer in the discharge (int)
+        t_start : lower end of the interval for which the ion temperature to be 
+        calculated
+        t_stop : higher end of the interval for which the ion temperature to be 
+        calculated
+        bcg : A wavelength interval that does not contain any notable
+        spectral lines (list with two floats).
+        N : Number of iterations for the Monte Carlo error calculation process (int)
+        plots : (Boolean) wether plot the generated spectra during the error calculation
+        process or not. The default is False.
+        """
         if(self.campaign == "OP2.1"):
+            
+            #central position of the first lens
             centre_of_lens = np.array([1.305624, 6.094843, -3.013095])
+            #viewed positions of the channels
             roi_pos = np.loadtxt("OP21/ROI_pos.txt")
             self.observation_directions = np.zeros(
                 (roi_pos.shape[0], roi_pos.shape[1]))
@@ -1154,11 +1356,13 @@ class spectra:
             self.simgrid = self.grid
             self.simd = dslit
 
+            #getting the measured spectra
             self.active = self.active_passive(roi, t_start, t_stop,
                                               background_interval=bcg, error=True, plotting=False)
             self.active = self.active.slice_data(
                 slicing={"Wavelength": flap.Intervals(wstart, wstop)})
             if(fittype == "CV"):
+                #magnetic field data from Gábor Cseh
                 self.B = np.loadtxt("OP21/"+self.expe_id+".txt")
                 self.Babs = np.sqrt(np.sum(self.B[:, roi-1]**2))
                 divider = np.sqrt(
@@ -1167,14 +1371,15 @@ class spectra:
                 self.current_theta = np.arccos(
                     np.sum(n*self.B[:, roi-1])/divider)*180/np.pi
                 
+                #no exact data - saved approximation proposed by Oliver Ford
+                #for the Zeeman components, done by the webservice of Dorothea Gradic
                 with open('OP21/getZeeman_CV_ROI'+str(self.current_roi)+'.json', 'r') as f:
                     datafile = json.load(f)
                 
                 self.zc_locations = np.array(datafile['wavelengths'])/10
                 self.zc_intensities = np.array(datafile['amplitude'])
-                # plt.figure()
-                # plt.plot(self.zc_locations,self.zc_intensities,"+")
                 
+                #fitting the ion temperature, and other parameters
                 esti = np.array([mu_add, kbt, A])
                 es_chisq = self.C_fitfunc_plot(esti)
                 plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
@@ -1184,15 +1389,17 @@ class spectra:
 
                 print(solution)
                 if(solution.success == True):
+                    #error calculation
                     sol = solution.x
+                    Terr, T_iters, chi_iters = self.C_Ti_error_sim_me(sol[0],
+                                        sol[1],sol[2],N,fittype,plots=plots)
+                    # h = np.array([1e-5, 1e-3, 1e-8])
+                    # hessian_error = self.error_from_hesse(sol, solution.fun, h)[1,1]
+                    # print("Error based on Hessian matrix (in eV):")
+                    # print(hessian_error)
+                    #plotting
                     R_plot = round(self.dataobj.coordinate(
                         "Device R")[0][0, (roi-1), 0], 4)
-                    Terr, T_iters, chi_iters = self.C_Ti_error_sim_me(sol[0],
-                                        sol[1],sol[2],t_start,t_stop,N,fittype,plots=plots)
-                    h = np.array([1e-5, 1e-3, 1e-8])
-                    hessian_error = self.error_from_hesse(sol, solution.fun, h)[1,1]
-                    print("Error based on Hessian matrix (in eV):")
-                    print(hessian_error)
                     self.C_fitfunc_plot(sol)
                     plt.title(self.expe_id+", channel "+str(roi)+
                               ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
@@ -1238,24 +1445,26 @@ class spectra:
                 self.zc_locations = np.array(fine_structure['wavelengths'])/10
                 self.zc_intensities = np.array(fine_structure['amplitude'])
                 
+                #fitting the ion temperature, and other parameters
                 esti = np.array([mu_add, kbt, A])
                 es_chisq = self.C_fitfunc_plot(esti)
                 plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
                 solution = minimize(self.C_fitfunc, esti, method="Powell",
-                                    bounds=((None, None), (0.1, None), (None, None)), tol=1e-12,
-                                    options={"maxiter": 2000})
+                                    bounds=((None, None), (0.1, None), (None, None)),
+                                    tol=1e-12,options={"maxiter": 2000})
 
                 print(solution)
                 if(solution.success == True):
+                    #error calculation
                     sol = solution.x
-                    R_plot = round(self.dataobj.coordinate(
-                        "Device R")[0][0, (roi-1), 0], 4)
                     Terr, T_iters, chi_iters = self.C_Ti_error_sim_me(sol[0],
-                                        sol[1],sol[2],t_start,t_stop,N,fittype,plots=plots)
-                    h = np.array([1e-5, 1e-3, 1e-8])
-                    hessian_error = self.error_from_hesse(sol, solution.fun, h)[1,1]
-                    print("Error based on Hessian matrix (in eV):")
-                    print(hessian_error)
+                                        sol[1],sol[2],N,fittype,plots=plots)
+                    # h = np.array([1e-5, 1e-3, 1e-8])
+                    # hessian_error = self.error_from_hesse(sol, solution.fun, h)[1,1]
+                    # print("Error based on Hessian matrix (in eV):")
+                    # print(hessian_error)
+                    R_plot = round(self.dataobj.coordinate( #plotting
+                        "Device R")[0][0, (roi-1), 0], 4)
                     self.C_fitfunc_plot(sol)
                     plt.title(self.expe_id+", channel "+str(roi)+
                               ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
@@ -1270,7 +1479,8 @@ class spectra:
                               str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
                               "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
                     plt.hlines(sol[1], 0, N, color = "red")
-                    plt.fill_between(np.arange(N), sol[1] - Terr, sol[1] + Terr,color='red', alpha=0.2)
+                    plt.fill_between(np.arange(N), sol[1] - Terr, sol[1] + Terr,color='red',
+                                     alpha=0.2)
                     plt.plot(np.arange(N),T_iters,marker = "o",linestyle="",color="blue")
                     plt.xlim(0,N-1)
                     plt.subplot(212)
@@ -1292,7 +1502,7 @@ class spectra:
         for i in range(iter_num):
             print("Iteration "+str(i))
             self.simulated, self.simulated_error = self.C_line_simulator(mu_add,
-                                    kbt, A, tstart,tstop,fittype,scalef=scalef, plots=False,sim=True)
+                                    kbt, A,fittype,scalef=scalef, plots=False,sim=True)
             # raise ValueError("stop")
             if(plots == True):
                 es_chisq = self.C_fitfunc_plot_sim(line_param)
