@@ -471,7 +471,7 @@ class spectra:
 
                 s_subs = s_on
                 s_subs.data = s_on.data-s_off.data
-                lineint[i] = s_subs.slice_data(slicing={"Wavelength": flap.Intervals(wstart, wstop)},
+                lineint[i]=s_subs.slice_data(slicing={"Wavelength":flap.Intervals(wstart,wstop)},
                                                summing={"Wavelength": "Mean"}).data
 
             fs = 15 #plotting
@@ -1304,7 +1304,8 @@ class spectra:
             chisq[i] = solution.fun
             if(plots == True): #plotting the line shape with the fitted parameters
                 self.C_fitfunc_plot_sim(sol)
-                R_plot = round(self.dataobj.coordinate("Device R")[0][0, (self.current_roi-1), 0], 4)
+                R_plot = round(self.dataobj.coordinate("Device R")[0][0,
+                                                        (self.current_roi-1), 0], 4)
                 plt.title("R = "+str(R_plot)+" m, $\chi^2 = $" +
                           str(round(solution.fun, 6))+", $T_C$ = "+str(round(sol[1], 2)))
 
@@ -1358,7 +1359,7 @@ class spectra:
 
             #getting the measured spectra
             self.active = self.active_passive(roi, t_start, t_stop,
-                                              background_interval=bcg, error=True, plotting=False)
+                                    background_interval=bcg, error=True, plotting=False)
             self.active = self.active.slice_data(
                 slicing={"Wavelength": flap.Intervals(wstart, wstop)})
             if(fittype == "CV"):
@@ -1414,7 +1415,8 @@ class spectra:
                               str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
                               "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
                     plt.hlines(sol[1], 0, N, color = "red")
-                    plt.fill_between(np.arange(N), sol[1] - Terr, sol[1] + Terr,color='red', alpha=0.2)
+                    plt.fill_between(np.arange(N), sol[1] - Terr, sol[1] + Terr,color='red',
+                                     alpha=0.2)
                     plt.plot(np.arange(N),T_iters,marker = "o",linestyle="",color="blue")
                     plt.xlim(0,N-1)
                     plt.subplot(212)
@@ -1491,19 +1493,43 @@ class spectra:
                     plt.grid()
 
     def C_Ti_error_sim(self,mu_add,kbt,A,tstart,tstop,iter_num,scalef,fittype,plots=False):
-        met = "Powell"
+        """
+        A function for simulating uncertainties of possible future ion temperature
+        measurements when certain parameters are defined previously (like ion type,
+        Zeeman spectra, setting of the spectrometer, etc.). A previous measurement
+        is utilized.
+
+        Parameters
+        ----------
+        mu_add : expected value for a term that constitutes from the Doppler shift of 
+        the line, and the wavelength uncertainty of the spectrometer (float)
+        kbt : expected value for temperature times Boltzmann constant (float)
+        A : expected value for line intensity factor (float)
+        tstart : lower end of the interval for which the ion temperature to be 
+        calculated in the measurement
+        tstop : higher end of the interval for which the ion temperature to be 
+        calculated in the measurement
+        iter_num : Number of iterations for the Monte Carlo error calculation process (int)
+        scalef : scaling number between the measured and to be generated line intensity
+        (float)
+        fittype : (string) The kind of line that is to be generated. At the moment, 
+        it can be "CV" or "CVI".
+        plots : (Boolean) wether plot the generated spectra during the error calculation
+        process or not. The default is False.
+        """
+        met = "Powell" #as far as I know that is the best choice for such purpose
         line_param = np.array([mu_add, kbt, A])
 
         T_i = np.zeros((iter_num))
         chisq = np.zeros((iter_num))
         
-        R_plot = round(self.dataobj.coordinate("Device R")[0][0, (self.current_roi-1), 0], 4)
+        R_plot=round(self.dataobj.coordinate("Device R")[0][0,(self.current_roi-1),0],4)
 
         for i in range(iter_num):
+            #measurement simulation, then fit iter_num times
             print("Iteration "+str(i))
             self.simulated, self.simulated_error = self.C_line_simulator(mu_add,
                                     kbt, A,fittype,scalef=scalef, plots=False,sim=True)
-            # raise ValueError("stop")
             if(plots == True):
                 es_chisq = self.C_fitfunc_plot_sim(line_param)
                 plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
@@ -1530,7 +1556,8 @@ class spectra:
                   str(round(chisq.mean(), 2))+", $T_C$ = "+str(round(np.mean(T_i), 2))+
                   "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
         plt.hlines(np.mean(T_i), 0, iter_num, color = "red")
-        plt.fill_between(np.arange(iter_num), np.mean(T_i) - Terr, np.mean(T_i) + Terr,color='red', alpha=0.2)
+        plt.fill_between(np.arange(iter_num),np.mean(T_i)-Terr,np.mean(T_i)+Terr,
+                         color='red',alpha=0.2)
         plt.plot(np.arange(iter_num),T_i,marker = "o",linestyle="",color="blue")
         plt.xlim(0,iter_num-1)
         plt.subplot(212)
@@ -1543,6 +1570,37 @@ class spectra:
     
     def Ti_error_simulation(self,fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,
                             t_start,t_stop,bcg,N,simd,simgrid,scalef,plots=False):
+        """
+        A function for simulating uncertainties of possible future ion temperature
+        measurements using C_Ti_error_sim() for which the specific details are defined
+        here. A previous measurement is utilized.
+
+        Parameters
+        ----------
+        fittype : (string) The kind of line that is to be generated. At the moment, 
+        it can be "CV" or "CVI".
+        roi : Region Of Interest, in other words spectral channel (int).
+        wstart : lower end of the wavelength interval of the spectral line (float)
+        wstop : higher end of the wavelength interval of the spectral line (float)
+        mu_add : expected value for a term that constitutes from the Doppler shift of 
+        the line, and the wavelength uncertainty of the spectrometer (float)
+        kbt : expected value for temperature times Boltzmann constant (float)
+        A : expected value for line intensity factor (float)
+        dslit: slit size in the spectrometer in the measurement
+        t_start : lower end of the interval for which the ion temperature to be 
+        calculated in the measurement
+        t_stop : higher end of the interval for which the ion temperature to be 
+        calculated in the measurement
+        bcg : A wavelength interval that does not contain any notable spectral lines 
+        in the measurement (list with two floats).
+        N : Number of iterations for the Monte Carlo error calculation process (int)
+        simd : spectrometer slit size in the simulation
+        simgrid : spectrometer grid in the simulation
+        scalef : scaling number between the measured and to be generated line intensity
+        (float)
+        plots : (Boolean) wether plot the generated spectra during the error calculation
+        process or not. The default is False.
+        """
         if(self.campaign == "OP2.1"):
             centre_of_lens = np.array([1.305624, 6.094843, -3.013095])
             roi_pos = np.loadtxt("OP21/ROI_pos.txt")
@@ -1558,7 +1616,7 @@ class spectra:
             self.simgrid = simgrid
 
             self.active = self.active_passive(roi, t_start, t_stop,
-                                              background_interval=bcg, error=True, plotting=False)
+                                    background_interval=bcg, error=True, plotting=False)
             self.active = self.active.slice_data(
                 slicing={"Wavelength": flap.Intervals(wstart, wstop)})
             if(fittype == "CV"):
