@@ -18,7 +18,7 @@ import pandas as pd
 import flap
 
 
-def wavelength_grid_generator_op21(grid, w_s, roi):
+def wavelength_grid_generator_op21(grid, w_s, roi,datapath_base):
     """
     Generates a wavelength grid for spectra measured by IsoPlane using 
     coefficients that were fitted by calibration (which assumed third-order
@@ -29,11 +29,13 @@ def wavelength_grid_generator_op21(grid, w_s, roi):
         grid: "1200g_per_mm", "1800g_per_mm" or "2400g_per_mm"
         w_s: central wavelength setting of the measurement (float)
         roi: Region Of Interest (ROI), which belongs to the channel in question (int)
+        datapath_base : string, path of the supplementary data (like wavelength calibration)
+        
     OUTPUT:
         1D numpy array with the calibrated wavelength values
     """
     
-    calib_array = np.loadtxt("wavelength_calib_2023_"+grid+".txt")
+    calib_array = np.loadtxt(datapath_base+"OP21/wavelength_calib_2023_"+grid+".txt")
     # loading the calibration coeffs
     c0 = calib_array[roi-1, 0]
     c1 = calib_array[roi-1, 2]
@@ -264,7 +266,8 @@ class spectra:
             self.d_beam_on = d_beam_on
             self.d_beam_off = d_beam_off
 
-    def wavelength_calibration(self,man=False,grid=None,wavelength_setting=None):
+    def wavelength_calibration(self,man=False,grid=None,wavelength_setting=None,
+                               options=None):
         """
         Changes the pixel coordinate axis to wavelength.
         
@@ -273,14 +276,25 @@ class spectra:
                  manually
             grid: "1200g_per_mm", "1800g_per_mm" or "2400g_per_mm", but it only
                   matters when man = True - the default is None
-            w_s: floot, central wavelength setting of the measurement, but it only
-                  matters when man = True - the default is None
+            wavelength_setting: floot, central wavelength setting of the measurement,
+                  but it only matters when man = True - the default is None
+            options : dictionary
+                'Supplementary_data_path': string, path of the supplementary data
+                (like wavelength calibration)
         OUTPUT:
             1D numpy array with the calibrated wavelength values
         """
-        if(self.campaign == "OP2.1"): #for OP2.1 a table contains the values
+        default_options = {"Supplementary_data_path":"data"}
+        _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES_CXRS')
+        try:
+            datapath_base = _options['Supplementary_data_path']
+        except (KeyError, TypeError):
+            datapath_base = 'data'
+        # print(datapath_base)
+        # raise ValueError("stop")
+        if(self.campaign == "OP2.1" and man == False): #for OP2.1 a table contains the values
             settings_df = pd.read_excel(
-                "OP21/discharge_table_for_spectral_measurements.xlsx")
+                datapath_base+"OP21/discharge_table_for_spectral_measurements.xlsx")
             settings = settings_df.loc[settings_df["Discharge"] == float(
                 self.expe_id)]
             self.grid = str(settings["Grid [g/mm]"].to_numpy()[0])+"g_per_mm"
@@ -295,7 +309,7 @@ class spectra:
             wl_values = np.zeros((6, 1024))
             for i in range(1, 7):
                 wl_values[i-1, :] = wavelength_grid_generator_op21(
-                    self.grid, self.wavelength_setting, i)
+                    self.grid, self.wavelength_setting, i,datapath_base)
 
             wl_coord_flap = flap.Coordinate(name='Wavelength', unit="nm",
                             mode=flap.CoordinateMode(equidistant=False),
@@ -334,7 +348,7 @@ class spectra:
         plt.ylabel("Intensity", fontsize=15)
         if(type(wavelength) == float or type(wavelength) == int):
             plt.title(
-                "Temporal evolution of the pixel() at wavelength "+str(wavelength)+" nm")
+                "Temporal evolution of the pixel at wavelength "+str(wavelength)+" nm")
         elif(type(wavelength) == list):
             tit = "Avg. temporal evolution of pixels between wavelength ["
             plt.title(tit+str(wavelength[0])+", "+str(wavelength[1])+"] nm")
