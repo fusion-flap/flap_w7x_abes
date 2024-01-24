@@ -35,7 +35,7 @@ def wavelength_grid_generator_op21(grid, w_s, roi,datapath_base):
         1D numpy array with the calibrated wavelength values
     """
     
-    calib_array = np.loadtxt(datapath_base+"OP21/wavelength_calib_2023_"+grid+".txt")
+    calib_array = np.loadtxt(datapath_base+"wavelength_calib_2023_"+grid+".txt")
     # loading the calibration coeffs
     c0 = calib_array[roi-1, 0]
     c1 = calib_array[roi-1, 2]
@@ -201,6 +201,8 @@ class spectra:
         self.simd = None
         self.simgrid = None
         self.errparam = None
+        self.supl_data_path = None
+        self.instr_funcs_datapath = None
 
         if(data_source == 'W7X_WEBAPI' and get_data == "by shotID" and
                 campaign == "OP2.1"):
@@ -290,11 +292,9 @@ class spectra:
             datapath_base = _options['Supplementary_data_path']
         except (KeyError, TypeError):
             datapath_base = 'data'
-        # print(datapath_base)
-        # raise ValueError("stop")
         if(self.campaign == "OP2.1" and man == False): #for OP2.1 a table contains the values
             settings_df = pd.read_excel(
-                datapath_base+"OP21/discharge_table_for_spectral_measurements.xlsx")
+                datapath_base+"discharge_table_for_spectral_measurements.xlsx")
             settings = settings_df.loc[settings_df["Discharge"] == float(
                 self.expe_id)]
             self.grid = str(settings["Grid [g/mm]"].to_numpy()[0])+"g_per_mm"
@@ -842,13 +842,13 @@ class spectra:
         wl_grid = None
         if(sim==False):
             wl_values = wavelength_grid_generator_op21(
-                self.grid, self.wavelength_setting, self.current_roi)
+                self.grid, self.wavelength_setting, self.current_roi,self.supl_data_path)
             # slicing the wavelength grid
             wl_grid0 = wl_values[wl_values > self.wstart]
             wl_grid = wl_grid0[self.wstop > wl_grid0]
         elif(sim==True):
             wl_values = wavelength_grid_generator_op21(
-                self.simgrid, self.wavelength_setting, self.current_roi)
+                self.simgrid, self.wavelength_setting, self.current_roi,self.supl_data_path)
             # slicing the wavelength grid
             wl_grid0 = wl_values[wl_values > self.wstart]
             wl_grid = wl_grid0[self.wstop > wl_grid0] 
@@ -874,15 +874,17 @@ class spectra:
         instr = None
         if(sim==False):
             # convolution with instrumental function
-            instr = np.load("instr_funcs/"+self.grid+"_P0"+str(self.current_roi) +
+            instr = np.load(self.instr_funcs_datapath+self.grid+"_P0"+
+                            str(self.current_roi) +
                             "_"+str(int(self.dslit))+"micron_slit.npy").ravel()
         elif(sim==True):
             # convolution with instrumental function
             if(self.simd == 100):
-                instr = np.load("instr_funcs/"+self.simgrid+"_P0"+str(self.current_roi) +
+                instr = np.load(self.instr_funcs_datapath+self.simgrid+"_P0"+
+                                str(self.current_roi) +
                             "_"+str(int(self.simd))+"micron_slit.npy").ravel()
             else:
-                instr = np.load("instr_funcs/"+self.simgrid+"_P03" +
+                instr = np.load(self.instr_funcs_datapath+self.simgrid+"_P03" +
                             "_"+str(int(self.simd))+"micron_slit.npy").ravel()
                 
         complete_spectrum = np.convolve(doppler_spectrum, instr, mode="same")
@@ -1055,7 +1057,7 @@ class spectra:
 
         # loading the wavelength grid
         wl_values = wavelength_grid_generator_op21(
-            self.simgrid, self.wavelength_setting, self.current_roi)
+            self.simgrid, self.wavelength_setting, self.current_roi,self.supl_data_path)
         wl_grid0 = wl_values[wl_values > self.wstart]  # slicing the wavelength grid
         lambd = wl_grid0[self.wstop > wl_grid0]
 
@@ -1326,7 +1328,7 @@ class spectra:
         return np.std(T_i), T_i, chisq
 
     def tempfit(self,fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,t_start,t_stop,bcg,N,
-                plots=False):
+                plots=False,options = None):
         """
         A function for fitting the ion temperature (among A, mu_add) by modelling the
         line shape. The uncertainties are gained by Monte Carlo error calculation.
@@ -1353,13 +1355,26 @@ class spectra:
         N : Number of iterations for the Monte Carlo error calculation process (int)
         plots : (Boolean) wether plot the generated spectra during the error calculation
         process or not. The default is False.
+        options : dictionary
+            'Supplementary_data_path': string, path of the supplementary data
+            (like wavelength calibration)
+            'Instrumental_functions_datapath': string, path of the saved instrumental
+            functions, which should be .npy files
         """
+        default_options = {"Supplementary_data_path":"data"}
+        _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES_CXRS')
+        try:
+            self.supl_data_path = _options['Supplementary_data_path']
+            self.instr_funcs_datapath = _options['Instrumental_functions_datapath']
+        except (KeyError, TypeError):
+            self.supl_data_path = 'data'
+            self.instr_funcs_datapath = 'data'
         if(self.campaign == "OP2.1"):
             
             #central position of the first lens
             centre_of_lens = np.array([1.305624, 6.094843, -3.013095])
             #viewed positions of the channels
-            roi_pos = np.loadtxt("OP21/ROI_pos.txt")
+            roi_pos = np.loadtxt(self.supl_data_path+"ROI_pos.txt")
             self.observation_directions = np.zeros(
                 (roi_pos.shape[0], roi_pos.shape[1]))
             for i in range(roi_pos.shape[1]):
@@ -1378,7 +1393,7 @@ class spectra:
                 slicing={"Wavelength": flap.Intervals(wstart, wstop)})
             if(fittype == "CV"):
                 #magnetic field data from Gábor Cseh
-                self.B = np.loadtxt("OP21/"+self.expe_id+".txt")
+                self.B = np.loadtxt(self.supl_data_path+self.expe_id+".txt")
                 self.Babs = np.sqrt(np.sum(self.B[:, roi-1]**2))
                 divider = np.sqrt(
                     np.sum(self.observation_directions[:, roi-1]**2))*self.Babs
@@ -1388,7 +1403,7 @@ class spectra:
                 
                 #no exact data - saved approximation proposed by Oliver Ford
                 #for the Zeeman components, done by the webservice of Dorothea Gradic
-                with open('OP21/getZeeman_CV_ROI'+str(self.current_roi)+'.json', 'r') as f:
+                with open(self.supl_data_path+'getZeeman_CV_ROI'+str(self.current_roi)+'.json', 'r') as f:
                     datafile = json.load(f)
                 
                 self.zc_locations = np.array(datafile['wavelengths'])/10
@@ -1441,7 +1456,7 @@ class spectra:
                     plt.grid()
                 
             elif(fittype == "CVI"):
-                self.B = np.loadtxt("OP21/"+self.expe_id+".txt")
+                self.B = np.loadtxt(self.supl_data_path+self.expe_id+".txt")
                 self.Babs = np.sqrt(np.sum(self.B[:, roi-1]**2))
                 divider = np.sqrt(
                     np.sum(self.observation_directions[:, roi-1]**2))*self.Babs
@@ -1583,7 +1598,8 @@ class spectra:
         return Terr
     
     def Ti_error_simulation(self,fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,
-                            t_start,t_stop,bcg,N,simd,simgrid,scalef,plots=False):
+                            t_start,t_stop,bcg,N,simd,simgrid,scalef,plots=False,
+                            options = None):
         """
         A function for simulating uncertainties of possible future ion temperature
         measurements using C_Ti_error_sim() for which the specific details are defined
@@ -1614,10 +1630,23 @@ class spectra:
         (float)
         plots : (Boolean) wether plot the generated spectra during the error calculation
         process or not. The default is False.
+        options : dictionary
+            'Supplementary_data_path': string, path of the supplementary data
+            (like wavelength calibration)
+            'Instrumental_functions_datapath': string, path of the saved instrumental
+            functions, which should be .npy files
         """
+        default_options = {"Supplementary_data_path":"data"}
+        _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES_CXRS')
+        try:
+            self.supl_data_path = _options['Supplementary_data_path']
+            self.instr_funcs_datapath = _options['Instrumental_functions_datapath']
+        except (KeyError, TypeError):
+            self.supl_data_path = 'data'
+            self.instr_funcs_datapath = 'data'
         if(self.campaign == "OP2.1"):
             centre_of_lens = np.array([1.305624, 6.094843, -3.013095])
-            roi_pos = np.loadtxt("OP21/ROI_pos.txt")
+            roi_pos = np.loadtxt(self.supl_data_path+"ROI_pos.txt")
             self.observation_directions = np.zeros(
                 (roi_pos.shape[0], roi_pos.shape[1]))
             for i in range(roi_pos.shape[1]):
@@ -1634,7 +1663,7 @@ class spectra:
             self.active = self.active.slice_data(
                 slicing={"Wavelength": flap.Intervals(wstart, wstop)})
             if(fittype == "CV"):
-                self.B = np.loadtxt("OP21/"+self.expe_id+".txt")
+                self.B = np.loadtxt(self.supl_data_path+self.expe_id+".txt")
                 self.Babs = np.sqrt(np.sum(self.B[:, roi-1]**2))
                 divider = np.sqrt(
                     np.sum(self.observation_directions[:, roi-1]**2))*self.Babs
@@ -1645,7 +1674,8 @@ class spectra:
                 self.errparam = np.array([0.07875014474033012,0.4501855052541737]) 
                 #on a H line (486 nm), and on the background, respectively, for 9s
                 
-                with open('OP21/getZeeman_CV_ROI'+str(self.current_roi)+'.json', 'r') as f:
+                with open(self.supl_data_path+'getZeeman_CV_ROI'+str(self.current_roi)+
+                          '.json', 'r') as f:
                     datafile = json.load(f)
                 
                 self.zc_locations = np.array(datafile['wavelengths'])/10
@@ -1657,7 +1687,7 @@ class spectra:
                 return Terr
             
             elif(fittype == "CVI"):
-                self.B = np.loadtxt("OP21/"+self.expe_id+".txt")
+                self.B = np.loadtxt(self.supl_data_path+self.expe_id+".txt")
                 self.Babs = np.sqrt(np.sum(self.B[:, roi-1]**2))
                 divider = np.sqrt(
                     np.sum(self.observation_directions[:, roi-1]**2))*self.Babs

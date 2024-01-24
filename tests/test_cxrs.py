@@ -132,6 +132,74 @@ def test_error_distribution():
     spec.error_distr(tstart,tstop,wstart,wstop,
                             background_interval=backg,plotting=True,ROI=roi)
     
+
+def test_tempfit():
+    #test 1 (slow!)
+    expe_id = '20230316.047' 
+    roi = 2
+    tstart = 1
+    tstop = 10
+    wstart = 494
+    wstop = 495.25
+    backg = [488.5,491.5]
+    fittype = "CV"
+    mu_add = 0.1
+    kbt = 100
+    A = 7e-04
+    itern = 5
+    dslit = 100
+    spec = flap_w7x_abes.spectra('W7X_WEBAPI',expe_id,campaign="OP2.1",
+                                 spatcal=True, time_correction=True)
+    spec.wavelength_calibration()
+    
+    spec.tempfit(fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,
+                  tstart,tstop,backg,itern,plots=True)
+    
+    #test 2
+    expe_id = '20230316.072' 
+    roi = 4
+    tstart = 6
+    tstop = 12
+    wstart = 528.25
+    wstop = 529.65
+    backg = [535,540]
+    fittype = "CVI"
+    mu_add = -1.24783889e-01
+    kbt = 160
+    A = 6.49104713e-04
+    itern = 10
+    dslit = 100
+    spec = flap_w7x_abes.spectra('W7X_WEBAPI',expe_id,campaign="OP2.1",
+                                  spatcal=True, time_correction=True)
+    spec.wavelength_calibration()
+    
+    spec.tempfit(fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,
+                  tstart,tstop,backg,itern,plots=False)
+    
+def test_error_simulation():
+    expe_id = '20230316.072' 
+    roi = 4
+    tstart = 6
+    tstop = 12
+    wstart = 528.25
+    wstop = 529.65
+    backg = [535,540]
+    fittype = "CVI"
+    mu_add = -1.24783889e-01
+    kbt = 160
+    A = 6.49104713e-04
+    itern = 10
+    dslit = 100
+    
+    sf = ((20/7)**2)/6 #future measurement, 1 fiber, 1s, CVI
+    simd = 100
+    simgrid = "1800g_per_mm"
+    spec = flap_w7x_abes.spectra('W7X_WEBAPI',expe_id,campaign="OP2.1",
+                                  spatcal=True, time_correction=True)
+    spec.wavelength_calibration()
+    spec.Ti_error_simulation(fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,
+                    tstart,tstop,backg,itern,simd,simgrid,sf,plots=True)
+    
     
 # test_read_webapi()
 # test_calibration()
@@ -142,4 +210,6 @@ def test_error_distribution():
 # test_autocorr()
 # test_temporal_shift()
 # test_get_line_intensity()
-test_error_distribution()
+# test_error_distribution()
+# test_tempfit()
+test_error_simulation()
