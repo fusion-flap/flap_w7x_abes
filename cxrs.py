@@ -503,7 +503,7 @@ class spectra:
                 "For that campaign this method is not implemented yet.")
 
     def active_passive(self, roi, t_start, t_stop, background_interval=[0],
-                       error=False, plotting=True):
+                       error=False, plotting=True, plotting_wavelength = []):
         """
         It slices and averages it along the time axis in the intervals when the beam
         was on and off, and it subtracts the two.
@@ -518,7 +518,12 @@ class spectra:
         interval is given.
         error : wether one would like to perform error calculation or not (Boolean).
         The default is False.
-        plotting : wether it should plot the results or not (Boolean). The default is True.
+        plotting : wether it should plot the results or not (Boolean or string). 
+                   It can also be "on-off", when it plots the spectra measured and 
+                   averaged during the beam-on, beam-off intervals, or it can be
+                   "active", when it plots the difference of the two. The default is True.
+        plotting_wavelength: a wavelength interval in which the spectra will be plotted
+        (list of two floats). The default is an empty list.
 
         Returns
         -------
@@ -565,12 +570,19 @@ class spectra:
             s_on.data = s_on_data
             s_off.data = s_off_data
 
-            if(plotting == True):
+            if(plotting == True or plotting == "on-off"):
+                
+                if(plotting_wavelength != []):
+                    s_on=s_on.slice_data(slicing={'Wavelength':flap.Intervals(
+                        plotting_wavelength[0],plotting_wavelength[1])})
+                    s_off=s_off.slice_data(slicing={'Wavelength':flap.Intervals(
+                        plotting_wavelength[0],plotting_wavelength[1])})
+                
                 plt.figure()
                 s_on.plot(axes="Wavelength")
                 s_off.plot(axes="Wavelength")
                 legend = ["beam on", "beam off"]
-                plt.legend(legend)
+                plt.legend(legend,fontsize = 15)
                 plt.title(self.expe_id+", beam on and off spectra, ROI = "+str(roi)+
                           ", ["+str(t_start)+","+str(t_stop)+"] s",fontsize=15)
                 plt.ylabel("Intensity [a.u.]")
@@ -581,7 +593,10 @@ class spectra:
             if(error == True):
                 s_subs.error = np.sqrt(error_on**2 + error_off**2)
 
-            if(plotting == True):
+            if(plotting == True or plotting == "active"):
+                if(plotting_wavelength != []):
+                    s_subs=s_subs.slice_data(slicing={'Wavelength':flap.Intervals(
+                        plotting_wavelength[0],plotting_wavelength[1])})
                 plt.figure()
                 s_subs.plot(axes="Wavelength")
                 plt.title(self.expe_id+", active spectrum, ROI = P0"+str(roi)+
