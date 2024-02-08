@@ -353,7 +353,7 @@ class spectra:
             tit = "Avg. temporal evolution of pixels between wavelength ["
             plt.title(tit+str(wavelength[0])+", "+str(wavelength[1])+"] nm")
 
-    def passive(self, roi, t_start, t_stop):
+    def passive(self, roi, t_start, t_stop, error=False):
         """
         It averages the spectra in the given time interval, then it plots the result.
         
@@ -365,14 +365,22 @@ class spectra:
         """
         ROI1 = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
                                                 "Time": flap.Intervals(t_start, t_stop)})
+        errors = None
+            
         avg_spectrum = ROI1.slice_data(summing={"Time": "Mean"})
-
+        errors0 = ROI1.data.copy()
+        if(error == True):
+            for i in range(ROI1.data.shape[1]):
+                errors0[:,i] = (errors0[:,i] - avg_spectrum.data[i])**2
+                errors = np.sqrt(errors0.mean(axis = 0)) / np.sqrt(errors0.shape[0])
+            avg_spectrum.error = errors
         plt.figure()
         avg_spectrum.plot(axes="Wavelength")
         plt.title(self.expe_id, fontsize=15)
         plt.title(self.expe_id+", averaged spectra, ROI = P0" +
                   str(roi), fontsize=15)
         plt.grid()
+        return avg_spectrum
 
     def autocorr(self, roi, t_start, t_stop, lstart, lstop):
         """
@@ -1259,8 +1267,8 @@ class spectra:
                 plt.grid()
                 
             sq = lambda x, a, b: a*np.sqrt(x) + b
-            #assuming 15% modulation
-            err = sq(calculated*15, self.errparam[0], self.errparam[1])
+            #assuming 10% modulation
+            err = sq(calculated*10, self.errparam[0], self.errparam[1])
 
             if(plots == True):
                 plt.figure()
