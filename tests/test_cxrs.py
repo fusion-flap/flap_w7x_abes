@@ -143,7 +143,7 @@ def test_tempfit():
     wstop = 495.25
     backg = [488.5,491.5]
     fittype = "CV"
-    mu_add = 0.1
+    mu = 494.72
     kbt = 100
     A = 7e-04
     itern = 5
@@ -152,7 +152,7 @@ def test_tempfit():
                                  spatcal=True, time_correction=True)
     spec.wavelength_calibration()
     
-    spec.tempfit(fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,
+    spec.tempfit(fittype,roi,wstart,wstop,mu,kbt,A,dslit,
                   tstart,tstop,backg,itern,plots=True)
     
     #test 2
@@ -164,7 +164,7 @@ def test_tempfit():
     wstop = 529.65
     backg = [535,540]
     fittype = "CVI"
-    mu_add = -1.24783889e-01
+    mu = 528.85
     kbt = 160
     A = 6.49104713e-04
     itern = 10
@@ -173,7 +173,7 @@ def test_tempfit():
                                   spatcal=True, time_correction=True)
     spec.wavelength_calibration()
     
-    spec.tempfit(fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,
+    spec.tempfit(fittype,roi,wstart,wstop,mu,kbt,A,dslit,
                   tstart,tstop,backg,itern,plots=False)
     
 def test_error_simulation():
@@ -185,7 +185,7 @@ def test_error_simulation():
     wstop = 529.65
     backg = [535,540]
     fittype = "CVI"
-    mu_add = -1.24783889e-01
+    mu = 528.85
     kbt = 160
     A = 6.49104713e-04
     itern = 10
@@ -197,7 +197,7 @@ def test_error_simulation():
     spec = flap_w7x_abes.spectra('W7X_WEBAPI',expe_id,campaign="OP2.1",
                                   spatcal=True, time_correction=True)
     spec.wavelength_calibration()
-    spec.Ti_error_simulation(fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,
+    spec.Ti_error_simulation(fittype,roi,wstart,wstop,mu,kbt,A,dslit,
                     tstart,tstop,backg,itern,simd,simgrid,sf,plots=True)
     
     

@@ -841,15 +841,15 @@ class spectra:
             raise ValueError(
                 "For that campaign this method is not implemented yet.")
 
-    def C_line_generator(self, mu_add, kbt, A,sim=False):
+    def C_line_generator(self, mu, kbt, A,sim=False):
         """
         A function to generate theoretical carbon ion line shapes based on the Zeeman
         components of the line which are defined elsewhere.
 
         Parameters
         ----------
-        mu_add : a term that constitutes from the Doppler shift of the line, and the
-        wavelength uncertainty of the spectrometer (float)
+        mu : term that constitutes from the Doppler shift of the line, the
+        wavelength uncertainty of the spectrometer (float), and the line central wavelength
         kbt : temperature times Boltzmann constant (float)
         A : Line intensity factor (float)
         sim : (Boolean) Wether the function is used for simulating experiments, or fitting
@@ -876,9 +876,8 @@ class spectra:
             wl_grid0 = wl_values[wl_values > self.wstart]
             wl_grid = wl_grid0[self.wstop > wl_grid0] 
         # Doppler shift + calibration uncertainty
-        locations = self.zc_locations + mu_add
+        locations = self.zc_locations
         projection = np.zeros((wl_grid.shape[0]))
-        mu = np.dot(locations, self.zc_intensities)/sum(self.zc_intensities)
         for i in range(len(self.zc_intensities)):
             diff = abs(wl_grid - locations[i])
             sor = np.argsort(diff)
@@ -891,8 +890,8 @@ class spectra:
         # addition of the Doppler broadening
         doppler_broadening=lambda kbt,a:a*np.sqrt(2*1.602176487*abs(kbt)/19.9419)/30000
         s = doppler_broadening(kbt, mu)
-        gauss=lambda lambd,s,A,up,down:A*np.e**(-(((lambd-(up+down)/2)**2)/s**2))
-        gaussian = gauss(wl_grid, s, A, self.wstop, self.wstart)
+        gauss=lambda lambd,s,A,mu:A*np.e**(-(((lambd-mu)**2)/s**2))
+        gaussian = gauss(wl_grid, s, A, mu)
         doppler_spectrum = np.convolve(projection, gaussian, mode="same")
         instr = None
         if(sim==False):
@@ -922,16 +921,16 @@ class spectra:
         Parameters
         ----------
         esti : (np.array) a vector that contains relevant parameters in the following 
-        way: np.array([mu_add, kbt, A]) - see the variables above
+        way: np.array([mu, kbt, A]) - see the variables above
 
         Returns
         -------
         chi^2 (normalized by # of parameters, data points)
         """
-        mu_add = esti[0]
+        mu = esti[0]
         kbt = esti[1]
         A = esti[2]
-        modelled = self.C_line_generator(mu_add, kbt, A)
+        modelled = self.C_line_generator(mu, kbt, A)
         C = (modelled - self.active.data)/self.active.error
         return (np.dot(C, C) - 3) / self.active.data.shape[0]
     
@@ -943,16 +942,16 @@ class spectra:
         Parameters
         ----------
         esti : (np.array) a vector that contains relevant parameters in the following 
-        way: np.array([mu_add, kbt, A]) - see the variables above
+        way: np.array([mu, kbt, A]) - see the variables above
 
         Returns
         -------
         chi^2 (normalized by # of parameters, data points)
         """
-        mu_add = esti[0]
+        mu = esti[0]
         kbt = esti[1]
         A = esti[2]
-        modelled = self.C_line_generator(mu_add, kbt, A,sim = True)
+        modelled = self.C_line_generator(mu, kbt, A,sim = True)
         C = (modelled - self.simulated)/self.simulated_error
         return (np.dot(C, C) - 3) / self.simulated.shape[0]
 
@@ -965,16 +964,16 @@ class spectra:
         Parameters
         ----------
         esti : (np.array) a vector that contains relevant parameters in the following 
-        way: np.array([mu_add, kbt, A]) - see the variables above
+        way: np.array([mu, kbt, A]) - see the variables above
 
         Returns
         -------
         chi^2 (normalized by # of parameters, data points)
         """
-        mu_add = esti[0]
+        mu = esti[0]
         kbt = esti[1]
         A = esti[2]
-        modelled = self.C_line_generator(mu_add, kbt, A)
+        modelled = self.C_line_generator(mu, kbt, A)
         C = (modelled - self.active.data)/self.active.error
 
         lambd = self.active.coordinate("Wavelength")[0]
@@ -1066,16 +1065,16 @@ class spectra:
         Parameters
         ----------
         esti : (np.array) a vector that contains relevant parameters in the following 
-        way: np.array([mu_add, kbt, A]) - see the variables above
+        way: np.array([mu, kbt, A]) - see the variables above
 
         Returns
         -------
         chi^2 (normalized by # of parameters, data points)
         """
-        mu_add = esti[0]
+        mu = esti[0]
         kbt = esti[1]
         A = esti[2]
-        modelled = self.C_line_generator(mu_add, kbt, A,sim = True)
+        modelled = self.C_line_generator(mu, kbt, A,sim = True)
         C = (modelled - self.simulated)/self.simulated_error
 
         # loading the wavelength grid
@@ -1095,15 +1094,15 @@ class spectra:
         return (np.dot(C, C) - 3) / self.simulated.shape[0]
     
     
-    def C_line_simulator(self,mu_add,kbt,A,fittype,scalef=None,plots=False,sim=False):
+    def C_line_simulator(self,mu,kbt,A,fittype,scalef=None,plots=False,sim=False):
         """
         A function that generates a realistic Carbon ion line spectrum including 
         noise. 
 
         Parameters
         ----------
-        mu_add : a term that constitutes from the Doppler shift of the line, and the
-        wavelength uncertainty of the spectrometer (float)
+        mu : term that constitutes from the Doppler shift of the line, the
+        wavelength uncertainty of the spectrometer (float), and the line central wavelength
         kbt : temperature times Boltzmann constant (float)
         A : Line intensity factor (float)
         fittype : (string) The kind of line that is to be generated. At the moment, 
@@ -1149,7 +1148,7 @@ class spectra:
                 plt.title(self.expe_id+", Beam on line intensity fit")
     
             #generating a line with the same maximum intensity as the measured
-            calculated = self.C_line_generator(mu_add, kbt, A)
+            calculated = self.C_line_generator(mu, kbt, A)
             calculated = popt[0]*calculated/max(calculated)
     
             if(plots == True):
@@ -1202,7 +1201,7 @@ class spectra:
                 plt.legend(["Data", "Fit"], fontsize=fs-2)
                 plt.title(self.expe_id+", Beam on line intensity fit")
     
-            calculated = self.C_line_generator(mu_add, kbt, A,sim=True)
+            calculated = self.C_line_generator(mu, kbt, A,sim=True)
             
             gridfac = None 
             #grid and slit width factor for cases when one would like to generate 
@@ -1287,15 +1286,15 @@ class spectra:
     
             return calculated, err
     
-    def C_Ti_error_sim_me(self,mu_add,kbt,A,iter_num,fittype,plots=False):
+    def C_Ti_error_sim_me(self,mu,kbt,A,iter_num,fittype,plots=False):
         """
         Function for calculating uncertainty of kb*T_i for a spectra fitted on measured
         data. It uses Monte Carlo error calculation.
 
         Parameters
         ----------
-        mu_add : a term that constitutes from the Doppler shift of the line, and the
-        wavelength uncertainty of the spectrometer (float)
+        mu : a term that constitutes from the Doppler shift of the line, the
+        wavelength uncertainty of the spectrometer (float), and the line central wavelength
         kbt : temperature times Boltzmann constant (float)
         A : Line intensity factor (float)
         iter_num : Number of iterations for the Monte Carlo error calculation process
@@ -1316,7 +1315,7 @@ class spectra:
 
         """
         met = "Powell" #as far as I know that is the best choice for such purpose
-        line_param = np.array([mu_add, kbt, A])
+        line_param = np.array([mu, kbt, A])
 
         T_i = np.zeros((iter_num))
         chisq = np.zeros((iter_num))
@@ -1325,7 +1324,7 @@ class spectra:
             print("Iteration "+str(i))
             #simulating same spectrum as the measured based on its maximum 
             #intensity and its errors
-            self.simulated, self.simulated_error = self.C_line_simulator(mu_add, kbt, A,
+            self.simulated, self.simulated_error = self.C_line_simulator(mu, kbt, A,
                                                                     fittype, plots=False)
             if(plots == True): #plot with initial parameters before fit
                 es_chisq = self.C_fitfunc_plot_sim(line_param)
@@ -1350,10 +1349,10 @@ class spectra:
 
         return np.std(T_i), T_i, chisq
 
-    def tempfit(self,fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,t_start,t_stop,bcg,N,
+    def tempfit(self,fittype,roi,wstart,wstop,mu,kbt,A,dslit,t_start,t_stop,bcg,N,
                 plots=False,options = None):
         """
-        A function for fitting the ion temperature (among A, mu_add) by modelling the
+        A function for fitting the ion temperature (among A, mu) by modelling the
         line shape. The uncertainties are gained by Monte Carlo error calculation.
         The function prints the results, and also plots the fitted line upon request.
 
@@ -1364,8 +1363,8 @@ class spectra:
         roi : Region Of Interest, in other words spectral channel (int).
         wstart : lower end of the wavelength interval of the spectral line (float)
         wstop : higher end of the wavelength interval of the spectral line (float)
-        mu_add : initial guess for a term that constitutes from the Doppler shift of 
-        the line, and the wavelength uncertainty of the spectrometer (float)
+        mu : initial guess for a term that constitutes from the Doppler shift of the line, the
+        wavelength uncertainty of the spectrometer (float), and the line central wavelength
         kbt : initial guess for temperature times Boltzmann constant (float)
         A : initial guess for line intensity factor (float)
         dslit : slit width in the spectrometer in the discharge (int)
@@ -1433,7 +1432,7 @@ class spectra:
                 self.zc_intensities = np.array(datafile['amplitude'])
                 
                 #fitting the ion temperature, and other parameters
-                esti = np.array([mu_add, kbt, A])
+                esti = np.array([mu, kbt, A])
                 es_chisq = self.C_fitfunc_plot(esti)
                 plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
                 solution = minimize(self.C_fitfunc, esti, method="Powell",
@@ -1500,7 +1499,7 @@ class spectra:
                 self.zc_intensities = np.array(fine_structure['amplitude'])
                 
                 #fitting the ion temperature, and other parameters
-                esti = np.array([mu_add, kbt, A])
+                esti = np.array([mu, kbt, A])
                 es_chisq = self.C_fitfunc_plot(esti)
                 plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
                 solution = minimize(self.C_fitfunc, esti, method="Powell",
@@ -1544,7 +1543,7 @@ class spectra:
                     plt.xlim(0,N-1)
                     plt.grid()
 
-    def C_Ti_error_sim(self,mu_add,kbt,A,tstart,tstop,iter_num,scalef,fittype,plots=False):
+    def C_Ti_error_sim(self,mu,kbt,A,tstart,tstop,iter_num,scalef,fittype,plots=False):
         """
         A function for simulating uncertainties of possible future ion temperature
         measurements when certain parameters are defined previously (like ion type,
@@ -1553,8 +1552,8 @@ class spectra:
 
         Parameters
         ----------
-        mu_add : expected value for a term that constitutes from the Doppler shift of 
-        the line, and the wavelength uncertainty of the spectrometer (float)
+        mu : expected value for term that constitutes from the Doppler shift of the line, the
+        wavelength uncertainty of the spectrometer (float), and the line central wavelength
         kbt : expected value for temperature times Boltzmann constant (float)
         A : expected value for line intensity factor (float)
         tstart : lower end of the interval for which the ion temperature to be 
@@ -1570,7 +1569,7 @@ class spectra:
         process or not. The default is False.
         """
         met = "Powell" #as far as I know that is the best choice for such purpose
-        line_param = np.array([mu_add, kbt, A])
+        line_param = np.array([mu, kbt, A])
 
         T_i = np.zeros((iter_num))
         chisq = np.zeros((iter_num))
@@ -1580,7 +1579,7 @@ class spectra:
         for i in range(iter_num):
             #measurement simulation, then fit iter_num times
             print("Iteration "+str(i))
-            self.simulated, self.simulated_error = self.C_line_simulator(mu_add,
+            self.simulated, self.simulated_error = self.C_line_simulator(mu,
                                     kbt, A,fittype,scalef=scalef, plots=False,sim=True)
             if(plots == True):
                 es_chisq = self.C_fitfunc_plot_sim(line_param)
@@ -1620,7 +1619,7 @@ class spectra:
         plt.grid()
         return Terr
     
-    def Ti_error_simulation(self,fittype,roi,wstart,wstop,mu_add,kbt,A,dslit,
+    def Ti_error_simulation(self,fittype,roi,wstart,wstop,mu,kbt,A,dslit,
                             t_start,t_stop,bcg,N,simd,simgrid,scalef,plots=False,
                             options = None):
         """
@@ -1635,8 +1634,8 @@ class spectra:
         roi : Region Of Interest, in other words spectral channel (int).
         wstart : lower end of the wavelength interval of the spectral line (float)
         wstop : higher end of the wavelength interval of the spectral line (float)
-        mu_add : expected value for a term that constitutes from the Doppler shift of 
-        the line, and the wavelength uncertainty of the spectrometer (float)
+        mu : expected value for term that constitutes from the Doppler shift of the line, the
+        wavelength uncertainty of the spectrometer (float), and the line central wavelength
         kbt : expected value for temperature times Boltzmann constant (float)
         A : expected value for line intensity factor (float)
         dslit: slit size in the spectrometer in the measurement
@@ -1704,7 +1703,7 @@ class spectra:
                 self.zc_locations = np.array(datafile['wavelengths'])/10
                 self.zc_intensities = np.array(datafile['amplitude'])
                 
-                Terr = self.C_Ti_error_sim(mu_add,kbt,A,t_start,t_stop,N,scalef,fittype,plots=plots)
+                Terr = self.C_Ti_error_sim(mu,kbt,A,t_start,t_stop,N,scalef,fittype,plots=plots)
                 print("T_i error with the given parameters:")
                 print(Terr)
                 return Terr
@@ -1732,7 +1731,7 @@ class spectra:
                 self.zc_locations = np.array(fine_structure['wavelengths'])/10
                 self.zc_intensities = np.array(fine_structure['amplitude'])
 
-                Terr = self.C_Ti_error_sim(mu_add,kbt,A,t_start,t_stop,N,scalef,fittype,plots=plots)
+                Terr = self.C_Ti_error_sim(mu,kbt,A,t_start,t_stop,N,scalef,fittype,plots=plots)
                 print("T_i error with the given parameters:")
                 print(Terr)
                 return Terr
