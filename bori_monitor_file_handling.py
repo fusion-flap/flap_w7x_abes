@@ -7,7 +7,11 @@ Created on Sun Oct 10 21:15:27 2021
 
 import matplotlib.pyplot as plt
 import numpy as np
-from nptdms import TdmsFile
+try:
+    from nptdms import TdmsFile
+except ModuleNotFoundError:
+    print("nptdms module not available, beam monitor file handling cannot be done.")
+    
 import datetime
 import os
 import copy

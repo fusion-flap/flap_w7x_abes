@@ -63,7 +63,7 @@ def w7x_abes_cxrs_get_data(exp_id=None, data_name=None, no_data=False, options=N
     d.del_coordinate("Coord 1")
     d.add_coordinate_object(channel_coord)
     wavelength_coord = copy.deepcopy(d.get_coordinate_object("Coord 2"))
-    wavelength_coord.unit.name = "Pixel"
+    wavelength_coord.unit.name = "Wavelength"
     d.del_coordinate("Coord 2")
     d.add_coordinate_object(wavelength_coord)
     d.get_coordinate_object("Wavelength").unit.unit = "px"
@@ -74,6 +74,7 @@ def w7x_abes_cxrs_get_data(exp_id=None, data_name=None, no_data=False, options=N
          d = cxrs_add_coordinate(d, ['Device R', 'Device x', "Device y"],
                             options={"Shot spatcal dir": flap.config.get("Module W7X_ABES","Spatial calibration directory"),
                                      "Cache data": _options["Cache data"]})
+    return d
 
 def cxrs_add_coordinate(data_object,
                    coordinates,
