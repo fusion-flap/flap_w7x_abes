@@ -709,7 +709,10 @@ class ShotSpatCalCXRS(ShotSpatCal):
 
         clusters = ["A", "B","C","D","E","F","G","H","I","J",]
         if options['Plot'] is True:
-            colors = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple'}
+            colors = {'A':'tab:blue', 'H':'xkcd:grass green', 'HF': 'tab:red',
+                      'Z':'tab:purple', "BR2":"white", "BR1":"white"}
+            edgecolors = {'A':None, 'H':None, 'HF': None,
+                      'Z':None, "BR2":"black", "BR1":"black"}
             
             
             plt.figure()
@@ -719,7 +722,7 @@ class ShotSpatCalCXRS(ShotSpatCal):
             file = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 'spatcal', self.calibration_id, 'Geometry', 'calib_image.png')
             data = plt.imread(file)
-            plt.imshow(data, cmap='gray')
+            plt.imshow(data, cmap='gray', alpha=0.5)
             fibres_plot = []
             for key in patch_dict:
                 channel = patch_dict[key]
@@ -747,12 +750,15 @@ class ShotSpatCalCXRS(ShotSpatCal):
             #         fibre_coords_im[1], color='tab:red')
             index = 0
             for channel in object_dict['Channels']:
-                if str(channel).split('.')[0] == "A":
+                if str(channel).split('.')[0] == "H":
                     plt.scatter(fibre_coords_im[0][index],
                             fibre_coords_im[1][index], color=colors[str(channel).split('.')[0]])
+                    plt.text(fibre_coords_im[0][index]-20,
+                            fibre_coords_im[1][index], f"{str(channel).split('.')[1]}", color=colors[str(channel).split('.')[0]])
                 else:
-                    plt.scatter(fibre_coords_im[0][index],
-                            fibre_coords_im[1][index], color=colors[str(channel).split('.')[0]])
+                    pass
+                    # plt.scatter(fibre_coords_im[0][index],
+                    #         fibre_coords_im[1][index], color=colors[str(channel).split('.')[0]])
                 index += 1
             plt.plot(np.asarray([beam_im[0, 0], beam_im[1, 0]]), [
                      beam_im[0, 1], beam_im[1, 1]], color='tab:orange')
@@ -769,7 +775,8 @@ class ShotSpatCalCXRS(ShotSpatCal):
             points = fibre_coords_beam
             index = 0
             for channel in object_dict['Channels']:
-                plt.scatter(points[0][index], points[1][index], color=colors[str(channel).split('.')[0]])
+                plt.scatter(points[0][index], points[1][index], color=colors[str(channel).split('.')[0]],
+                            edgecolors=edgecolors[str(channel).split('.')[0]])
                 index += 1
             # Plotting the machine coordinates
             plt.subplot(1, 3, 3)
@@ -778,9 +785,10 @@ class ShotSpatCalCXRS(ShotSpatCal):
             #             fibre_coords_xyz[1], color='tab:red')
             index = 0
             for channel in object_dict['Channels']:
-                if str(channel).split('.')[0] == "A":
+                if str(channel).split('.')[0] == "H":
                     plt.scatter(fibre_coords_xyz[0][index],
-                            fibre_coords_xyz[1][index], color=colors[str(channel).split('.')[0]])
+                            fibre_coords_xyz[1][index], color=colors[str(channel).split('.')[0]],
+                            edgecolors=edgecolors[str(channel).split('.')[0]])
                     plt.text(fibre_coords_xyz[0][index]+0.003,
                           fibre_coords_xyz[1][index], f"{str(channel).split('.')[1]}",
                           color=colors[str(channel).split('.')[0]])
@@ -794,7 +802,8 @@ class ShotSpatCalCXRS(ShotSpatCal):
                                  color=colors[str(channel).split('.')[0]], fontsize=10)
                 else:
                     plt.scatter(fibre_coords_xyz[0][index],
-                            fibre_coords_xyz[1][index], color=colors[str(channel).split('.')[0]], alpha=0.3)
+                            fibre_coords_xyz[1][index], color=colors[str(channel).split('.')[0]],
+                            edgecolors=edgecolors[str(channel).split('.')[0]], alpha=0.3)
                 index += 1
             plt.plot([beam_start[0], beam_end[0]], [
                         beam_start[1], beam_end[1]], color='tab:orange')

@@ -22,8 +22,9 @@ if __name__ == '__main__':
     # d=flap.get_data('W7X_ABES_CXRS',exp_id=shotID, name="QSI")
     
     config, spect_config, patchp_config = flap_w7x_abes.cxrs_util.read_fibre_config(exp_id=shotID)
+    asda
+
     flap_w7x_abes.cxrs_util.plot_fibre_config(config)
-    
     flap_w7x_abes.cxrs_util.plot_patchpanel_spectrometer_config(spect_config)
     
     flap_w7x_abes.cxrs_util.plot_patchpanel_optical_channel_config(spect_config, patchp_config)
@@ -37,7 +38,7 @@ if __name__ == '__main__':
     index = 0
     for channel in a.data["Channel name"]:
         # print(f"{channel} \t {a.data['Device x'][index]} \t {a.data['Device y'][index]}")
-        data[channel] = [a.data['Device x'][index], a.data['Device y'][index]]
+        data[channel] = [a.data['Device x'][index], a.data['Device y'][index], np.sqrt(a.data['Device x'][index]**2+a.data['Device y'][index]**2)]
         index += 1
         
     channels = sorted(data.keys())
