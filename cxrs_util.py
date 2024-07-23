@@ -107,7 +107,7 @@ def plot_fibre_config(patch_oc_spectf):
                 locations[naming[side_oc_id]+str(fibers)] = [starter_loc[0]+(fibers)%2, starter_loc[1]+(fibers-1)//2]
 
     from matplotlib import pyplot as plt
-    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple'}
+    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple', 'NE':'tab:pink'}
     pointid=0
     x = [xstep*locations[channel][0] for channel in locations.keys()]
     y = [ystep*locations[channel][1] for channel in locations.keys()]
@@ -139,7 +139,8 @@ def plot_fibre_config(patch_oc_spectf):
     plt.text(5, 1, 'Optical channel / Helium fiber number', c=color['H'])
     plt.text(5, 2, 'Optical channel / Helium Filterscope fiber number', c=color['HF'])
     plt.text(5, 3, 'Optical channel / Zeff fiber number', c=color['Z'])
-    t = plt.text(5, 4, 'BR1 - detached or broken at port / BR2 - broken form port to patchbox', c="white")
+    plt.text(5, 4, 'Optical channel / Neon fiber number', c=color['NE'])
+    t = plt.text(5, 5, 'BR1 - detached or broken at port / BR2 - broken form port to patchbox', c="white")
     t.set_bbox(dict(facecolor='black', alpha=0.25))
     plt.tight_layout()
     # plt.gca().invert_yaxis()
@@ -147,7 +148,7 @@ def plot_fibre_config(patch_oc_spectf):
 
 def plot_patchpanel_spectrometer_config(spect_config):
     from matplotlib import pyplot as plt
-    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple', 'BR2':'white'}
+    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple', 'NE':'tab:pink', 'BR2':'white'}
     plt.figure(figsize=[13,5])
     for key in spect_config.keys():
         stringkey = str(key)
@@ -167,7 +168,7 @@ def plot_patchpanel_spectrometer_config(spect_config):
     
 def plot_patchpanel_optical_channel_config(spect_config, patchp_config):
     from matplotlib import pyplot as plt
-    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple', 'BR2':'white'}
+    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple', 'NE':'tab:pink', 'BR2':'white'}
     plt.figure(figsize=[12,5])
     for key in patchp_config.keys():
         stringkey = str(key)
