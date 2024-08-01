@@ -119,6 +119,3 @@ def exp_summaries(exp_ids,datapath=None,timerange=None):
                 txts.append(exp_summary(idi.name,datapath=dp,timerange=timerange))
     return txts
         
-
-
-print(exp_summaries('20181018.00*',timerange=[4,5]))
