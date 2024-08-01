@@ -627,14 +627,28 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                      'Time': The read times
                      Only a single equidistant range is interpreted in c_range.
     options:
-        'Scaling':  'Digit'
-                    'Volt'
-        'Offset timerange': Time range for offset subtraction
-        'Datapath': Data path (string)
-        'Calibration': True/False do/don't do amplitude calibration of the data
-        'Calib. path': Calibration directory name
-        'Calib. file': Calibration cld file name.
-        For further options see Chopper_times see shopper_timing_data()
+        'Scaling':  string
+           'Digit'
+           'Volt'
+        'Offset timerange': list
+           Time range for offset subtraction
+        'Datapath': string
+           Data path (string)
+        'Amplitude calibration': bool
+           True/False do/don't do amplitude calibration of the data
+        'Amplitude calib. path': string
+           Calibration directory name
+        'Amplitude calib. file': string
+           Calibration cld file name.
+        'Partial intervals' : bool
+           True: Keep partial chopper intervals extending through the start/end of timerange
+           False: Keep only full chopper intervals
+        'Resample' : float
+           Resample data to this sample frequency
+        'Spatial calibration': bool
+           True: Attempt spatial calibration, add device coordinates
+            
+        For further options see Chopper_times see chopper_timing_data()
 
     """
     if (exp_id is None):
