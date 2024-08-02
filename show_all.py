@@ -40,7 +40,7 @@ def show_all_abes(exp_id,time=[0,5]):
     d = d.slice_data(slicing={'Channel':flap.Intervals(1,5,step=5)})
 
     d.plot(plot_type='grid xy',axes=['Interval(Channel)','Interval(Channel) sample index','Time'],
-            options={'Y range':[-0.1,1]})    
+            options={'Y range':[-0.1,0.2]})    
     plt.suptitle(exp_id)
 
 def show_all_abes_spectra(exp_id,time=[0,1],fres=20,frange=[100,1E6],log_fres=True,beam_on=True):

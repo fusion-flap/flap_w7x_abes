@@ -42,7 +42,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None):
         options['Datapath'] = datapath
 
     txt = exp_ID
-
+    print('Processing ' + exp_ID)
     try:
         d=flap.get_data('W7X_ABES',
                         exp_id = exp_ID,
@@ -108,7 +108,6 @@ def exp_summaries(exp_ids,datapath=None,timerange=None):
     default_options = {'Datapath':datapath}
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
     dp = _options['Datapath']
-
     regexp = exp_ids.replace('.','\.') 
     regexp = regexp.replace('*','.*') 
     txts = []
