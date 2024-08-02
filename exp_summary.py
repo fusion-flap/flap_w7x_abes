@@ -122,7 +122,7 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt')
     exp_list.sort()
     for exp in exp_list:
         txts.append(exp_summary(exp,datapath=dp,timerange=timerange))
-    with open(file) as f:
-        f.writelines(txts)
+    with open(file,"wt") as f:
+        f.writelines([string + '\n' for string in txts])
     return txts
         

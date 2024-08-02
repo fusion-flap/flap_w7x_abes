@@ -664,6 +664,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                        'Start delay': 0,
                        'End delay': 0,
                        'Spatial calibration': False,
+                       'Spatial calib. path': 'spatcal',
                        'Partial intervals': False,
                        'Resample' : None
                        }
