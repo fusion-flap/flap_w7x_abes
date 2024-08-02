@@ -81,7 +81,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None):
         txt += ' ... No data'
     return txt
          
-def exp_summaries(exp_ids,datapath=None,timerange=None):  
+def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt'):  
     """
     Generate an experiment summary of a series of experiments.
 
@@ -91,8 +91,10 @@ def exp_summaries(exp_ids,datapath=None,timerange=None):
         Experiment IDs. *, ? supported as in Unix regexp. Like 2018101?.*
     datapath : string, optional
         The data path. The default is None.
-     timerange : listE, optional
+    timerange : listE, optional
          The processing timerange. The default is None.
+    file: string
+        File name where to write the list       
   
     Returns
     -------
@@ -112,9 +114,15 @@ def exp_summaries(exp_ids,datapath=None,timerange=None):
     regexp = regexp.replace('*','.*') 
     txts = []
     id_list = os.scandir(dp)
+    exp_list = []
     for idi in id_list:
         if (idi.is_dir()):
             if ((len(idi.name) == 12) and (idi.name[8] == '.') and (re.search(regexp,idi.name) is not None)):
-                txts.append(exp_summary(idi.name,datapath=dp,timerange=timerange))
+                exp_list.append(idi.name)
+    exp_list.sort()
+    for exp in exp_list:
+        txts.append(exp_summary(exp,datapath=dp,timerange=timerange))
+    with open(file) as f:
+        f.writelines(txts)
     return txts
         
