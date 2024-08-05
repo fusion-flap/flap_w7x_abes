@@ -13,7 +13,7 @@ import flap_w7x_abes
 
 flap_w7x_abes.register()
 
-def exp_summary(exp_ID,timerange=None,datapath=None):
+def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
     """
     Return a single line summary of the experiment: expID, max APDCAM signal (uncalibrated), time range, channel range
 
@@ -34,52 +34,67 @@ def exp_summary(exp_ID,timerange=None,datapath=None):
     """
     
 
-    options = {'Resample':1e3,
+    options = {'Resample':None,
                'Scaling':'Volt',
                'Amplitude calibration' : False
                }
     if (datapath is not None):
         options['Datapath'] = datapath
 
+    channels_str = ['ABES-'+str(a) for a in channels]
     txt = exp_ID
-    print('Processing ' + exp_ID)
+    print('Processing ' + exp_ID,flush=True)
+    
     try:
-        d=flap.get_data('W7X_ABES',
-                        exp_id = exp_ID,
-                        name ='ABES-[1-40]',
-                        options = options,
-                        coordinates = {'Time': timerange}
-                        )
-        
-        d_max = d.slice_data(summing={'Time':'Max','Channel':'Max'})
-        txt += ' ... Max:{:4.0f}[mV] '.format(d_max.data * 1000)
-        
-        d_sum = d.slice_data(summing={'Channel': 'Mean'})
-        timescale = d_sum.coordinate('Time')[0]
-        t_on= timescale[np.nonzero(d_sum.data > np.max(d_sum.data) * 0.1)[0]]
-        txt += ' ... Signal timerange:( {:6.2f}-{:6.2f})[s]'.format(t_on[0],t_on[-1])
-        try:
+        d_beam_on=flap.get_data('W7X_ABES',
+                                 exp_id='20181018.003',
+                                 name='Chopper_time',
+                                 options={'State':{'Chop': 0, 'Defl': 0},'Start':1000,'End':-1000}
+                                 )
+        d_beam_off=flap.get_data('W7X_ABES',
+                                 exp_id='20181018.003',
+                                 name='Chopper_time',
+                                 options={'State':{'Chop': 1, 'Defl': 0},'Start':1000,'End':-1000}
+                                 )           
+        chopper = True
+    except Exception:
+        chopper = False
+
+    if (chopper):
+        sig = np.zeros(len(channels))
+        for i in range(len(channels)):
+            print('  Processing '+channels_str[i],flush=True)
             d=flap.get_data('W7X_ABES',
                             exp_id = exp_ID,
-                            name ='ABES-[1-40]',
-                            options = {'Resample':1e3,
-                                       'Scaling':'Volt',
-                                       'Amplitude calibration' : True
-                                       },
+                            name =channels_str[i],
+                            options = options,
                             coordinates = {'Time': timerange}
                             )
-        
-            d_dist = d.slice_data(slicing={'Time':flap.Intervals(t_on[0],t_on[-1])},
-                                  summing={'Time':'Mean'}
-                                  )
-            chscale = d_dist.coordinate('Channel',options={'Change':True})[0]
-            ch_on= chscale[np.nonzero(d_dist.data > np.max(d_dist.data) * 0.1)[0]]
-            txt += ' ... Channel range:({:6.2f}-{:6.2f})'.format(ch_on[0],ch_on[-1])
-        except Exception:
-            txt += ' ... Channel range:  (no calib)  '
-    except Exception:
-        txt += ' ... No data'
+            d_on = d.slice_data(slicing={'Time':d_beam_on},
+                                summing={'Rel. Sample in int(Time)':'Mean'},
+                                options={'Regenerate':True}
+                                )
+            d_off = d.slice_data(slicing={'Time':d_beam_off},
+                                 summing={'Rel. Sample in int(Time)':'Mean'},
+                                 options={'Regenerate':True}
+                                 )
+            d_off = d_off.slice_data(slicing={'Time':d_on},
+                                     options={'Interpolation':'Linear'}
+                                     )
+            d = d_on - d_off
+            if (i == 0):
+                sig = np.zeros((len(d.data),len(channels)))
+            sig[:,i] = d.data
+        d_max = np.max(sig)
+        txt += ' ... Chopper:{:6s} ... Max:{:4.0f}[mV] '.format(d_beam_on.info['Chopper mode'],d_max * 1000)
+        timescale = d_on.coordinate('Time')[0]
+        s = np.sum(sig,axis=1)
+        ind = np.nonzero(s > np.max(s) * 0.1)[0]
+        txt += ' ... Time range:({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
+    else:
+        txt += ' ...    --- No chopper ---       '
     return txt
+        
          
 def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt'):  
     """
@@ -126,3 +141,6 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt')
         f.writelines([string + '\n' for string in txts])
     return txts
         
+
+# l = exp_summary('20181018.003',datapath='z:/data/W7-X_ABES',channels=range(19,21))
+# print(l)

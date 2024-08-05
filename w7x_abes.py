@@ -603,11 +603,13 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
 
 
     d = copy.deepcopy(flap.DataObject(data_shape=[n_period],
-                        data_unit=flap.Unit(name='Interval', unit='n.a.'),
-                        coordinates=[c_sample, c_time],
-                        data_source = 'W7X_ABES',
-                        exp_id = config['ShotID']
-                        ))
+                                      data_unit=flap.Unit(name='Interval', unit='n.a.'),
+                                      coordinates=[c_sample, c_time],
+                                      data_source = 'W7X_ABES',
+                                      exp_id = config['ShotID'],
+                                      info=config
+                                      )
+                          )
 
 
     return d
@@ -966,7 +968,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                         coordinates=coord,
                         exp_id=exp_id,
                         data_title=data_title,
-                        info={'Options':_options, 'Calibration factor error': calfac_err},
+                        info={'Options':_options, 'Calibration factor error': calfac_err,'Config':config},
                         data_source="W7X_ABES")
     if _options['Spatial calibration'] is True:
         # Getting the spatial calibration
