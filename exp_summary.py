@@ -61,38 +61,41 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
         chopper = False
 
     if (chopper):
-        sig = np.zeros(len(channels))
-        for i in range(len(channels)):
-            print('  Processing '+channels_str[i],flush=True)
-            d=flap.get_data('W7X_ABES',
-                            exp_id = exp_ID,
-                            name =channels_str[i],
-                            options = options,
-                            coordinates = {'Time': timerange}
-                            )
-            d_on = d.slice_data(slicing={'Time':d_beam_on},
-                                summing={'Rel. Sample in int(Time)':'Mean'},
-                                options={'Regenerate':True}
+        try:
+            sig = np.zeros(len(channels))
+            for i in range(len(channels)):
+                print('  Processing '+channels_str[i],flush=True)
+                d=flap.get_data('W7X_ABES',
+                                exp_id = exp_ID,
+                                name =channels_str[i],
+                                options = options,
+                                coordinates = {'Time': timerange}
                                 )
-            d_off = d.slice_data(slicing={'Time':d_beam_off},
-                                 summing={'Rel. Sample in int(Time)':'Mean'},
-                                 options={'Regenerate':True}
-                                 )
-            d_off = d_off.slice_data(slicing={'Time':d_on},
-                                     options={'Interpolation':'Linear'}
+                d_on = d.slice_data(slicing={'Time':d_beam_on},
+                                    summing={'Rel. Sample in int(Time)':'Mean'},
+                                    options={'Regenerate':True}
+                                    )
+                d_off = d.slice_data(slicing={'Time':d_beam_off},
+                                     summing={'Rel. Sample in int(Time)':'Mean'},
+                                     options={'Regenerate':True}
                                      )
-            d = d_on - d_off
-            if (i == 0):
-                sig = np.zeros((len(d.data),len(channels)))
-            sig[:,i] = d.data
-        d_max = np.max(sig)
-        txt += ' ... Chopper:{:6s} ... Max:{:4.0f}[mV] '.format(d_beam_on.info['Chopper mode'],d_max * 1000)
-        timescale = d_on.coordinate('Time')[0]
-        s = np.sum(sig,axis=1)
-        ind = np.nonzero(s > np.max(s) * 0.1)[0]
-        txt += ' ... Time range:({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
+                d_off = d_off.slice_data(slicing={'Time':d_on},
+                                         options={'Interpolation':'Linear'}
+                                         )
+                d = d_on - d_off
+                if (i == 0):
+                    sig = np.zeros((len(d.data),len(channels)))
+                sig[:,i] = d.data
+            d_max = np.max(sig)
+            txt += ' ... Chopper:{:6s} ... Max:{:4.0f}[mV] '.format(d_beam_on.info['Chopper mode'],d_max * 1000)
+            timescale = d_on.coordinate('Time')[0]
+            s = np.sum(sig,axis=1)
+            ind = np.nonzero(s > np.max(s) * 0.1)[0]
+            txt += ' ... Time range:({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
+        except Exception:
+            txt += ' --- No data ---'
     else:
-        txt += ' ...    --- No chopper ---       '
+        txt += ' --- No chopper --- '
     return txt
         
          
