@@ -12,7 +12,7 @@ import flap_w7x_abes
 
 flap_w7x_abes.register()
 
-def show_all_abes(exp_id,time=[0,5]):
+def show_all_abes(exp_id,time=[0,5],yrange=[-0.1,1]):
     """
     Plot the 40 ABES signals on the beam in a 5x8 pot matrix.
 
@@ -34,13 +34,12 @@ def show_all_abes(exp_id,time=[0,5]):
                     exp_id=exp_id,
                     name='ABES*',
                     coordinates={'Time':time},
-                    options={'Resample':1e3
-                             }
+                    options={'Resample':1e3}
                     )
     d = d.slice_data(slicing={'Channel':flap.Intervals(1,5,step=5)})
 
     d.plot(plot_type='grid xy',axes=['Interval(Channel)','Interval(Channel) sample index','Time'],
-            options={'Y range':[-0.1,0.2]})    
+            options={'Y range':yrange})    
     plt.suptitle(exp_id)
 
 def show_all_abes_spectra(exp_id,time=[0,1],fres=20,frange=[100,1E6],log_fres=True,beam_on=True):

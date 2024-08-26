@@ -7,6 +7,7 @@ Created on Thu Aug  1 21:16:22 2024
 import numpy as np
 import os
 import re
+import time
 
 import flap
 import flap_w7x_abes
@@ -56,8 +57,10 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
                                  name='Chopper_time',
                                  options={'State':{'Chop': 1, 'Defl': 0},'Start':1000,'End':-1000}
                                  )           
+        print('Chopper mode: '+ d_beam_on.info['Chopper mode'],flush=True)
         chopper = True
-    except Exception:
+        e = ''
+    except Exception as e:
         chopper = False
 
     if (chopper):
@@ -71,31 +74,50 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
                                 options = options,
                                 coordinates = {'Time': timerange}
                                 )
+                flap.list_data_objects(d)
                 d_on = d.slice_data(slicing={'Time':d_beam_on},
                                     summing={'Rel. Sample in int(Time)':'Mean'},
                                     options={'Regenerate':True}
                                     )
+                print("b1",flush=True)
+
                 d_off = d.slice_data(slicing={'Time':d_beam_off},
                                      summing={'Rel. Sample in int(Time)':'Mean'},
                                      options={'Regenerate':True}
                                      )
+                print("b2",flush=True)
+
                 d_off = d_off.slice_data(slicing={'Time':d_on},
                                          options={'Interpolation':'Linear'}
                                          )
-                d = d_on - d_off
+                print("b3",flush=True)
+
+                d_on_data = d_on.data
+                d_off_data = d_off.data
+                ind = np.nonzero(np.logical_and(np.isfinite(d_off_data),
+                                                np.isfinite(d_on_data)
+                                                )
+                                 )[0]
+                d_on_data = d_on_data[ind]
+                d_off_data = d_off_data[ind]
+                d = d_on_data - d_off_data
                 if (i == 0):
-                    sig = np.zeros((len(d.data),len(channels)))
-                sig[:,i] = d.data
+                    sig = np.zeros((len(d),len(channels)))
+                sig[:,i] = d
+            print("a1",flush=True)
+            time.sleep(2)
             d_max = np.max(sig)
             txt += ' ... Chopper:{:6s} ... Max:{:4.0f}[mV] '.format(d_beam_on.info['Chopper mode'],d_max * 1000)
-            timescale = d_on.coordinate('Time')[0]
+            timescale = d_on.coordinate('Time')[0][ind]
             s = np.sum(sig,axis=1)
             ind = np.nonzero(s > np.max(s) * 0.1)[0]
             txt += ' ... Time range:({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
-        except Exception:
-            txt += ' --- No data ---'
+            print("a2",flush=True)
+            time.sleep(2)
+        except Exception as e:
+            txt += ' --- {:s} ---'.format(str(e))
     else:
-        txt += ' --- No chopper --- '
+        txt += ' --- {:s} --- '.format(str(e))
     return txt
         
          
@@ -138,12 +160,18 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt')
             if ((len(idi.name) == 12) and (idi.name[8] == '.') and (re.search(regexp,idi.name) is not None)):
                 exp_list.append(idi.name)
     exp_list.sort()
-    for exp in exp_list:
-        txts.append(exp_summary(exp,datapath=dp,timerange=timerange))
+#    print(exp_list)
     with open(file,"wt") as f:
-        f.writelines([string + '\n' for string in txts])
+        for exp in exp_list:
+            txt = exp_summary(exp,datapath=dp,timerange=timerange)
+            print("1",flush=True)
+            time.sleep(2)
+            f.writelines(txt + '\n')
+            print("2",flush=True)
+            time.sleep(2)
+            f.flush()
     return txts
         
 
-# l = exp_summary('20181018.003',datapath='z:/data/W7-X_ABES',channels=range(19,21))
+# l = exp_summary('20230328.028')
 # print(l)
