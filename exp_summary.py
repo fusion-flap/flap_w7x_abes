@@ -98,7 +98,6 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
                 if (i == 0):
                     sig = np.zeros((len(d),len(channels)))
                 sig[:,i] = d
-            time.sleep(2)
             d_max = np.max(sig)
             txt += ' ... Chopper:{:6s} ... Max:{:4.0f}[mV] '.format(d_beam_on.info['Chopper mode'],d_max * 1000)
             timescale = d_on.coordinate('Time')[0][ind]
@@ -155,11 +154,8 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt')
     with open(file,"wt") as f:
         for exp in exp_list:
             txt = exp_summary(exp,datapath=dp,timerange=timerange)
-            print("1",flush=True)
             time.sleep(2)
             f.writelines(txt + '\n')
-            print("2",flush=True)
-            time.sleep(2)
             f.flush()
     return txts
         
