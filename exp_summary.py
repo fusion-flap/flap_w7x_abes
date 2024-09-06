@@ -35,10 +35,10 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
     """
     
 
-    options = {'Resample':None,
-               'Scaling':'Volt',
-               'Amplitude calibration' : False
-               }
+    options = {'Resample':1e4,
+                'Scaling':'Volt',
+                'Amplitude calibration' : False
+                }
     if (datapath is not None):
         options['Datapath'] = datapath
 
@@ -59,39 +59,33 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
                                  )           
         print('Chopper mode: '+ d_beam_on.info['Chopper mode'],flush=True)
         chopper = True
-        e = ''
+        error = ''
     except Exception as e:
         chopper = False
+        error = str(e)
 
     if (chopper):
-        try:
+         try:
             sig = np.zeros(len(channels))
             for i in range(len(channels)):
                 print('  Processing '+channels_str[i],flush=True)
                 d=flap.get_data('W7X_ABES',
                                 exp_id = exp_ID,
-                                name =channels_str[i],
+                                name = channels_str[i],
                                 options = options,
                                 coordinates = {'Time': timerange}
                                 )
-                flap.list_data_objects(d)
                 d_on = d.slice_data(slicing={'Time':d_beam_on},
                                     summing={'Rel. Sample in int(Time)':'Mean'},
                                     options={'Regenerate':True}
                                     )
-                print("b1",flush=True)
-
                 d_off = d.slice_data(slicing={'Time':d_beam_off},
                                      summing={'Rel. Sample in int(Time)':'Mean'},
                                      options={'Regenerate':True}
                                      )
-                print("b2",flush=True)
-
                 d_off = d_off.slice_data(slicing={'Time':d_on},
                                          options={'Interpolation':'Linear'}
                                          )
-                print("b3",flush=True)
-
                 d_on_data = d_on.data
                 d_off_data = d_off.data
                 ind = np.nonzero(np.logical_and(np.isfinite(d_off_data),
@@ -104,7 +98,6 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
                 if (i == 0):
                     sig = np.zeros((len(d),len(channels)))
                 sig[:,i] = d
-            print("a1",flush=True)
             time.sleep(2)
             d_max = np.max(sig)
             txt += ' ... Chopper:{:6s} ... Max:{:4.0f}[mV] '.format(d_beam_on.info['Chopper mode'],d_max * 1000)
@@ -112,12 +105,10 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
             s = np.sum(sig,axis=1)
             ind = np.nonzero(s > np.max(s) * 0.1)[0]
             txt += ' ... Time range:({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
-            print("a2",flush=True)
-            time.sleep(2)
-        except Exception as e:
+         except Exception as e:
             txt += ' --- {:s} ---'.format(str(e))
     else:
-        txt += ' --- {:s} --- '.format(str(e))
+        txt += ' --- {:s} --- '.format(str(error))
     return txt
         
          
@@ -172,6 +163,4 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt')
             f.flush()
     return txts
         
-
-# l = exp_summary('20230328.028')
-# print(l)
+#exp_summary('20230328.028')

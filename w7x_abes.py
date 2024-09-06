@@ -1162,10 +1162,10 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         if dataobject is None:
             flap.plot('ABES', axes='Time', plot_options={'marker': 'o'})
         else:
-            dataobject.plot(axes='Time', plot_options={'marker': 'o'})
+            dataobject.plot(axes='Time', options={'All':True}, plot_options={'marker': 'o'})
 #        flap.plot('ABES',axes='Time',plot_type='scatter')
-        d_beam_on.plot(plot_type='scatter', axes=['Time', 2], options={'Force': True,'All': True})
-        d_beam_off.plot(plot_type='scatter', axes=['Time', 0.1], options={'Force': True,'All': True})
+        d_beam_on.plot(plot_type='scatter', axes=['Time', plt.ylim()[1]], options={'Force': True,'All': True})
+        d_beam_off.plot(plot_type='scatter', axes=['Time', plt.ylim()[0]], options={'Force': True,'All': True})
         plt.savefig(str(time.time())+'.png')
 
     # Background subtraction
@@ -1275,7 +1275,7 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         return d
     else:
 
-        # in this case the passed dataobject is used and the only the copper data is obtained from file
+        # in this case the passed dataobject is used and only the chopper data is obtained from file
         dataobject_beam_on = dataobject.slice_data(slicing={'Sample': d_beam_on})
 
         # For dataobject_beam_on.data the 0 dimension is along a constant 'Start Time in int(Time)' and 
@@ -1380,14 +1380,16 @@ def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,signals='ABES-[
         correct the beam-on phases with the beam-off. Further information in the comments of 
         proc_chopsignals_single
     """
-    # checking, whether dataobject has the data for multiple channels
+    
     naming_conventions = ["Channel", "Signal name", "Device R", "Beam axis"]
     channel_naming = []
     for name in naming_conventions:
         if name in dataobject.coordinate_names():
             channel_naming.append(name)
     
-    if len(channel_naming)==0:
+#    if len(channel_naming)==0:
+    # Added S. Zoletnik 9 Aug 2024
+    if (len(dataobject.shape) == 1):
        processed_data = proc_chopsignals_single(dataobject=dataobject, timerange=timerange,
                                           test=test, on_options=on_options,
                                           off_options=off_options,  options=options)
