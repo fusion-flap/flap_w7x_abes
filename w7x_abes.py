@@ -303,7 +303,7 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
     # Doing the calibration
     data_err = np.zeros(data_arr.shape)
     if (data_arr.dtype.kind != 'f'):
-        data_arr = float(data_arr)
+            data_arr = float(data_arr)
     for i in range(len(index_start)):
         # Collecting the calibration factors andd errors
         calfac_act = np.empty(len(signal_proc),dtype=float)
@@ -318,10 +318,10 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
                 if (signal_proc[i_ch][0:5] == 'ABES-'):
                     raise ValueError("No calibration data for signal "+signal_proc[i_ch])
             if (data_arr.ndim == 2):
-                data_arr[index_start[i]:index_stop[i], i_ch] /= calfac[i][i_cal]
+                data_arr[index_start[i]:index_stop[i], i_ch] /= calfac[i][i_cal].astype("float")
                 data_err[index_start[i]:index_stop[i], i_ch] = data_arr[index_start[i]:index_stop[i], i_ch] / calfac[i][i_cal] * calfac_err[i][i_cal]
             else:
-                data_arr[index_start[i]:index_stop[i]] /= calfac[i][i_cal]
+                data_arr[index_start[i]:index_stop[i]] /= calfac[i][i_cal].astype("float")
                 data_err[index_start[i]:index_stop[i]] = data_arr[index_start[i]:index_stop[i]] / calfac[i][i_cal] * calfac_err[i][i_cal]
     return data_arr, data_err, calfac_err_dataobject
 
@@ -603,11 +603,13 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
 
 
     d = copy.deepcopy(flap.DataObject(data_shape=[n_period],
-                        data_unit=flap.Unit(name='Interval', unit='n.a.'),
-                        coordinates=[c_sample, c_time],
-                        data_source = 'W7X_ABES',
-                        exp_id = config['ShotID']
-                        ))
+                                      data_unit=flap.Unit(name='Interval', unit='n.a.'),
+                                      coordinates=[c_sample, c_time],
+                                      data_source = 'W7X_ABES',
+                                      exp_id = config['ShotID'],
+                                      info=config
+                                      )
+                          )
 
 
     return d
@@ -627,14 +629,28 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                      'Time': The read times
                      Only a single equidistant range is interpreted in c_range.
     options:
-        'Scaling':  'Digit'
-                    'Volt'
-        'Offset timerange': Time range for offset subtraction
-        'Datapath': Data path (string)
-        'Calibration': True/False do/don't do amplitude calibration of the data
-        'Calib. path': Calibration directory name
-        'Calib. file': Calibration cld file name.
-        For further options see Chopper_times see shopper_timing_data()
+        'Scaling':  string
+           'Digit'
+           'Volt'
+        'Offset timerange': list
+           Time range for offset subtraction
+        'Datapath': string
+           Data path (string)
+        'Amplitude calibration': bool
+           True/False do/don't do amplitude calibration of the data
+        'Amplitude calib. path': string
+           Calibration directory name
+        'Amplitude calib. file': string
+           Calibration cld file name.
+        'Partial intervals' : bool
+           True: Keep partial chopper intervals extending through the start/end of timerange
+           False: Keep only full chopper intervals
+        'Resample' : float
+           Resample data to this sample frequency
+        'Spatial calibration': bool
+           True: Attempt spatial calibration, add device coordinates
+            
+        For further options see Chopper_times see chopper_timing_data()
 
     """
     if (exp_id is None):
@@ -650,6 +666,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                        'Start delay': 0,
                        'End delay': 0,
                        'Spatial calibration': False,
+                       'Spatial calib. path': 'spatcal',
                        'Partial intervals': False,
                        'Resample' : None
                        }
@@ -951,7 +968,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                         coordinates=coord,
                         exp_id=exp_id,
                         data_title=data_title,
-                        info={'Options':_options, 'Calibration factor error': calfac_err},
+                        info={'Options':_options, 'Calibration factor error': calfac_err,'Config':config},
                         data_source="W7X_ABES")
     if _options['Spatial calibration'] is True:
         # Getting the spatial calibration
@@ -1145,10 +1162,10 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         if dataobject is None:
             flap.plot('ABES', axes='Time', plot_options={'marker': 'o'})
         else:
-            dataobject.plot(axes='Time', plot_options={'marker': 'o'})
+            dataobject.plot(axes='Time', options={'All':True}, plot_options={'marker': 'o'})
 #        flap.plot('ABES',axes='Time',plot_type='scatter')
-        d_beam_on.plot(plot_type='scatter', axes=['Time', 2], options={'Force': True,'All': True})
-        d_beam_off.plot(plot_type='scatter', axes=['Time', 0.1], options={'Force': True,'All': True})
+        d_beam_on.plot(plot_type='scatter', axes=['Time', plt.ylim()[1]], options={'Force': True,'All': True})
+        d_beam_off.plot(plot_type='scatter', axes=['Time', plt.ylim()[0]], options={'Force': True,'All': True})
         plt.savefig(str(time.time())+'.png')
 
     # Background subtraction
@@ -1258,7 +1275,7 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         return d
     else:
 
-        # in this case the passed dataobject is used and the only the copper data is obtained from file
+        # in this case the passed dataobject is used and only the chopper data is obtained from file
         dataobject_beam_on = dataobject.slice_data(slicing={'Sample': d_beam_on})
 
         # For dataobject_beam_on.data the 0 dimension is along a constant 'Start Time in int(Time)' and 
@@ -1363,14 +1380,16 @@ def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,signals='ABES-[
         correct the beam-on phases with the beam-off. Further information in the comments of 
         proc_chopsignals_single
     """
-    # checking, whether dataobject has the data for multiple channels
+    
     naming_conventions = ["Channel", "Signal name", "Device R", "Beam axis"]
     channel_naming = []
     for name in naming_conventions:
         if name in dataobject.coordinate_names():
             channel_naming.append(name)
     
-    if len(channel_naming)==0:
+#    if len(channel_naming)==0:
+    # Added S. Zoletnik 9 Aug 2024
+    if (len(dataobject.shape) == 1):
        processed_data = proc_chopsignals_single(dataobject=dataobject, timerange=timerange,
                                           test=test, on_options=on_options,
                                           off_options=off_options,  options=options)

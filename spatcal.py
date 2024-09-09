@@ -12,6 +12,8 @@ import h5py
 import numpy as np
 from scipy.ndimage import median_filter
 from scipy.optimize import minimize
+from scipy.ndimage import shift as image_shift
+from scipy.ndimage import rotate as image_rotate
 from functools import partial
 from matplotlib import pyplot as plt
 from matplotlib import gridspec
@@ -151,6 +153,24 @@ class ShotSpatCal(flap.DataObject):
                                        mode=flap.CoordinateMode(equidistant=False), dimension_list=dimension_list)
 
         return coord_object
+    
+    def get_shot_config(self, options):
+        # Get micrometer settings
+        datapath_base = options['Datapath']
+        datapath = os.path.join(datapath_base, self.shotID)
+        xmlfile = os.path.join(datapath, self.shotID + '_config.xml')
+        xml = flap.FlapXml()
+        xml.read_file(xmlfile)
+        try:
+            if (xml.head.tag != 'ShotSettings'):
+                raise ValueError(
+                    "No ShotSettings entry found in XML file " + xmlfile + ".")
+            if (xml.head.attrib['Experiment'] != "W7-X A-BES"):
+                raise ValueError(xmlfile + " is not a W7-X ABES config file.")
+        except Exception:
+            raise ValueError("File format error in " + xmlfile)
+        config = flap_w7x_abes.abes_get_config(xml)
+        return config
 
     def generate_shotdata(self, options={}):
         ''' Generates the spatial calibration data from the apdcam_to_cmos.hdf5 and cmost_to_machine.hdf5 files and the
@@ -205,22 +225,6 @@ class ShotSpatCal(flap.DataObject):
         image_y_vector = projections['Direction of image y axis']
         midplane_crosspoint = projections['Midplane crosspoint']
 
-        # Get micrometer settings
-        datapath_base = options['Datapath']
-        datapath = os.path.join(datapath_base, self.shotID)
-        xmlfile = os.path.join(datapath, self.shotID + '_config.xml')
-        xml = flap.FlapXml()
-        xml.read_file(xmlfile)
-        try:
-            if (xml.head.tag != 'ShotSettings'):
-                raise ValueError(
-                    "No ShotSettings entry found in XML file " + xmlfile + ".")
-            if (xml.head.attrib['Experiment'] != "W7-X A-BES"):
-                raise ValueError(xmlfile + " is not a W7-X ABES config file.")
-        except Exception:
-            raise ValueError("File format error in " + xmlfile)
-        config = flap_w7x_abes.abes_get_config(xml)
-
         # Reading the beam coordinates
         filename = os.path.join(
             options['Spatial calib source dir'], options['Calibration ID'], 'Geometry', 'beam.dat')
@@ -233,6 +237,10 @@ class ShotSpatCal(flap.DataObject):
             beam_norm = beam_end-beam_start
             beam_norm = beam_norm/np.linalg.norm(beam_norm)
             beam_plane_vector = np.cross(beam_norm, np.asarray([0, 0, 1]))
+
+
+        # getting the micrometer settings
+        config = self.get_shot_config(options)
 
         # Calculating the position of the channels on the CMOS image
         shot_channel_cent = OrderedDict()
@@ -343,6 +351,96 @@ class ShotSpatCal(flap.DataObject):
             plt.scatter(beam_start[0], beam_start[1], color='tab:blue')
             plt.show(block=False)
             plt.pause(0.01)
+    
+    def calc_chan_range(self, options=dict()):
+        # to calculate the areas where the channels are detecting on the CMOS image for a given micrometer setting
+        options_default = {
+            'Spatial calib source dir': os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                     'spatcal'),
+            'Datapath': flap.config.get("Module W7X_ABES", "Datapath"),
+            'Noise limit': 100,
+            'Flip horizontally': False}
+        options = {**options_default, **options}
+        
+        #getting the relevant images for the given channels
+        temp_calib = flap_w7x_abes.CalcCalibration(self.calibration_id, options={'Get APDCAM to CMOS': False,
+                                                                    'Get CMOS to machine': False,
+                                                                    'Get CXRS to CMOS': False})
+        temp_calib.read_apdcam_fibre_calib_list(options)
+        
+        with open(os.path.join(options['Spatial calib source dir'], temp_calib.calibration_id, 'head_fibre_config.dat'), 'r')\
+                as head_config:
+            line = head_config.readline()
+            head_config_map = {}
+            while line:
+                line = [name for name in head_config.readline(
+                ).rstrip().split(' ') if name != '']
+                if len(line) == 1:
+                    line = [name for name in line[0].split('\t') if name != '']
+                if len(line) != 0:
+                    head_config_map.update({line[1]: line[0]})
+        
+        chimage = dict()
+        lab_config = dict()
+        first_image = True
+        transport_points = False
+        for image_params in temp_calib.apdcam_fibre_calib_list:
+            if image_params[3][-3:] == 'bmp':
+                split_filename = image_params[3].split('.')
+                split_filename[-1] = 'png'
+                image_params[3] = '.'.join(split_filename)
+
+            if first_image == True:
+                if int(image_params[4]) != int(temp_calib.calibration_id):
+                    transform_points = True
+                    a, B = temp_calib.calc_apdcam_cmos_transform(
+                        options['Flip horizontally'])
+                first_image = False
+
+            image = plt.imread(os.path.join(
+                options['Spatial calib source dir'], image_params[4], image_params[3]))
+            image = np.asarray(image)
+            if options['Flip horizontally'] is True:
+                image = np.fliplr(image)
+            # removing the background and the dead pixels
+            try:
+                image_filtered = image/np.var(image)
+                image_filtered = image_filtered-np.median(image_filtered)
+                image_filtered[image_filtered < options['Noise limit']] = 0
+                image_filtered = median_filter(image_filtered, size=3)
+            except ZeroDivisionError:  # this my happen for different calibration images, these need to be filtered differently
+                image_filtered = image/np.var(image)
+                image_filtered[np.where(
+                    image_filtered < np.max(image_filtered)*0.5)] = 0
+            if transform_points == True:
+                temp = np.zeros(image_filtered.shape)
+                image_block = np.block([[temp,temp],[image_filtered, temp]])
+                image_filtered = image_rotate(image_filtered, np.arccos(B[0,0])*180/np.pi)[-image_filtered.shape[0]:, :image_filtered.shape[1]]
+                # image_filtered = image_rotate(image_filtered, np.arccos(B[0,0])*180/np.pi)
+                image_filtered = image_shift(image_filtered, [a[1],a[0]])
+            if head_config_map[image_params[0]] not in chimage.keys():
+                chimage[head_config_map[image_params[0]]] = image_filtered
+                lab_config[head_config_map[image_params[0]]] = [float(image_params[1]), float(image_params[2])]
+            
+        
+        #transforming the relevant images according to the micrometer setting
+        # getting the micrometer settings
+        config = self.get_shot_config(options)
+        filename = os.path.join(options['Spatial calib source dir'], self.calibration_id,
+                                'Geometry', 'apdcam_to_cmos.hdf5')
+        apdcam_to_cmos = flap.load(filename)
+        cmos_apdcam_trans_mat = apdcam_to_cmos['Transformation matrix']
+
+        # Calculating the position of the channels on the CMOS image
+        for key in chimage.keys():
+            lab_config_curr = lab_config[key]
+            h_del = config['H-Micrometer'] - lab_config_curr[0]
+            v_del = config['V-Micrometer'] - lab_config_curr[1]
+            image_move = np.dot(
+                cmos_apdcam_trans_mat, np.array([h_del, v_del]))
+            chimage[key] = image_shift(chimage[key], [image_move[0],image_move[1]])
+        
+        return chimage
 
 class ShotSpatCalCXRS(ShotSpatCal):
     ''' Object used for reading and generating the spatial data of the alkali CXRS
@@ -522,7 +620,7 @@ class ShotSpatCalCXRS(ShotSpatCal):
 
         # Calculating the position of the channels on the CMOS image
         from .cxrs_util import read_fibre_config
-        patch_dict = read_fibre_config(self.calibration_id)
+        patch_dict, patch_dict_sp, patch_dict_oc = read_fibre_config(self.calibration_id)
         connected = [key for key in patch_dict.keys() if ('N.A' not in patch_dict[key].upper()
                                                           and 'N.A' not in patch_dict[key].upper())]
         
@@ -608,7 +706,15 @@ class ShotSpatCalCXRS(ShotSpatCal):
         object_dict.update(object_dict_update)
         flap.save(object_dict, shotspatcal_filename)
 
+
+        clusters = ["A", "B","C","D","E","F","G","H","I","J",]
         if options['Plot'] is True:
+            colors = {'A':'tab:blue', 'H':'xkcd:grass green', 'HF': 'tab:red',
+                      'Z':'tab:purple', "BR2":"white", "BR1":"white"}
+            edgecolors = {'A':None, 'H':None, 'HF': None,
+                      'Z':None, "BR2":"black", "BR1":"black"}
+            
+            
             plt.figure()
             # Plotting the image coordinates
             plt.subplot(1, 3, 1)
@@ -616,7 +722,7 @@ class ShotSpatCalCXRS(ShotSpatCal):
             file = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 'spatcal', self.calibration_id, 'Geometry', 'calib_image.png')
             data = plt.imread(file)
-            plt.imshow(data, cmap='gray')
+            plt.imshow(data, cmap='gray', alpha=0.5)
             fibres_plot = []
             for key in patch_dict:
                 channel = patch_dict[key]
@@ -632,17 +738,32 @@ class ShotSpatCalCXRS(ShotSpatCal):
                         cmos_cxrs_trans_mat, np.array([a_del, b_del]))
                     curr_chan_cent = np.asarray([lab_config[2]+chan_cent_move[0],
                                                  lab_config[3]+chan_cent_move[1]])
+                    if key[0] in clusters and key[1] == "1":
+                        clusters.remove(key[0])
+                        plt.text(curr_chan_cent[0]-7, curr_chan_cent[1]+3, key[0], color='black')
+                    # if key == "H4" or key == "J2" or key == "B4" or key == "J1":
+                    #     print(key)
+                    #     plt.scatter(curr_chan_cent[0], curr_chan_cent[1], color='tab:red')
+                    # else:     
                     plt.scatter(curr_chan_cent[0], curr_chan_cent[1], color='gray', alpha=0.5)
-            plt.scatter(fibre_coords_im[0],
-                    fibre_coords_im[1], color='tab:red')
+            # plt.scatter(fibre_coords_im[0],
+            #         fibre_coords_im[1], color='tab:red')
             index = 0
             for channel in object_dict['Channels']:
-                plt.text(fibre_coords_im[0][index]+5,
-                      fibre_coords_im[1][index], str(channel).split('.')[1], color='tab:red')
+                if str(channel).split('.')[0] == "H":
+                    plt.scatter(fibre_coords_im[0][index],
+                            fibre_coords_im[1][index], color=colors[str(channel).split('.')[0]])
+                    plt.text(fibre_coords_im[0][index]-20,
+                            fibre_coords_im[1][index], f"{str(channel).split('.')[1]}", color=colors[str(channel).split('.')[0]])
+                else:
+                    pass
+                    # plt.scatter(fibre_coords_im[0][index],
+                    #         fibre_coords_im[1][index], color=colors[str(channel).split('.')[0]])
                 index += 1
             plt.plot(np.asarray([beam_im[0, 0], beam_im[1, 0]]), [
-                     beam_im[0, 1], beam_im[1, 1]], color='tab:blue')
-            plt.scatter(beam_im[0, 0], beam_im[0, 1], color='tab:blue')
+                     beam_im[0, 1], beam_im[1, 1]], color='tab:orange')
+            
+            plt.scatter(beam_im[0, 0], beam_im[0, 1], color='tab:orange')
             plt.axis('equal')
             plt.xlim([np.min(fibre_coords_im[0])-50, np.max(fibre_coords_im[0])+50])
             plt.ylim([beam_im[0, 1]-50, np.max(fibre_coords_im[1])+50])
@@ -652,20 +773,41 @@ class ShotSpatCalCXRS(ShotSpatCal):
             points = np.sort(
                 np.sqrt(fibre_coords_xyz[0]**2+fibre_coords_xyz[1]**2))
             points = fibre_coords_beam
-            plt.scatter(points[0], points[1], label='new', color="tab:red")
+            index = 0
+            for channel in object_dict['Channels']:
+                plt.scatter(points[0][index], points[1][index], color=colors[str(channel).split('.')[0]],
+                            edgecolors=edgecolors[str(channel).split('.')[0]])
+                index += 1
             # Plotting the machine coordinates
             plt.subplot(1, 3, 3)
             plt.title("Location in real space")
-            plt.scatter(fibre_coords_xyz[0],
-                        fibre_coords_xyz[1], color='tab:red')
+            # plt.scatter(fibre_coords_xyz[0],
+            #             fibre_coords_xyz[1], color='tab:red')
             index = 0
             for channel in object_dict['Channels']:
-                plt.text(fibre_coords_xyz[0][index]+0.003,
-                      fibre_coords_xyz[1][index], f"{str(channel).split('.')[1]}: {fibre_coords_xyz[0][index], fibre_coords_xyz[1][index]}", color='tab:red')
+                if str(channel).split('.')[0] == "H":
+                    plt.scatter(fibre_coords_xyz[0][index],
+                            fibre_coords_xyz[1][index], color=colors[str(channel).split('.')[0]],
+                            edgecolors=edgecolors[str(channel).split('.')[0]])
+                    plt.text(fibre_coords_xyz[0][index]+0.003,
+                          fibre_coords_xyz[1][index], f"{str(channel).split('.')[1]}",
+                          color=colors[str(channel).split('.')[0]])
+                    if int(str(channel).split('.')[1])<27:
+                        plt.text(1.9,
+                              6.05-int(str(channel).split('.')[1])*0.003, f"{str(channel).split('.')[1]}: {int(fibre_coords_xyz[0][index]*1000)/1000, int(fibre_coords_xyz[1][index]*1000)/1000}",
+                              color=colors[str(channel).split('.')[0]], fontsize=10)
+                    else:
+                        plt.text(1.94,
+                                 6.0-int(str(channel).split('.')[1])*0.003, f"{str(channel).split('.')[1]}: {int(fibre_coords_xyz[0][index]*1000)/1000, int(fibre_coords_xyz[1][index]*1000)/1000}",
+                                 color=colors[str(channel).split('.')[0]], fontsize=10)
+                else:
+                    plt.scatter(fibre_coords_xyz[0][index],
+                            fibre_coords_xyz[1][index], color=colors[str(channel).split('.')[0]],
+                            edgecolors=edgecolors[str(channel).split('.')[0]], alpha=0.3)
                 index += 1
             plt.plot([beam_start[0], beam_end[0]], [
-                        beam_start[1], beam_end[1]], color='tab:blue')
-            plt.scatter(beam_start[0], beam_start[1], color='tab:blue')
+                        beam_start[1], beam_end[1]], color='tab:orange')
+            plt.scatter(beam_start[0], beam_start[1], color='tab:orange')
             plt.show(block=False)
             plt.pause(0.01)
             
@@ -686,6 +828,202 @@ class ShotSpatCalCXRS(ShotSpatCal):
                                            mode=flap.CoordinateMode(equidistant=False), dimension_list=dimension_list)
 
             return coord_object
+
+
+class ShotSpatCalCMOS(ShotSpatCal):
+    ''' Object used for reading and generating the spatial data of the CMOS camera for the alkali diagnostic
+    for a specific shot
+    '''
+
+    def read(self, options={}):
+        ''' Reads the hdf5 spatcal file. Can read the older spatial calibration files generated by idl and the newer
+        ones generated by this module.
+        INPUT: options: 'Shot spatcal dir' - the location of the shotID_spat.cal file
+        OUTPUT: Defines self.calibration - ID for the calibration source, e.g. "2018"
+                        self.beam_start_im, self.beam_end_im - the start and end of the beam in CMOS coordinates
+                        self.beam_start_beam, self.beam_end_beam - the start and end of the beam in beam coordinates
+                        self.beam_start_xyz, self.beam_end_xyz - the start and end of the beam in machine xyz coordinate
+                        self.fibre_coords_beam - the location of the fibres in beam coordinates
+                        self.fibres - the name of the fibres
+                        self.beam_plane_vector - a unit vector in the beam plane, perpendicular to the beam
+                        self.data - dictionary of 'Channel name', 'Device x', 'Device y', 'Device z', 'Device R',
+                                    'Device Z' and 'Beam axis' coordinates
+        '''
+        import pickle
+        options_default = {
+            'Shot spatcal dir': os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                             'spatcal')}
+        options = {**options_default, **options}
+
+        spatcal_dir = options['Shot spatcal dir']
+        fn = os.path.join(spatcal_dir, self.shotID + '_cmos_spat.cal')
+        try:
+            h5File = flap.load(fn)
+            self.calibration = h5File["Calibration ID"]
+            self.beam_start_im = h5File["Beam_start_im"]
+            self.beam_end_im = h5File["Beam_end_im"]
+            self.beam_start_beam = h5File["Beam_start_beam"]
+            self.beam_end_beam = h5File["Beam_end_beam"]
+            fibre_coords_beam = h5File["Pixel_coords_beam"]
+            self.beam_start_xyz = h5File["Beam_start_xyz"]
+            self.beam_end_xyz = h5File["Beam_end_xyz"]
+            fibre_coords_xyz = h5File["Pixel_coords_xyz"]
+            self.beam_plane_vector = h5File["Beam_plane_vector"]
+        except pickle.UnpicklingError:
+            with h5py.File(fn, "r", libver='earliest') as h5File:
+                self.calibration = h5File["/Calibration"][:][0].decode("utf-8")
+                self.beam_start_im = h5File["/Beam_start_im"][:]
+                self.beam_end_im = h5File["/Beam_end_im"][:]
+                self.beam_start_beam = h5File["/Beam_start_beam"][:]
+                self.beam_end_beam = h5File["/Beam_end_beam"][:]
+                fibre_coords_beam = h5File["/Pixel_coords_beam"][:]
+                self.beam_start_xyz = h5File["/Beam_start_xyz"][:]
+                self.beam_end_xyz = h5File["/Beam_end_xyz"][:]
+                fibre_coords_xyz = h5File["/Pixel_coords_xyz"][:]
+                self.beam_plane_vector = h5File["/Beam_plane_vector"][:]
+
+
+        self.data = {
+            "Device x": fibre_coords_xyz[:, :, 0],
+            "Device y": fibre_coords_xyz[:, :, 1],
+            "Device z": fibre_coords_xyz[:, :, 2],
+            "Device R": np.sqrt(fibre_coords_xyz[:, :, 0]**2+fibre_coords_xyz[:, :, 1]**2),
+            "Device Z": fibre_coords_xyz[:, :, 2],
+            "Beam axis": fibre_coords_beam[:, :, 0]
+        }
+        return
+
+    def generate_shotdata(self, options={}):
+        ''' Generates the spatial calibration data from the cmos_to_machine.hdf5 file
+        INPUT:
+            options: Calibration ID - per default the first three characters of the shot which is usually the year of
+                                      the shot
+                     Spatial calib source dir - the location of the Calibration ID folder, per default the location of
+                                             this file + /spatcal
+                     Shot spatcal dir - where to save the spatial calibration file, per default the location of
+                                        this file + /spatcal
+                     Overwrite - whether to overwrite an already existing spatial calibration data
+                     Datapath - where to find the xml files of the current shot
+                     Plot - whether to plot the image coordinates of the fibres and the beam
+        OUTPUt: The calibration data is saved with flap.save() to 'Shot spatcal dir'
+        '''
+
+        options_default = {
+            'Calibration ID': self.calibration_id,
+            'Spatial calib source dir': os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                     'spatcal'),
+            'Shot spatcal dir': os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                             'spatcal'),
+            'Overwrite': False,
+            'Datapath': flap.config.get("Module W7X_ABES", "Datapath"),
+            'Plot': False}
+        options = {**options_default, **options}
+        
+        shotspatcal_filename = os.path.join(
+            options['Shot spatcal dir'], self.shotID + '_cmos_spat.cal')
+        if os.path.isfile(shotspatcal_filename) is True and options['Overwrite'] is False:
+            raise FileExistsError('Spatial calibration file ' + shotspatcal_filename + ' already exists\n' +
+                                  "\t\t\t\tSet options['Overwrite'] = True to overwrite the file.")
+
+        # opening the relevant calibration files
+        filename = os.path.join(options['Spatial calib source dir'], options['Calibration ID'],
+                                'Geometry', 'cmos_to_real.hdf5')
+        projections = flap.load(filename)
+        cmos_to_real = projections['CMOS to machine projection']
+        real_to_cmos = projections['Machine to CMOS projection']
+        opt_axis_norm = projections['Optical axis vector']
+        obs_point = projections['Observation point']
+        image_x_vector = projections['Direction of image x axis']
+        image_y_vector = projections['Direction of image y axis']
+        midplane_crosspoint = projections['Midplane crosspoint']
+
+        filename = os.path.join(
+            options['Spatial calib source dir'], options['Calibration ID'], 'Geometry', 'beam.dat')
+        with open(filename) as beam_data:
+            lines = beam_data.readlines()
+            beam_start = np.asarray(
+                [float(data) for data in lines[2].rstrip().split(' ') if data != ''])
+            beam_end = np.asarray(
+                [float(data) for data in lines[3].rstrip().split(' ') if data != ''])
+            beam_norm = beam_end-beam_start
+            beam_norm = beam_norm/np.linalg.norm(beam_norm)
+            beam_plane_vector = np.cross(beam_norm, np.asarray([0, 0, 1]))
+
+        # Calculating the position of the pixels in the machine, assuming that they are in the z=0 plane
+        device_xyz = np.empty([1312,1082,3])
+        beam_coord = np.empty([1312,1082,2])
+        for x_pixel in np.arange(1312)+1:
+            y_list = list()
+            for y_pixel in np.arange(1082)+1:
+                point_XY = get_points_projection(np.asarray([[x_pixel,y_pixel]]),
+                                                 cmos_to_real)
+                point_machine_coord = image_x_vector*point_XY[0][0] +\
+                    image_y_vector*point_XY[0][1] +\
+                    midplane_crosspoint
+    
+                # Getting the cross point of observation point - point_machine_coord line on the z=0 plane
+                connecting_vector = obs_point - point_machine_coord
+                length_along_vector = -obs_point[2]/connecting_vector[2]
+                device_xyz[x_pixel-1, y_pixel-1] = obs_point + connecting_vector * length_along_vector
+                # Adding the beam axis coord
+                coord_from_beam_start = device_xyz[x_pixel-1, y_pixel-1]-beam_start
+                beam_coord[x_pixel-1, y_pixel-1] = np.asarray([np.dot(coord_from_beam_start, beam_norm),
+                                                               np.linalg.norm(coord_from_beam_start - beam_norm *
+                                                                              np.dot(coord_from_beam_start, beam_norm))*
+                                                               np.sign((coord_from_beam_start - beam_norm *
+                                                                        np.dot(coord_from_beam_start, beam_norm))[1])])
+
+        # Everything of interest is done. The next part is just saving everything
+        calibconf = MachineCalibConfig()
+        beam_points = calibconf.get_image_XY_coord([beam_start, beam_end], obs_point=obs_point,
+                                                   opt_axis_norm=opt_axis_norm,
+                                                   image_x_vector=image_x_vector,
+                                                   image_y_vector=image_y_vector)
+        beam_im = get_points_projection(np.asarray(beam_points), real_to_cmos)
+
+        object_dict = {'Version': 'flap_1.0',
+                       'Calibration ID': str(options['Calibration ID']),
+                       'Beam_start_im': beam_im[0, :],
+                       'Beam_end_im': beam_im[1, :],
+                       'Beam_start_xyz': beam_start,
+                       'Beam_end_xyz': beam_end,
+                       'Beam_start_beam': np.asarray([0, 0]),
+                       'Beam_end_beam': beam_end-beam_start,
+                       'Beam_plane_vector': beam_plane_vector}
+
+        # fibre_coords_xyz = []
+        # fibre_coords_beam = []
+        # fibre_coords_im = []
+        # for chan in shot_channel_cent.keys():
+        #     fibre_coords_xyz = fibre_coords_xyz + \
+        #         [list(shot_channel_cent[chan]['Device xyz'])]
+        #     fibre_coords_im = fibre_coords_im + \
+        #         [list(shot_channel_cent[chan]['Fibre coords im'])]
+        #     fibre_coords_beam = fibre_coords_beam + \
+        #         [shot_channel_cent[chan]['Beam coord']]
+        # fibre_coords_im = np.transpose(np.asarray(fibre_coords_im))
+        # fibre_coords_xyz = np.transpose(np.asarray(fibre_coords_xyz))
+        # fibre_coords_beam = np.transpose(np.asarray(fibre_coords_beam))
+        # object_dict_update = {'Fibre_coords_beam': fibre_coords_beam,
+        #                       'Fibre_coords_im': fibre_coords_im,
+        #                       'Fibre_coords_xyz': fibre_coords_xyz}
+        
+        object_dict_update = {'Pixel_coords_beam': beam_coord,
+                              'Pixel_coords_xyz': device_xyz}
+
+        object_dict.update(object_dict_update)
+        flap.save(object_dict, shotspatcal_filename)
+
+    def create_coordinate_object(self, dimension_list, coord_name):
+        ''' Helper function for creating a flap.Coordinate object
+        '''
+        data = self.data[coord_name].transpose()
+
+        coord_object = flap.Coordinate(name=coord_name, unit='m', values=data, shape=np.shape(data),
+                                       mode=flap.CoordinateMode(equidistant=False), dimension_list=dimension_list)
+
+        return coord_object
+
 
 class CalcCalibration:
     # Object used for processing the apdcam to cmos and cmos to machine spatial calibration
@@ -756,7 +1094,7 @@ class CalcCalibration:
             flap.save(data_to_save, filename)
             print("done")
 
-    def read_apdcam_apdcam_fibre_calib_list(self, options):
+    def read_apdcam_fibre_calib_list(self, options):
         ''' Reads the apdcam_fibre_calib_images.dat file information
         '''
         options_default = {}
@@ -801,7 +1139,7 @@ class CalcCalibration:
         options = {**options_default, **options}
 
         if hasattr(self, 'apdcam_fibre_calib_list') is False:
-            self.read_apdcam_apdcam_fibre_calib_list(options)
+            self.read_apdcam_fibre_calib_list(options)
 
         transform_points = False
         first_image = True
@@ -1223,8 +1561,8 @@ class CalcCalibration:
         #         if len(line) != 0:
         #             head_config_map.update({line[1]: line[0]})
         
-        from .cxrs import read_fibre_config
-        patch_dict = read_fibre_config(self.calibration_id)
+        from .cxrs_util import read_fibre_config
+        patch_dict, spect_config, patchp_config = read_fibre_config(self.calibration_id)
 
         self.cxrs_chan_cent = {}
         for chan in chan_cent.keys():

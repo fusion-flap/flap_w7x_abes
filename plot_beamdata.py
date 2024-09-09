@@ -9,9 +9,9 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
 try:
-    from .w7x_analysis import *
+    from .flap_w7x_abes.bori_monitor_file_handling import *
 except ImportError:
-    from w7x_analysis import *
+    from flap_w7x_abes.bori_monitor_file_handling import *
     
 def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapath='',start_datetime=None,end_datetime=None,figure=None):
     
@@ -34,7 +34,7 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
 #    plt.rcParams['suptitle.fontsize'] = 10
     
     data_names = ['Emit Current A','HV Em Meas Voltage','HV Ex Meas Voltage','HV Em Meas Current','HV Ex Meas Current',
-                  'TC Top','TC Oven','TC Torus Side Cone','TC Emit Side Cone','FC1 in','FC2 in','FC Polarity',
+                  'TC Oven Top','TC Oven Bottom','TC Torus Side Cone','TC Emit Side Cone','FC1 in','FC2 in','FC Polarity',
                   'FC1 Resistor Current mA','FC2 Resistor Current mA','VG HighVac1','VG HighVac2',
                   'Neut Shut Closed']
     t,d,u = read_data(data_names=data_names,startdate=startdate,starttime=starttime,endtime=endtime,datapath=datapath)
@@ -93,13 +93,13 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
         
     plt.subplot(gs[1,0:2],sharex=ax)
     legend = []
-    ind = np.nonzero(np.logical_and(d_dict['TC Oven'] > 20, d_dict['TC Oven'] < 300))[0]
+    ind = np.nonzero(np.logical_and(d_dict['TC Oven Bottom'] > 20, d_dict['TC Oven Bottom'] < 300))[0]
     if (len(ind) > 0):
-        plt.plot(time,np.clip(d_dict['TC Oven'],20,300))
+        plt.plot(time,np.clip(d_dict['TC Oven Bottom'],20,300))
         legend.append('Oven')
-    ind = np.nonzero(np.logical_and(d_dict['TC Top'] > 20, d_dict['TC Top'] < 300))[0]
+    ind = np.nonzero(np.logical_and(d_dict['TC Oven Top'] > 20, d_dict['TC Oven Top'] < 300))[0]
     if (len(ind) > 0):
-        plt.plot(time,np.clip(d_dict['TC Top'],20,300))
+        plt.plot(time,np.clip(d_dict['TC Oven Top'],20,300))
         legend.append('Top')
     ind = np.nonzero(np.logical_and(d_dict['TC Torus Side Cone'] > 20, d_dict['TC Torus Side Cone'] < 300))[0]
     if (len(ind) > 0):
@@ -150,5 +150,6 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
     
 plt.close('all')
 fig = plt.figure(figsize=(25,17))
-plot_beamdata(startdate='20221215',datapath='z:/Data/W7-X_ABES/Beam',figure=fig)
-    
+plot_beamdata(startdate='20230222',datapath='c:/Users/Zoletnik/Root/tmp',figure=fig)
+fig = plt.figure(figsize=(25,17))
+plot_beamdata(startdate='20230223',datapath='c:/Users/Zoletnik/Root/tmp',figure=fig)    

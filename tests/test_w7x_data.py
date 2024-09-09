@@ -7,13 +7,11 @@ Created on Fri May 10 18:50:28 2019
 
 import matplotlib.pyplot as plt
 import os
+import time
 
 import flap
 import flap_w7x_abes
 
-flap_w7x_abes.register()
-d=flap.get_data('W7X_ABES_CXRS',exp_id='20230314.032', name="QSI")
-dfgd
 
 def test_W7X_data():
     flap.delete_data_object('*')
@@ -37,3 +35,9 @@ fn = os.path.join(thisdir,"w7x_config.cfg")
 flap.config.read(file_name=fn)
 
 test_W7X_data()
+
+import numpy as np
+mod = np.zeros(d.data.shape[0])
+for time in range(d.data.shape[0]):
+    mod[time] = np.var(d.data[time,3,400:450])
+plt.plot(d.coordinate("Time")[0][:,0,0], mod)

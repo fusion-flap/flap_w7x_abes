@@ -15,7 +15,11 @@ from scipy.ndimage import median_filter
 
 if __name__ == '__main__':
 
-    shotID = '20220222.012'
+    shotID = '20240307.047'
+    a = flap_w7x_abes.ShotSpatCal(shotID)
+    sdf
+    images = a.calc_chan_range()
+    adf
     # full_calib = True
     # if full_calib is True:
     #     a = flap_w7x_abes.ShotSpatCal(shotID)
@@ -33,8 +37,12 @@ if __name__ == '__main__':
 
     shot_calib = True
     if shot_calib is True:
-        a = flap_w7x_abes.ShotSpatCalCXRS(shotID)
+        # a = flap_w7x_abes.ShotSpatCalCXRS(shotID)
+        a = flap_w7x_abes.ShotSpatCalCMOS(shotID)
         a.generate_shotdata(options={'Plot': True, 'Overwrite': True})
+        a.read()
+        a = flap_w7x_abes.ShotSpatCal(shotID)
+
     raise ValueError('stop')
 
 
