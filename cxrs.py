@@ -281,8 +281,7 @@ class spectra:
              except (KeyError, TypeError):
                  datapath_base = 'data'
                  
-             R = np.load(datapath_base+"ROI_ps.npy")
-             print(R.shape)
+             R = np.load(datapath_base+"attached_ROI_positions.npy")
              
              roi_coord_flap = flap.Coordinate(name='ROI', unit="1",
                              mode=flap.CoordinateMode(equidistant=False),
