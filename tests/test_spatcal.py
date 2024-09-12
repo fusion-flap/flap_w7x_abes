@@ -14,16 +14,35 @@ from scipy.ndimage import median_filter
 
 
 if __name__ == '__main__':
-#    a = ShotSpatCal('20180912.040', options={"spatcal_dir": "./tests/"})
-#    channel_names = ['ABES-1', 'ABES-2']
-#    b=a.create_coordinate_object([0], 'Beam axis', channel_names=channel_names)
-#    a = flap_w7x_abes.ShotSpatCal('20181016.008')
-#    a = flap_w7x_abes.ShotSpatCal('20171207.024')
-    a = flap_w7x_abes.ShotSpatCal('20221016.008')
-    options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Circular symmetry':True,
-           'Flip horizontally': False, 'Noise limit': 200}
-    options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Circular symmetry':True, 'Elliptical symmetry':False,'Noise limit': 200}
-    a.full_calib(options=options)
+
+    shotID = '20240307.047'
+    a = flap_w7x_abes.ShotSpatCal(shotID)
+    sdf
+    images = a.calc_chan_range()
+    adf
+    # full_calib = True
+    # if full_calib is True:
+    #     a = flap_w7x_abes.ShotSpatCal(shotID)
+    #     options = {'Get CMOS to machine': True,'Get APDCAM to CMOS': False, 'Get CXRS to CMOS': False, 'Circular symmetry':True, 'Elliptical symmetry':False,'Noise limit': 200}
+    #     a.full_calib(options=options)
+
+
+    # filename = os.path.join('/media/mvecsei/DATA/repos/flap/modules/flap_w7x_abes/spatcal/2021/Geometry', 'apdcam_to_cmos.hdf5')
+    # apdcam_to_cmos = flap.load(filename)
+    # print(apdcam_to_cmos['APDCAM channel centers'])
+    # filename = os.path.join('/media/mvecsei/DATA/repos/flap/modules/flap_w7x_abes/spatcal/2021/Geometry', 'cxrs_to_cmos.hdf5')
+    # apdcam_to_cmos = flap.load(filename)
+    # print(apdcam_to_cmos['CXRS channel centers'])
+    # asdf
+
+    shot_calib = True
+    if shot_calib is True:
+        # a = flap_w7x_abes.ShotSpatCalCXRS(shotID)
+        a = flap_w7x_abes.ShotSpatCalCMOS(shotID)
+        a.generate_shotdata(options={'Plot': True, 'Overwrite': True})
+        a.read()
+        a = flap_w7x_abes.ShotSpatCal(shotID)
+
     raise ValueError('stop')
 
 
@@ -35,8 +54,19 @@ if __name__ == '__main__':
     import h5py
     old = h5py.File('/media/mvecsei/DATA/data/W7-X/APDCAM/spatcal/20181016.008_spat.cal', 'r')
     old_unflipped = h5py.File('/media/mvecsei/DATA/repos/flap/modules/flap_w7x_abes/tests/20181016.008_spat.cal', 'r')
-    new = flap.load('/DATA/repos/flap/modules/flap_w7x_abes/spatcal/20181016.008_spat.cal')
+    new = flap.load('/media/mvecsei/DATA/repos/flap/modules/flap_w7x_abes/spatcal/20240222.012_cxrs_spat.cal')
 
+
+    whatnot = dict()
+    index = 0
+    for channel in new['Channels']:
+        whatnot[channel] = [new['Fibre_coords_xyz'][0][index], new['Fibre_coords_xyz'][1][index]]
+        index += 1
+    keys = sorted(whatnot.keys())
+    for key in keys:
+        print(f"{key} {whatnot[key]}")
+        plt.scatter(whatnot[key][0], whatnot[key][1])
+        plt.text(whatnot[key][0], whatnot[key][1], key)
 #    h5File = h5py.File('/media/mvecsei/DATA/data/W7-X/APDCAM/spatcal/20171207.024_spat.cal', 'r')
     from matplotlib import pyplot as plt
 #

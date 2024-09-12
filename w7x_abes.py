@@ -9,6 +9,7 @@ This is the flap module for W7-X alkali BES diagnostic
 
 import os
 import time
+import warnings
 from decimal import *
 import gc
 import psutil
@@ -302,7 +303,7 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
     # Doing the calibration
     data_err = np.zeros(data_arr.shape)
     if (data_arr.dtype.kind != 'f'):
-        data_arr = float(data_arr)
+            data_arr = float(data_arr)
     for i in range(len(index_start)):
         # Collecting the calibration factors andd errors
         calfac_act = np.empty(len(signal_proc),dtype=float)
@@ -317,10 +318,10 @@ def calibrate(data_arr, signal_proc, read_range, exp_id=None, options=None):
                 if (signal_proc[i_ch][0:5] == 'ABES-'):
                     raise ValueError("No calibration data for signal "+signal_proc[i_ch])
             if (data_arr.ndim == 2):
-                data_arr[index_start[i]:index_stop[i], i_ch] /= calfac[i][i_cal]
+                data_arr[index_start[i]:index_stop[i], i_ch] /= calfac[i][i_cal].astype("float")
                 data_err[index_start[i]:index_stop[i], i_ch] = data_arr[index_start[i]:index_stop[i], i_ch] / calfac[i][i_cal] * calfac_err[i][i_cal]
             else:
-                data_arr[index_start[i]:index_stop[i]] /= calfac[i][i_cal]
+                data_arr[index_start[i]:index_stop[i]] /= calfac[i][i_cal].astype("float")
                 data_err[index_start[i]:index_stop[i]] = data_arr[index_start[i]:index_stop[i]] / calfac[i][i_cal] * calfac_err[i][i_cal]
     return data_arr, data_err, calfac_err_dataobject
 
@@ -602,11 +603,13 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
 
 
     d = copy.deepcopy(flap.DataObject(data_shape=[n_period],
-                        data_unit=flap.Unit(name='Interval', unit='n.a.'),
-                        coordinates=[c_sample, c_time],
-                        data_source = 'W7X_ABES',
-                        exp_id = config['ShotID']
-                        ))
+                                      data_unit=flap.Unit(name='Interval', unit='n.a.'),
+                                      coordinates=[c_sample, c_time],
+                                      data_source = 'W7X_ABES',
+                                      exp_id = config['ShotID'],
+                                      info=config
+                                      )
+                          )
 
 
     return d
@@ -626,14 +629,28 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                      'Time': The read times
                      Only a single equidistant range is interpreted in c_range.
     options:
-        'Scaling':  'Digit'
-                    'Volt'
-        'Offset timerange': Time range for offset subtraction
-        'Datapath': Data path (string)
-        'Calibration': True/False do/don't do amplitude calibration of the data
-        'Calib. path': Calibration directory name
-        'Calib. file': Calibration cld file name.
-        For further options see Chopper_times see shopper_timing_data()
+        'Scaling':  string
+           'Digit'
+           'Volt'
+        'Offset timerange': list
+           Time range for offset subtraction
+        'Datapath': string
+           Data path (string)
+        'Amplitude calibration': bool
+           True/False do/don't do amplitude calibration of the data
+        'Amplitude calib. path': string
+           Calibration directory name
+        'Amplitude calib. file': string
+           Calibration cld file name.
+        'Partial intervals' : bool
+           True: Keep partial chopper intervals extending through the start/end of timerange
+           False: Keep only full chopper intervals
+        'Resample' : float
+           Resample data to this sample frequency
+        'Spatial calibration': bool
+           True: Attempt spatial calibration, add device coordinates
+            
+        For further options see Chopper_times see chopper_timing_data()
 
     """
     if (exp_id is None):
@@ -649,6 +666,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                        'Start delay': 0,
                        'End delay': 0,
                        'Spatial calibration': False,
+                       'Spatial calib. path': 'spatcal',
                        'Partial intervals': False,
                        'Resample' : None
                        }
@@ -786,31 +804,34 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
     except (NameError, KeyError):
         offset_timerange = None
 
-    if (offset_timerange is not None):
-        if (type(offset_timerange) is not list):
-            raise ValueError("Invalid Offset timerange. Should be list or string.")
-        if ((len(offset_timerange) != 2) or (offset_timerange[0] >= offset_timerange[1])) :
-            raise ValueError("Invalid Offset timerange.")
-        offset_samplerange = np.rint((np.array(offset_timerange) - float(config['APDCAM_starttime']))
-                                   / float(config['APDCAM_sampletime']))
-        if ((offset_samplerange[0] < 0) or (offset_samplerange[1] >= config['APDCAM_samplenumber'])):
-            raise ValueError("Offset timerange is out of measurement time.")
-        offset_data = np.empty(len(ADC_proc), dtype='int16')
-        for i_ch in range(len(ADC_proc)):
-            fn = os.path.join(datapath, "Channel_{:03d}.dat".format(ADC_proc[i_ch] - 1))
-            with open(fn,"rb") as f:
-                try:
-                    f.seek(int(offset_samplerange[0]) * 2, os.SEEK_SET)
-                    d = np.fromfile(f, dtype=np.int16, count=int(offset_samplerange[1]-offset_samplerange[0])+1)
-                except Exception:
-                    raise IOError("Error reading from file: " + fn)
-            offset_data[i_ch] = np.int16(np.mean(d))
-        if (scale_to_volts):
-            offset_data = ((2 ** config['APDCAM_bits'] - 1) - offset_data) \
-                        / (2. ** config['APDCAM_bits'] - 1) * 2
-        else:
-            offset_data = (2 ** config['APDCAM_bits'] - 1) - offset_data
-
+    try:
+        if (offset_timerange is not None):
+            if (type(offset_timerange) is not list):
+                raise ValueError("Invalid Offset timerange. Should be list or string.")
+            if ((len(offset_timerange) != 2) or (offset_timerange[0] >= offset_timerange[1])) :
+                raise ValueError("Invalid Offset timerange.")
+            offset_samplerange = np.rint((np.array(offset_timerange) - float(config['APDCAM_starttime']))
+                                       / float(config['APDCAM_sampletime']))
+            if ((offset_samplerange[0] < 0) or (offset_samplerange[1] >= config['APDCAM_samplenumber'])):
+                raise ValueError("Offset timerange is out of measurement time.")
+            offset_data = np.empty(len(ADC_proc), dtype='int16')
+            for i_ch in range(len(ADC_proc)):
+                fn = os.path.join(datapath, "Channel_{:03d}.dat".format(ADC_proc[i_ch] - 1))
+                with open(fn,"rb") as f:
+                    try:
+                        f.seek(int(offset_samplerange[0]) * 2, os.SEEK_SET)
+                        d = np.fromfile(f, dtype=np.int16, count=int(offset_samplerange[1]-offset_samplerange[0])+1)
+                    except Exception:
+                        raise IOError("Error reading from file: " + fn)
+                offset_data[i_ch] = np.int16(np.mean(d))
+            if (scale_to_volts):
+                offset_data = ((2 ** config['APDCAM_bits'] - 1) - offset_data) \
+                            / (2. ** config['APDCAM_bits'] - 1) * 2
+            else:
+                offset_data = (2 ** config['APDCAM_bits'] - 1) - offset_data
+    except ValueError as e:
+        warnings.warn(str(e))
+        offset_timerange = None
 
     ndata_read = int(read_samplerange[1] - read_samplerange[0] + 1)
     if (_options['Resample'] is not None):
@@ -821,7 +842,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
 
     if (no_data is False):
         if ndata_out * len(ADC_proc) * 32 > psutil.virtual_memory().available:
-            raise MemoryError("Note enough memory for reading data")
+            raise MemoryError("Not enough memory for reading data")
 
         if (len(ADC_proc) != 1):
             if (_options['Resample'] is not None):
@@ -884,18 +905,33 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
 
     coord = [None]*data_dim*2
     c_mode = flap.CoordinateMode(equidistant=True)
+    if (read_range is None):
+        read_range = float(config['APDCAM_sampletime']) + read_samplerange * float(config['APDCAM_sampletime'])
+    if (_options['Resample'] is not None):
+        tstart = read_range[0] + float(config['APDCAM_sampletime']) * resample_binsize / 2
+        tstep = float(config['APDCAM_sampletime']) * resample_binsize
+    else:
+        tstart = read_range[0]
+        tstep = float(config['APDCAM_sampletime'])
     coord[0] = copy.deepcopy(flap.Coordinate(name='Time',
                                              unit='Second',
                                              mode=c_mode,
-                                             start=read_range[0],
-                                             step=config['APDCAM_sampletime'],
+                                             start=tstart,
+                                             step=tstep,
                                              dimension_list=[0])
                              )
+
+    if (_options['Resample'] is not None):
+        s_start = read_samplerange[0] + resample_binsize / 2
+        s_step = resample_binsize
+    else:
+        s_start = read_samplerange[0]
+        s_step = 1
     coord[1] = copy.deepcopy(flap.Coordinate(name='Sample',
                                              unit='n.a.',
                                              mode=c_mode,
-                                             start=read_samplerange[0],
-                                             step=1,
+                                             start=s_start,
+                                             step=s_step,
                                              dimension_list=[0])
                              )
     if (data_dim > 1):
@@ -932,7 +968,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                         coordinates=coord,
                         exp_id=exp_id,
                         data_title=data_title,
-                        info={'Options':_options, 'Calibration factor error': calfac_err},
+                        info={'Options':_options, 'Calibration factor error': calfac_err,'Config':config},
                         data_source="W7X_ABES")
     if _options['Spatial calibration'] is True:
         # Getting the spatial calibration
@@ -962,7 +998,10 @@ def add_coordinate(data_object,
         exp_spatcal = spatcal.ShotSpatCal(data_object.exp_id, options=_options)
     else:
         exp_spatcal = spatcal.ShotSpatCal(exp_id, options=_options)
-    exp_spatcal.read(options=_options)
+    try:
+        exp_spatcal.read(options=_options)
+    except Exception as e:
+        print(e)
 
     # getting the dimension of the channel coordinate, this should be the same as the spatial coordinate
     data_coord_list = np.array([coord.unit.name for coord in data_object.coordinates])
@@ -991,7 +1030,7 @@ def regenerate_time_sample(d):
         ct = d.get_coordinate_object('Start Time in int(Sample)')
         c_shift = d.get_coordinate_object('Rel. Time in int(Sample)')
         if (c_shift.dimension_list != []):
-            raise ValueError("Rel Time in int(Sample) is not constant.")
+            raise ValueError("Rel. Time in int(Sample) is not constant.")
         if (not ct.mode.equidistant):
             if c_shift.values == None:
                 c_shift.values = c_shift.start
@@ -1123,10 +1162,10 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         if dataobject is None:
             flap.plot('ABES', axes='Time', plot_options={'marker': 'o'})
         else:
-            dataobject.plot(axes='Time', plot_options={'marker': 'o'})
+            dataobject.plot(axes='Time', options={'All':True}, plot_options={'marker': 'o'})
 #        flap.plot('ABES',axes='Time',plot_type='scatter')
-        d_beam_on.plot(plot_type='scatter', axes=['Time', 2], options={'Force': True,'All': True})
-        d_beam_off.plot(plot_type='scatter', axes=['Time', 0.1], options={'Force': True,'All': True})
+        d_beam_on.plot(plot_type='scatter', axes=['Time', plt.ylim()[1]], options={'Force': True,'All': True})
+        d_beam_off.plot(plot_type='scatter', axes=['Time', plt.ylim()[0]], options={'Force': True,'All': True})
         plt.savefig(str(time.time())+'.png')
 
     # Background subtraction
@@ -1172,6 +1211,46 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         d=flap.get_data_object('ABES_on')
         d_back = flap.get_data_object('ABES_back')
         d.data -= d_back.data
+        
+        
+        #add electrc noise using offset data
+        del o['State']
+        if 'Signal name' in dataobject.coordinate_names():
+            try:
+                offset = flap.get_data('W7X_ABES',
+                              exp_id=exp_id,
+                              coordinates={'Time':[-0.1,0.1]},
+                              name=dataobject.get_coordinate_object('Signal name').values[0],
+                              object_name='ABES'
+                              )
+            except OSError:
+                #no amplitude calibration present yet
+                offset = flap.get_data('W7X_ABES',
+                              exp_id=exp_id,
+                              coordinates={'Time':[-0.1,0.1]},
+                              name=dataobject.get_coordinate_object('Signal name').values[0],
+                              object_name='ABES',
+                              options = {'Amplitude calibration': False}
+                              )
+            chop = np.mean(d_beam_on.coordinate("Time")[2]-d_beam_on.coordinate("Time")[1])
+            if chop < 1e-4:
+                if np.min(offset.coordinate("Time")[0]) < -1e-6 and options['Average Chopping Period'] is True:
+                    offset = offset.slice_data(slicing={"Time": flap.Intervals(-0.1,-1e-6)})
+                    electric_noise = np.var(offset.data, axis=0)
+                    d.error = np.sqrt(d.error**2+electric_noise)
+                elif options['Average Chopping Period'] is True:
+                    standard_error = np.array([8.52008759e-03, 6.05577881e-03, 5.61784578e-03, 4.01606559e-03,
+                           4.80343614e-03, 4.96760886e-03, 4.31857827e-03, 4.61216619e-03,
+                           5.07540636e+00, 5.77341359e+00, 5.17886695e+00, 6.67524467e+00,
+                           4.10515027e+00, 3.20796480e+00, 4.06675798e+00, 4.07734300e+00,
+                           4.09595980e+00, 3.70180586e+00, 4.78968865e+00, 3.76662174e+00,
+                           4.02454327e+00, 3.90762905e+00, 5.00180528e+00, 3.25465952e+00,
+                           4.32225647e+00, 3.23294377e+00, 5.75256366e+00, 4.56699600e+00,
+                           5.02907424e+00, 4.54773953e+00, 6.10916503e+00, 4.75039061e+00,
+                           3.76776202e+00, 5.17901390e+00, 4.44659086e+00, 6.81016910e+00,
+                           7.95957335e+00, 1.45460916e+01, 1.10220756e+01, 1.85718833e+01])
+                    d.error = np.sqrt(d.error**2+standard_error)
+
 #        flap.add_data_object(d,'ABES')
 
 #        # error approximation
@@ -1196,7 +1275,7 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         return d
     else:
 
-        # in this case the passed dataobject is used and the only the copper data is obtained from file
+        # in this case the passed dataobject is used and only the chopper data is obtained from file
         dataobject_beam_on = dataobject.slice_data(slicing={'Sample': d_beam_on})
 
         # For dataobject_beam_on.data the 0 dimension is along a constant 'Start Time in int(Time)' and 
@@ -1243,6 +1322,52 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
             else:
                 print('Calibration error not considered')
 
+        #add electrc noise using offset data
+        del o['State']
+        if 'Signal name' in dataobject.coordinate_names() and options['Average Chopping Period'] is True:
+            try:
+                offset = flap.get_data('W7X_ABES',
+                              exp_id=exp_id,
+                              coordinates={'Time':[-0.1,0.1]},
+                              name=dataobject.get_coordinate_object('Signal name').values[0],
+                              object_name='ABES'
+                              )
+            except OSError:
+                #no amplitude calibration present yet
+                offset = flap.get_data('W7X_ABES',
+                              exp_id=exp_id,
+                              coordinates={'Time':[-0.1,0.1]},
+                              name=dataobject.get_coordinate_object('Signal name').values[0],
+                              object_name='ABES',
+                              options = {'Amplitude calibration': False}
+                              )
+            chop = np.mean(d_beam_on.coordinate("Time")[2]-d_beam_on.coordinate("Time")[1])
+            if chop<1e-4:
+                if np.min(offset.coordinate("Time")[0]) < -1e-6:
+                    offset_time = [-0.1,-1e-6]
+                    offset = offset.slice_data(slicing={"Time": flap.Intervals(-0.1,-1e-6)})
+                    electric_noise = np.var(offset.data, axis=0)
+                    dataobject_beam_on.error = np.sqrt(dataobject_beam_on.error**2+electric_noise)
+                else:
+                    standard_error = np.array([8.52008759e-03, 6.05577881e-03, 5.61784578e-03, 4.01606559e-03,
+                           4.80343614e-03, 4.96760886e-03, 4.31857827e-03, 4.61216619e-03,
+                           5.07540636e+00, 5.77341359e+00, 5.17886695e+00, 6.67524467e+00,
+                           4.10515027e+00, 3.20796480e+00, 4.06675798e+00, 4.07734300e+00,
+                           4.09595980e+00, 3.70180586e+00, 4.78968865e+00, 3.76662174e+00,
+                           4.02454327e+00, 3.90762905e+00, 5.00180528e+00, 3.25465952e+00,
+                           4.32225647e+00, 3.23294377e+00, 5.75256366e+00, 4.56699600e+00,
+                           5.02907424e+00, 4.54773953e+00, 6.10916503e+00, 4.75039061e+00,
+                           3.76776202e+00, 5.17901390e+00, 4.44659086e+00, 6.81016910e+00,
+                           7.95957335e+00, 1.45460916e+01, 1.10220756e+01, 1.85718833e+01])
+                    if len(dataobject.get_coordinate_object('Signal name').values)<len(standard_error):
+                        ch = [int(chname.split("-")[1])-1 for chname in dataobject.get_coordinate_object('Signal name').values]
+                        standard_error = standard_error[ch]
+                        if len(ch) == 1:
+                            standard_error = standard_error[0]
+                    # raise ValueError(str(dataobject.get_coordinate_object('Signal name').values))
+                    dataobject_beam_on.error = np.sqrt(dataobject_beam_on.error**2+standard_error)
+
+
         if test is True:
             plt.plot(dataobject_beam_on.get_coordinate_object("Time").values,
                      dataobject_beam_on.data)
@@ -1255,14 +1380,16 @@ def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,signals='ABES-[
         correct the beam-on phases with the beam-off. Further information in the comments of 
         proc_chopsignals_single
     """
-    # checking, whether dataobject has the data for multiple channels
+    
     naming_conventions = ["Channel", "Signal name", "Device R", "Beam axis"]
     channel_naming = []
     for name in naming_conventions:
         if name in dataobject.coordinate_names():
             channel_naming.append(name)
     
-    if len(channel_naming)==0:
+#    if len(channel_naming)==0:
+    # Added S. Zoletnik 9 Aug 2024
+    if (len(dataobject.shape) == 1):
        processed_data = proc_chopsignals_single(dataobject=dataobject, timerange=timerange,
                                           test=test, on_options=on_options,
                                           off_options=off_options,  options=options)
@@ -1517,7 +1644,9 @@ def write_chopshift(shotID, start, end):
             fout.write(dataout)
     os.remove(location+'old')
 
-    
+   
 def register(data_source=None):
     flap.register_data_source('W7X_ABES', get_data_func=w7x_abes_get_data, add_coord_func=add_coordinate)
+    from .cxrs_main import w7x_abes_cxrs_get_data, cxrs_add_coordinate
+    flap.register_data_source('W7X_ABES_CXRS', get_data_func=w7x_abes_cxrs_get_data, add_coord_func=cxrs_add_coordinate)
 

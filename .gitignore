@@ -103,11 +103,10 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-# shot calibration data
-*.cal
-
 # junk
 *.lock*
 
 # images
 *.png
+
+spatcal/*cmos_spat.cal
