@@ -201,7 +201,7 @@ def test_error_simulation():
                     tstart,tstop,backg,itern,simd,simgrid,sf,plots=True)
     
     
-test_read_webapi()
+# test_read_webapi()
 # test_calibration()
 # test_slice_wavelength()
 # test_passive()
@@ -211,5 +211,5 @@ test_read_webapi()
 # test_temporal_shift()
 # test_get_line_intensity()
 # test_error_distribution()
-# test_tempfit()
+test_tempfit()
 # test_error_simulation()
