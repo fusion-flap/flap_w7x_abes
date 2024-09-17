@@ -247,7 +247,7 @@ class spectra:
                             options={'Scale Time': True,'Cache Data': False},
                             object_name='QSI_spectral_data')
             
-        if(data_source == 'W7X_WEBAPI' and get_data == "by date" and
+        elif(data_source == 'W7X_WEBAPI' and get_data == "by date" and
                 campaign == "OP2.2"):
             self.dataobj = flap.get_data(data_source,
                             name='Test/raw/W7X/QSS_DivertorSpectroscopy/PI_CCD_06_1-QSS60OC095_DATASTREAM/0/Images/',
@@ -425,7 +425,12 @@ class spectra:
                         If it is a list two floats, then the function first slices,
                         then averages the signal between the two wavelengths.
         """
-        spectra_1w = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi)})
+        
+        spectra_1w = None
+        if(self.campaign == "OP2.1"):
+            spectra_1w = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi)})
+        elif(self.campaign == "OP2.2"):
+            spectra_1w = self.dataobj.slice_data(slicing={"ROI": str(roi)})
         if(type(wavelength) == float or type(wavelength) == int):
             spectra_1w = spectra_1w.slice_data(
                 slicing={"Wavelength": wavelength})
@@ -497,8 +502,13 @@ class spectra:
         """
         
         #slicing
-        ROI1 = self.dataobj.slice_data(
-            slicing={"ROI": "P0"+str(roi), "Time": flap.Intervals(t_start, t_stop)})
+        ROI1 = None
+        if(self.campaign == "OP2.1"):
+            ROI1 = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
+                                                    "Time": flap.Intervals(t_start, t_stop)})
+        elif(self.campaign == "OP2.2"):
+            ROI1 = self.dataobj.slice_data(slicing={"ROI": str(roi),
+                                                    "Time": flap.Intervals(t_start, t_stop)})
         line = ROI1.slice_data(slicing={"Wavelength": flap.Intervals(lstart, lstop)},
                                summing={"Wavelength": "Sum"})
 
