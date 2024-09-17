@@ -201,9 +201,12 @@ class spectra:
     """
 
     def __init__(self, data_source, expe_id, get_data="by shotID",
-                 campaign="OP2.1", spatcal=False, time_correction=False):
+                 campaign="OP2.1", spatcal=False, time_correction=False,
+                 starttime = None, stoptime = None):
         self.data_source = data_source
         self.expe_id = expe_id
+        self.starttime = starttime
+        self.stoptime = stoptime
         self.campaign = campaign
         self.d_beam_on = None
         self.d_beam_off = None
@@ -243,6 +246,16 @@ class spectra:
                             exp_id=expe_id,
                             options={'Scale Time': True,'Cache Data': False},
                             object_name='QSI_spectral_data')
+            
+        if(data_source == 'W7X_WEBAPI' and get_data == "by date" and
+                campaign == "OP2.2"):
+            self.dataobj = flap.get_data(data_source,
+                            name='Test/raw/W7X/QSS_DivertorSpectroscopy/PI_CCD_06_1-QSS60OC095_DATASTREAM/0/Images/',
+                            options={'Scale Time': True,
+                                    'Cache Data': False,
+                                    'Time Start':starttime,
+                                    'Time Stop': stoptime},
+                            object_name='QSI_CXRS_data')
         else:
             raise ValueError("Undefined data source or loading process.")
 
@@ -285,7 +298,12 @@ class spectra:
              
              roi_coord_flap = flap.Coordinate(name='ROI', unit="1",
                              mode=flap.CoordinateMode(equidistant=False),
-                             shape=(R.shape[0]),values=np.arange(1,R.shape[0]+1,1),dimension_list=[1])
+                             shape=(R.shape[0]),values=["1","2","3","4","5","7","8",
+                             "9","10","11","12","13","14","15","17","18","19","20",
+                             "21","22","23","24","25","27","28","29","30",
+                             "31","32","33","34","35","37","38","39","40","41","42",
+                             "43","44","45","47","48","49","50",
+                             "51","52","53","54"],dimension_list=[1])
              self.dataobj.add_coordinate_object(roi_coord_flap)
              self.dataobj.del_coordinate("Coord 1")
 
@@ -379,14 +397,15 @@ class spectra:
             self.dataobj.del_coordinate("Coord 2")
             
         if(self.campaign == "OP2.2"):
-            wl_values = np.zeros((54, 1024))
-            for i in range(1, 54):
+            wl_values = np.zeros((self.dataobj.coordinate("Device R")[0].shape[1], 1024))
+            for i in range(1, self.dataobj.coordinate("Device R")[0].shape[1]):
                 wl_values[i-1, :] = wavelength_grid_generator_op22(
                     self.grid, self.wavelength_setting, datapath_base)
 
             wl_coord_flap = flap.Coordinate(name='Wavelength', unit="nm",
                             mode=flap.CoordinateMode(equidistant=False),
-                            shape=(54,1024),values=wl_values,dimension_list=[1,2])
+                            shape=(self.dataobj.coordinate("Device R")[0].shape[1],1024),
+                            values=wl_values,dimension_list=[1,2])
             self.dataobj.add_coordinate_object(wl_coord_flap)
             self.dataobj.del_coordinate("Coord 2")
             
@@ -436,8 +455,13 @@ class spectra:
             t_stop: end of the interval (float)
             
         """
-        ROI1 = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
-                                                "Time": flap.Intervals(t_start, t_stop)})
+        ROI1 = None
+        if(self.campaign == "OP2.1"):
+            ROI1 = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
+                                                    "Time": flap.Intervals(t_start, t_stop)})
+        elif(self.campaign == "OP2.2"):
+            ROI1 = self.dataobj.slice_data(slicing={"ROI": str(roi),
+                                                    "Time": flap.Intervals(t_start, t_stop)})
         errors = None
             
         avg_spectrum = ROI1.slice_data(summing={"Time": "Mean"})
@@ -449,9 +473,12 @@ class spectra:
             avg_spectrum.error = errors
         plt.figure()
         avg_spectrum.plot(axes="Wavelength")
-        plt.title(self.expe_id, fontsize=15)
-        plt.title(self.expe_id+", averaged spectra, ROI = P0" +
-                  str(roi), fontsize=15)
+        if(self.campaign == "OP2.1"):
+            plt.title(self.expe_id+", averaged spectra, ROI = P0" +
+                      str(roi), fontsize=15)
+        elif(self.campaign == "OP2.2"):
+            plt.title(self.expe_id+", averaged spectra, ROI = " +
+                      str(roi), fontsize=15)
         plt.grid()
         return avg_spectrum
 
