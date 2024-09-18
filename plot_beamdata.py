@@ -148,8 +148,8 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
     
 
     
-plt.close('all')
-fig = plt.figure(figsize=(25,17))
-plot_beamdata(startdate='20230222',datapath='c:/Users/Zoletnik/Root/tmp',figure=fig)
-fig = plt.figure(figsize=(25,17))
-plot_beamdata(startdate='20230223',datapath='c:/Users/Zoletnik/Root/tmp',figure=fig)    
+# plt.close('all')
+# fig = plt.figure(figsize=(25,17))
+# plot_beamdata(startdate='20230222',datapath='c:/Users/Zoletnik/Root/tmp',figure=fig)
+# fig = plt.figure(figsize=(25,17))
+# plot_beamdata(startdate='20230223',datapath='c:/Users/Zoletnik/Root/tmp',figure=fig)    

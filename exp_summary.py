@@ -83,7 +83,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
                                      summing={'Rel. Sample in int(Time)':'Mean'},
                                      options={'Regenerate':True}
                                      )
-                d_off = d_off.slice_data(slicing={'Time':d_on},
+import                 d_off = d_off.slice_data(slicing={'Time':d_on},
                                          options={'Interpolation':'Linear'}
                                          )
                 d_on_data = d_on.data
