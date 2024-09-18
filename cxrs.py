@@ -66,7 +66,7 @@ def wavelength_grid_generator_op22(grid, w_s,datapath_base):
     c1 = calib_array[2]
     c2 = calib_array[4] # writing the out to clear variables
     pix_values = np.arange(0, 1024, 1) - 511 #centralizing the pixel range
-    return c2*pix_values**2 + c1*pix_values + c0 + w_s
+    return -(c2*pix_values**2 + c1*pix_values) + c0 + w_s
 
 
 def interval_shift(expe_id):
