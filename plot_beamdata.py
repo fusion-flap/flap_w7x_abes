@@ -4,17 +4,18 @@ Created on Thu Dec 15 14:40:26 2022
 
 @author: Zoletnik
 """
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
 try:
-    from .flap_w7x_abes.bori_monitor_file_handling import *
+    from .bori_monitor_file_handling import *
 except ImportError:
     from flap_w7x_abes.bori_monitor_file_handling import *
     
 def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapath='',start_datetime=None,end_datetime=None,figure=None,
-                  R_emit=81,R_ext=73):
+                  R_emit=81,R_ext=73, last_minutes=None):
     """
     Plot beam data.
 
@@ -42,6 +43,8 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
     R_ext : float, optional
         The resistor on the emitter power supply [MOhm]. The default is 73.
         If None, will calculate from currents.
+    last_minutes : float
+        Plot only the last minutes indicated by this argument.
 
     Returns
     -------
@@ -49,22 +52,24 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
 
     """
     
-    plt.rcParams['lines.linewidth'] = 2
-    plt.rcParams['axes.linewidth'] = 2
-    plt.rcParams['axes.labelsize'] = 20 
-    plt.rcParams['axes.titlesize'] = 20
-    plt.rcParams['xtick.labelsize'] = 20
-    plt.rcParams['xtick.major.size'] = 10
-    plt.rcParams['xtick.major.width'] = 4
-    plt.rcParams['xtick.major.size'] = 6
-    plt.rcParams['xtick.minor.width'] = 2
-    plt.rcParams['xtick.minor.size'] = 4
-    plt.rcParams['ytick.labelsize'] = 20
-    plt.rcParams['ytick.major.width'] = 4
-    plt.rcParams['ytick.major.size'] = 6
-    plt.rcParams['ytick.minor.width'] = 2
-    plt.rcParams['ytick.minor.size'] = 4
-    plt.rcParams['legend.fontsize'] = 10
+    labelsize = 10
+    linewidth = 1
+    plt.rcParams['lines.linewidth'] = linewidth
+    plt.rcParams['axes.linewidth'] = linewidth
+    plt.rcParams['axes.labelsize'] = labelsize 
+    plt.rcParams['axes.titlesize'] = labelsize 
+    plt.rcParams['xtick.labelsize'] =  labelsize 
+    plt.rcParams['xtick.major.size'] = 5
+    plt.rcParams['xtick.major.width'] = linewidth
+    plt.rcParams['xtick.major.size'] = 5
+    plt.rcParams['xtick.minor.width'] = linewidth
+    plt.rcParams['xtick.minor.size'] = 2
+    plt.rcParams['ytick.labelsize'] = labelsize 
+    plt.rcParams['ytick.major.width'] = linewidth
+    plt.rcParams['ytick.major.size'] = 5
+    plt.rcParams['ytick.minor.width'] = linewidth
+    plt.rcParams['ytick.minor.size'] = 2
+    plt.rcParams['legend.fontsize'] = labelsize 
 #    plt.rcParams['suptitle.fontsize'] = 10
     
     data_names = ['Emit Current A','HV Em Meas Voltage','HV Ex Meas Voltage','HV Em Meas Current','HV Ex Meas Current',
@@ -91,11 +96,23 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
     gs = gridspec.GridSpecFromSubplotSpec(4, 4, subplot_spec=plt.gca(),hspace=0.5,wspace=0.5)
     plt.suptitle('Start time: {:s}, R_emit={:3.0f}MOhm  R_ext={:3.0f}MOhm'.format(str(t[0]),R_emit,R_ext),fontsize=16)
 
+
+    if (last_minutes is not None):
+        if (time_unit == 'min'):
+            xlim = [time[np.nonzero(time > time[-1] - last_minutes)[0][0]], time[-1] ]
+        else:
+            print('time')
+            xlim = [time[np.nonzero(time > time[-1] - last_minutes)[0][0] * 60], time[-1]]
+    else:
+        xlim = None
+    
     ax = plt.subplot(gs[0,0:2])
     plt.plot(time,d_dict['Emit Current A'])
     plt.xlabel('Time [{:s}]'.format(time_unit))
     plt.ylabel('[A]')
     plt.title('Emitter heating current')
+    if (xlim is not None):
+        plt.xlim(*xlim)
     
     plt.subplot(gs[0,2:4],sharex=ax)
     plt.plot(time,d_dict['HV Em Meas Voltage'])
@@ -198,6 +215,10 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
     plt.title('Extra currents')
     plt.xlim(*trange)
 
-#plot_beamdata(startdate='20240918',datapath='z:/Data/W7-X_ABES/Beam',figure=fig)
-# fig = plt.figure(figsize=(25,17))
-# plot_beamdata(startdate='20230223',datapath='c:/Users/Zoletnik/Root/tmp',figure=fig)    
+if __name__ == "__main__":
+    datetoget=sys.argv[1]
+    plot_beamdata(startdate=datetoget,datapath='/data',last_minutes=20)
+    plt.savefig("/home/apdcam/Measurement/beam_20min.png")
+    #plot_beamdata(startdate='20240918',datapath='z:/Data/W7-X_ABES/Beam',figure=fig)
+    # fig = plt.figure(figsize=(25,17))
+    # plot_beamdata(startdate='20230223',datapath='c:/Users/Zoletnik/Root/tmp',figure=fig)    

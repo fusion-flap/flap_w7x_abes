@@ -24,11 +24,13 @@ def beam_position_plot_apd(exp_id,time=[0,5]):
     blocks['7'] = {'L':'L7','R':'R7','Beam channels':[38,39,40]}
     
     plt.close('all')
-    plt.figure(figsize=(8,15))
+    plt.figure(figsize=(4,8))
     plt.suptitle(exp_id)
     ax = None
     t = None
     options = {'Resample':1e3}
+    data_found = False
+    err = None
     for ib in range(len(blocks)):
         maxarr = [0]
         try:
@@ -41,7 +43,9 @@ def beam_position_plot_apd(exp_id,time=[0,5]):
             if (t is None):           
                 t = d_l.coordinate('Time',options={'Change':True})[0]
             maxarr.append(np.max(d_l.data))    
-        except ValueError:
+            data_found = True
+        except ValueError as e:
+            err = e
             d_l = None        
         try:
             d_r = flap.get_data('W7X_ABES',
@@ -53,9 +57,10 @@ def beam_position_plot_apd(exp_id,time=[0,5]):
             if (t is None):           
                 t = d_r.coordinate('Time',options={'Change':True})[0]
             maxarr.append(np.max(d_r.data))    
-        except ValueError:
+            data_found = True
+        except ValueError  as e:
             d_r = None
-            
+            err = e         
         try:
             d_c = flap.get_data('W7X_ABES',
                              exp_id=exp_id,
@@ -66,8 +71,13 @@ def beam_position_plot_apd(exp_id,time=[0,5]):
             if (t is None):           
                 t = d_c.coordinate('Time',options={'Change':True})[0]
             maxarr.append(np.max(d_c.data))    
-        except ValueError:
+            data_found = True
+        except ValueError as e:
             d_c = None
+            err = e
+        if (not data_found):
+            raise err
+
         m = max(maxarr)
         
         if (d_l is not None):

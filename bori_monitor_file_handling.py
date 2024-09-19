@@ -8,15 +8,22 @@ Created on Sun Oct 10 21:15:27 2021
 import matplotlib.pyplot as plt
 import numpy as np
 try:
-    from nptdms import TdmsFile
+    try:
+        from .nptdms_mod import TdmsFile
+    except ImportError:
+        from nptdms_mod import TdmsFile
 except ModuleNotFoundError:
-    print("nptdms module not available, beam monitor file handling cannot be done.")
-    
+        print("nptdms module not available, beam monitor file handling cannot be done.")
+
 import datetime
 import os
 import copy
 
-from .utc_offset import UTC_offset
+try:
+    from .utc_offset import UTC_offset
+except ImportError:
+    from utc_offset import UTC_offset
+
 
 def find_files(startdate=None,starttime='0000',start_datetime=None,
                enddate=None,endtime='2359',end_datetime=None,
