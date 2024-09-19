@@ -369,5 +369,14 @@ def channel_list(file):
         channels.append(c.name)
     return channels
     
+def read_exp_tdms(exp_id,datapath='/data/W7X/APDCAM'):
     
+    dirname = os.path.join(datapath,exp_id)
+    files = os.listdir(dirname)
+    filelist = []
+    for f in files:
+        if f[-5:] == '.tdms':
+            filelist.append(f)
+    print(filelist)        
+            
     
