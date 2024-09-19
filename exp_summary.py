@@ -49,12 +49,12 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
     
     try:
         d_beam_on=flap.get_data('W7X_ABES',
-                                 exp_id='20181018.003',
+                                 exp_id=exp_ID,
                                  name='Chopper_time',
                                  options={'State':{'Chop': 0, 'Defl': 0},'Start':1000,'End':-1000}
                                  )
         d_beam_off=flap.get_data('W7X_ABES',
-                                 exp_id='20181018.003',
+                                 exp_id=exp_ID,
                                  name='Chopper_time',
                                  options={'State':{'Chop': 1, 'Defl': 0},'Start':1000,'End':-1000}
                                  )           
@@ -94,11 +94,10 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
                     else:
                         plt.figure(test_fig.number)
                         plt.clf()
-                    d.plot()
+                    d.plot(axes=['Time'])
                     flap.list_data_objects(d_beam_on)
                     d_beam_on.plot(plot_type='scatter',axes=['Time',0],options={'Force':True})
                     plt.pause(2)
-                    return
                 d_on_data = d_on.data
                 d_off_data = d_off.data
                 ind = np.nonzero(np.logical_and(np.isfinite(d_off_data),

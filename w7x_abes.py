@@ -577,18 +577,6 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
         n_period = int(round(config['APDCAM_samplenumber'] /  (period_time_clk * chop_clk_in_sample)))
 
     mode = flap.CoordinateMode(equidistant=True, range_symmetric=False)
-    c_time = copy.deepcopy(flap.Coordinate(name='Time',
-                                           unit='Second',
-                                           mode=mode,
-                                           start=start_clk * clock_unit + config['APDCAM_starttime']
-                                                 + instrument_delay
-                                                 + start_delay_sample * config['APDCAM_sampletime'],
-                                           step=period_time_clk*clock_unit,
-                                           value_ranges=[0, float((stop_clk-start_clk) * clock_unit)
-                                                           + (stop_delay_sample - start_delay_sample)
-                                                             * float(config['APDCAM_sampletime'])],
-                                           dimension_list=[0]
-                                           ))
     c_sample = copy.deepcopy(flap.Coordinate(name='Sample',
                                              unit='n.a.',
                                              mode=mode,
@@ -598,6 +586,16 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
                                              step=round(period_time_clk*chop_clk_in_sample) ,
                                              value_ranges=[0,round((stop_clk-start_clk) * chop_clk_in_sample)
                                                            + stop_delay_sample - start_delay_sample],
+                                           dimension_list=[0]
+                                           ))
+    c_time = copy.deepcopy(flap.Coordinate(name='Time',
+                                           unit='Second',
+                                           mode=mode,
+                                           start = c_sample.start * config['APDCAM_sampletime'] + config['APDCAM_starttime'],
+                                           step=period_time_clk*clock_unit,
+                                           value_ranges=[0, float((stop_clk-start_clk) * clock_unit)
+                                                           + (stop_delay_sample - start_delay_sample)
+                                                             * float(config['APDCAM_sampletime'])],
                                            dimension_list=[0]
                                            ))
 
@@ -610,6 +608,7 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
                                       info=config
                                       )
                           )
+    d.check()
 
 
     return d
