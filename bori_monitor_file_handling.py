@@ -408,5 +408,3 @@ def page_list(file):
 #     print(phase_list)
     
             
-            
-    
