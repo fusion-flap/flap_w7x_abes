@@ -336,17 +336,17 @@ def read_data(data_names=None,startdate=None,starttime='0000',start_datetime=Non
     
     return time,data,data_unit
 
-def read_channels(startdate,datapath):
+def read_channels(startdate,datapath,page='MnitorData'):
     channels = []
     file = find_files(startdate,datapath=datapath)
     with TdmsFile.open(file[0][0]) as tdms_file:
-            ch_t = tdms_file['MonitorData']
+            ch_t = tdms_file[page]
     channel_list=ch_t.channels()
     for c in channel_list:
         channels.append(c.name)
     return channels
 
-def channel_list(file):
+def channel_list(file,page='MonitorData'):
     """
     Return the list of channels in the TDMS file.
 
@@ -363,11 +363,50 @@ def channel_list(file):
     """
     channels = []
     with TdmsFile.open(file) as tdms_file:
-            ch_t = tdms_file['MonitorData']
+        ch_t = tdms_file[page]
     channel_list=ch_t.channels()
     for c in channel_list:
         channels.append(c.name)
     return channels
     
+def page_list(file):
+   with TdmsFile.open(file) as tdms_file:
+       groups = tdms_file.groups()
+       group_names = []
+       for g in groups:
+           group_names.append(g.name)
+   return group_names
     
+    
+# def read_exp_tdms(exp_id,datapath='/data/W7X/APDCAM'):
+#     dirname = os.path.join(datapath,exp_id)
+#     files = os.listdir(dirname)
+#     filelist = []
+#     phase_list = ['Neut-Active','HV-Raise','HV-Beam']
+#     phase_data = [[],[],[]]
+#     for f in files:
+#         if f[-5:] == '.tdms':
+#             d = {'Filename':os.path.join(dirname,f)}
+#             d['Pages'] = page_list(os.path.join(dirname,f))
+#             for p in d['Pages']:
+#                 d[p] = {'Channels':channel_list(os.path.join(dirname,f),page=p)}
+#                 with TdmsFile.open(os.path.join(dirname,f)) as tdms_file:
+#                     d[p]['Start time'] = tdms_file[p]['TimeStamp'][0] 
+#                     d[p]['End time'] = tdms_file[p]['TimeStamp'][-1]             
+#                 for i,ph in enumerate(phase_list):
+#                     if (p[:len(ph)] == ph):
+#                         pdi = {'Filename' : os.path.join(dirname,f),
+#                                'Start time' : d[p]['Start time'],
+#                                'End time' : d[p]['End time'] 
+#                                } 
+#                         for ii in range()
+#                         phase_data[i].append(
+#                         phase_data[i]
+                        
+                        
+#              filelist.append(d)
+#     print(phase_list)
+    
+            
+            
     
