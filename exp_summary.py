@@ -8,13 +8,14 @@ import numpy as np
 import os
 import re
 import time
+import matplotlib.pyplot as plt
 
 import flap
 import flap_w7x_abes
 
 flap_w7x_abes.register()
 
-def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
+def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=False):
     """
     Return a single line summary of the experiment: expID, max APDCAM signal (uncalibrated), time range, channel range
 
@@ -67,6 +68,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
     if (chopper):
          try:
             sig = np.zeros(len(channels))
+            test_fig = None
             for i in range(len(channels)):
                 print('  Processing '+channels_str[i],flush=True)
                 d=flap.get_data('W7X_ABES',
@@ -83,9 +85,20 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26)):
                                      summing={'Rel. Sample in int(Time)':'Mean'},
                                      options={'Regenerate':True}
                                      )
-import                 d_off = d_off.slice_data(slicing={'Time':d_on},
+                d_off = d_off.slice_data(slicing={'Time':d_on},
                                          options={'Interpolation':'Linear'}
                                          )
+                if (test):
+                    if (test_fig is None):
+                        test_fig = plt.figure()
+                    else:
+                        plt.figure(test_fig.number)
+                        plt.clf()
+                    d.plot()
+                    flap.list_data_objects(d_beam_on)
+                    d_beam_on.plot(plot_type='scatter',axes=['Time',0],options={'Force':True})
+                    plt.pause(2)
+                    return
                 d_on_data = d_on.data
                 d_off_data = d_off.data
                 ind = np.nonzero(np.logical_and(np.isfinite(d_off_data),
