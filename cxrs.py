@@ -296,6 +296,9 @@ class spectra:
                  
              R = np.load(datapath_base+"attached_ROI_positions.npy")
              
+             print(R)
+             raise ValueError("stop")
+             
              roi_coord_flap = flap.Coordinate(name='ROI', unit="1",
                              mode=flap.CoordinateMode(equidistant=False),
                              shape=(R.shape[0]),values=["1","2","3","4","5","7","8",
@@ -723,6 +726,83 @@ class spectra:
                 plt.grid()
 
             return s_subs
+        if(self.campaign == "OP2.2"):
+            ROI1 = None
+            if(type(roi) == list):
+                ROI1 = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),
+                                            "Time": flap.Intervals(t_start, t_stop)})
+                for i in range(1,len(roi)):
+                    ROI1.data += self.dataobj.slice_data(slicing={"ROI": str(roi[i]),
+                                        "Time": flap.Intervals(t_start, t_stop)}).data
+                ROI1.data = ROI1.data/len(roi)
+                flap.list_data_objects(ROI1)
+            else:
+                ROI1 = self.dataobj.slice_data(slicing={"ROI": str(roi),
+                                            "Time": flap.Intervals(t_start, t_stop)})
+            if(background_interval != [0]):
+                ROI1_witbg = self.dataobj.slice_data(slicing={"ROI": str(roi),
+                            "Wavelength": flap.Intervals(background_interval[0],
+                             background_interval[1])},
+                             summing={"Wavelength": "Mean", "Time": "Mean"})
+                ROI1.data[:, :] = ROI1.data[:, :] - ROI1_witbg.data
+            s_on_data = np.zeros((ROI1.data.shape[1]))
+            s_off_data = np.zeros((ROI1.data.shape[1]))
+            s_on_error = np.zeros((ROI1.data.shape[1]))
+            s_off_error = np.zeros((ROI1.data.shape[1]))
+            for i in range(int(ROI1.data.shape[0]/2)): #it might miss the last frame
+                s_on_data += ROI1.data[i*2,:]/int(ROI1.data.shape[0]/2)
+                s_off_data += ROI1.data[i*2+1,:]/int(ROI1.data.shape[0]/2)
+            for i in range(int(ROI1.data.shape[0]/2)):
+                s_on_error += (ROI1.data[i*2,:]-s_on_data)**2
+                s_off_error += (ROI1.data[i*2+1,:]-s_off_data)**2
+            s_on_error = np.sqrt(s_on_error)/int(ROI1.data.shape[0]/2)
+            s_off_error = np.sqrt(s_off_error)/int(ROI1.data.shape[0]/2)
+            suberror = np.sqrt(s_on_error**2 + s_off_error**2)#/np.sqrt(2)
+            if(type(roi) == list):
+                s_on = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
+                s_off = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
+                s_sub = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
+            else:
+                s_on = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
+                s_off = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
+                s_sub = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
+            substracted_spec = s_on_data-s_off_data
+            if(abs(min(substracted_spec))>abs(max(substracted_spec))):
+                s_on.data = s_off_data
+                s_off.data = s_on_data
+                s_on.error = s_off_error
+                s_off.error = s_on_error
+                s_sub.data = s_off_data - s_on_data
+                s_sub.error = suberror
+            else:
+                s_on.data = s_on_data
+                s_on.error = s_on_error
+                s_off.data = s_off_data
+                s_off.error = s_off_error
+                s_sub.data = substracted_spec
+                s_sub.error = suberror
+            
+            flap.list_data_objects(s_on)
+            plt.figure()
+            s_on.plot(axes="Wavelength")
+            s_off.plot(axes="Wavelength")
+            legend = ["beam on", "beam off"]
+            plt.legend(legend,fontsize = 15)
+            plt.title(self.expe_id+", beam on and off spectra, ROI = "+str(roi)+
+                      ", ["+str(t_start)+","+str(t_stop)+"] s",fontsize=15)
+            plt.ylabel("Intensity [a.u.]")
+            plt.grid()
+            
+            plt.figure()
+            s_sub.plot(axes="Wavelength")
+            plt.title(self.expe_id+", active spectrum, ROI = "+str(roi)+
+                      ", ["+str(t_start)+","+str(t_stop)+"] s",fontsize=15)
+            plt.ylabel("Intensity [a.u.]")
+            plt.grid()
+            
+            print(ROI1.coordinate("Device R")[0][0,0])
+            return s_sub
+            
         else:
             raise ValueError(
                 "For that campaign this method is not implemented yet.")
@@ -974,11 +1054,18 @@ class spectra:
         """
         wl_grid = None
         if(sim==False):
-            wl_values = wavelength_grid_generator_op21(
-                self.grid, self.wavelength_setting, self.current_roi,self.supl_data_path)
-            # slicing the wavelength grid
-            wl_grid0 = wl_values[wl_values > self.wstart]
-            wl_grid = wl_grid0[self.wstop > wl_grid0]
+            if(self.campaign == "OP2.1"):
+                wl_values = wavelength_grid_generator_op21(
+                    self.grid, self.wavelength_setting, self.current_roi,self.supl_data_path)
+                # slicing the wavelength grid
+                wl_grid0 = wl_values[wl_values > self.wstart]
+                wl_grid = wl_grid0[self.wstop > wl_grid0]
+            elif(self.campaign == "OP2.2"):
+                wl_values = wavelength_grid_generator_op22(
+                    self.grid, self.wavelength_setting,self.supl_data_path)
+                # slicing the wavelength grid
+                wl_grid0 = wl_values[wl_values > self.wstart]
+                wl_grid = wl_grid0[self.wstop > wl_grid0]
         elif(sim==True):
             wl_values = wavelength_grid_generator_op21(
                 self.simgrid, self.wavelength_setting, self.current_roi,self.supl_data_path)
@@ -1005,10 +1092,16 @@ class spectra:
         doppler_spectrum = np.convolve(projection, gaussian, mode="same")
         instr = None
         if(sim==False):
-            # convolution with instrumental function
-            instr = np.load(self.instr_funcs_datapath+self.grid+"_P0"+
+            if(self.campaign == "OP2.1"):
+                # convolution with instrumental function
+                instr = np.load(self.instr_funcs_datapath+self.grid+"_channel"+
                             str(self.current_roi) +
                             "_"+str(int(self.dslit))+"micron_slit.npy").ravel()
+            elif(self.campaign == "OP2.2"):
+                # convolution with instrumental function
+                instr = np.load(self.instr_funcs_datapath+self.grid+"_channel"+
+                            str(self.current_roi) +
+                            "_"+str(int(self.dslit))+"micron_slit_546nm.npy").ravel()
         elif(sim==True):
             # convolution with instrumental function
             if(self.simd == 100):
@@ -1659,6 +1752,70 @@ class spectra:
                     plt.xlabel("number of iterations",fontsize = 15)
                     plt.xlim(0,N-1)
                     plt.grid()
+                    
+        if(self.campaign == "OP2.2"): #NOT FINISHED
+            #central position of the first lens
+            centre_of_lens = np.array([1.305624, 6.094843, -3.013095])
+            #viewed positions of the channels
+            roi_pos = np.array([1.91353862, 5.89390765, 0])
+            self.observation_directions = roi_pos-centre_of_lens
+            self.current_roi = roi[0]
+            self.dslit = dslit
+            self.wstart = wstart
+            self.wstop = wstop
+            self.simgrid = self.grid
+            self.simd = dslit
+
+            #getting the measured spectra
+            self.active = self.active_passive(roi, t_start, t_stop,
+                                    background_interval=bcg, error=True, plotting=False)
+            self.active = self.active.slice_data(
+                slicing={"Wavelength": flap.Intervals(wstart, wstop)})
+            if(fittype == "CVI"):
+                self.B = np.array([-2.14,0.7,0.5]) #INCORRECT!!!!
+                self.Babs = np.sqrt(np.sum(self.B**2))
+                divider = np.sqrt(
+                    np.sum(self.observation_directions**2))*self.Babs
+                n = self.observation_directions
+                self.current_theta = np.arccos(
+                    np.sum(n*self.B)/divider)*180/np.pi
+                
+                # location where the web service is hosted
+                pc_location = 'http://sv-coda-wsvc-28.ipp-hgw.mpg.de:6055'
+
+                # fetching the fine structure of the predefined line
+                fine_structure_query = '/getZeeman.json?name=C-VI-5291&B=' + \
+                    str(self.Babs)+'&theta1='+str(self.current_theta)
+                fine_structure = requests.get(
+                    pc_location + fine_structure_query).json()
+
+                self.zc_locations = np.array(fine_structure['wavelengths'])/10
+                self.zc_intensities = np.array(fine_structure['amplitude'])
+                
+                #fitting the ion temperature, and other parameters
+                esti = np.array([mu, kbt, A])
+                es_chisq = self.C_fitfunc_plot(esti)
+                plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
+                solution = minimize(self.C_fitfunc, esti, method="Powell",
+                                    bounds=((None, None), (0.1, None), (None, None)),
+                                    tol=1e-8,options={"maxiter": 2000})
+
+                print(solution)
+                if(solution.success == True):
+                    #error calculation
+                    sol = solution.x
+                    # Terr, T_iters, chi_iters = self.C_Ti_error_sim_me(sol[0],
+                    #                     sol[1],sol[2],N,fittype,plots=plots)
+                    # h = np.array([1e-5, 1e-3, 1e-8])
+                    # hessian_error = self.error_from_hesse(sol, solution.fun, h)[1,1]
+                    # print("Error based on Hessian matrix (in eV):")
+                    # print(hessian_error)
+                    R_plot = round(self.dataobj.coordinate( #plotting
+                        "Device R")[0][0, (roi[0]-1), 0], 4)
+                    self.C_fitfunc_plot(sol)
+                    plt.title(self.expe_id+", channel "+str(roi)+
+                              ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
+                              str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+" eV",fontsize=10)
 
     def C_Ti_error_sim(self,mu,kbt,A,tstart,tstop,iter_num,scalef,fittype,plots=False):
         """
