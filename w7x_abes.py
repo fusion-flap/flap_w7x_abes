@@ -510,7 +510,7 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
         end_phase = phase
     chop_clk_in_sample = round(config['APDCAM_f_sample'] / config['Chopper clock'])
     # This is temporary, has to be corrected with the flight time and APDCAM trigger delay
-    instrument_delay = 2/Decimal(1000000)
+    instrument_delay = -3/Decimal(1000000)
     clock_unit = Decimal(1.) / config['Chopper clock']
     if (config['Chopper mode'] == 'Camera'):
         period_time_clk = round(config['CMOS frametime'] / Decimal(1000) \
