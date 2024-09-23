@@ -284,15 +284,8 @@ class spectra:
             c.values = c.values + 1
             c = self.dataobj.get_coordinate_object("Time")
             
-        if(spatcal == True and self.campaign == "OP2.2"):
+        elif(spatcal == True and self.campaign == "OP2.2"):
              # changing to ROI coord
-             options = {}
-             default_options = {"Supplementary_data_path":"data"}
-             _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES_CXRS')
-             try:
-                 datapath_base = _options['Supplementary_data_path']
-             except (KeyError, TypeError):
-                 datapath_base = 'data'
                  
              R = np.array([6.293059135830338, 6.2897433102196425, 6.282918800528584,
                 6.279458799458963, 6.272669351913926, 6.269447416797882, 6.266085454939522,
@@ -317,6 +310,38 @@ class spectra:
                              "31","32","33","34","35","37","38","39","40","41","42",
                              "43","44","45","47","48","49","50",
                              "51","52","53","54"],dimension_list=[1])
+             self.dataobj.add_coordinate_object(roi_coord_flap)
+             self.dataobj.del_coordinate("Coord 1")
+
+             # adding coordinate Device R
+             R_coord_flap = flap.Coordinate(name='Device R', unit="m",
+                         mode=flap.CoordinateMode(equidistant=False), shape=(R.shape[0]),
+                         values=R,
+                         dimension_list=[1])
+             self.dataobj.add_coordinate_object(R_coord_flap)
+
+             # correcting a systematic error on the time coordinate
+             c = self.dataobj.get_coordinate_object("Time")
+             c.values = c.values + 1
+             c = self.dataobj.get_coordinate_object("Time")
+             
+        elif(spatcal == "19-54" and self.campaign == "OP2.2"):
+             # changing to ROI coord                 
+             R = np.array([6.233779095172339, 6.230665258520083, 6.227379257119197,
+                 6.223951996772624, 6.220689629845548, 6.217540732736645, 6.214282963138542,
+                 6.211038157975195, 6.207817143440373, 6.204563612303382, 6.2012502196384025,
+                 6.19792986024226, 6.194863184888834, 6.191594702107762, 6.188308284436116,
+                 6.1852009904008725, 6.1818390814506055, 6.178727995166606, 6.175485610754039,
+                 6.1692158817996345,
+                 6.166041027734105, 6.1626192157767665, 6.159254607469957, 6.156563221733177,
+                 6.1527441048330616, 6.149042227295538, 6.220893704066086, 6.221021025161864,
+                 6.1966897824227])
+             
+             roi_coord_flap = flap.Coordinate(name='ROI', unit="1",
+                             mode=flap.CoordinateMode(equidistant=False),
+                             shape=(R.shape[0]),values=["19","20","21","22","23","24","25","27",
+                             "28","29","30","31","32","33","34","35","37","38","39",
+                             "40","41","42","43","44","45","47","52","53","54"],dimension_list=[1])
              self.dataobj.add_coordinate_object(roi_coord_flap)
              self.dataobj.del_coordinate("Coord 1")
 
@@ -755,19 +780,37 @@ class spectra:
                              background_interval[1])},
                              summing={"Wavelength": "Mean", "Time": "Mean"})
                 ROI1.data[:, :] = ROI1.data[:, :] - ROI1_witbg.data
-            s_on_data = np.zeros((ROI1.data.shape[1]))
-            s_off_data = np.zeros((ROI1.data.shape[1]))
-            s_on_error = np.zeros((ROI1.data.shape[1]))
-            s_off_error = np.zeros((ROI1.data.shape[1]))
-            for i in range(int(ROI1.data.shape[0]/2)): #it might miss the last frame
-                s_on_data += ROI1.data[i*2,:]/int(ROI1.data.shape[0]/2)
-                s_off_data += ROI1.data[i*2+1,:]/int(ROI1.data.shape[0]/2)
-            for i in range(int(ROI1.data.shape[0]/2)):
-                s_on_error += (ROI1.data[i*2,:]-s_on_data)**2
-                s_off_error += (ROI1.data[i*2+1,:]-s_off_data)**2
-            s_on_error = np.sqrt(s_on_error)/int(ROI1.data.shape[0]/2)
-            s_off_error = np.sqrt(s_off_error)/int(ROI1.data.shape[0]/2)
-            suberror = np.sqrt(s_on_error**2 + s_off_error**2)#/np.sqrt(2)
+                
+                
+                
+            flap.list_data_objects(ROI1)
+            s_on_data_list = []
+            s_off_data_list = []
+            for i in range(ROI1.data.shape[0]):
+                if(i % 2 ==  1):
+                    s_on_data_list.append(ROI1.data[i,:])
+                elif(i % 2 == 0):
+                    s_off_data_list.append(ROI1.data[i,:])
+                    
+            s_off_data = np.zeros((ROI1.data.shape[1],len(s_on_data_list)))
+            for i in range(len(s_on_data_list)):
+                s_off_data[:,i] = (s_off_data_list[i] + s_off_data_list[i+1])/2
+                
+            s_active_data = np.zeros((ROI1.data.shape[1],len(s_on_data_list)))
+            s_on_data = np.zeros((ROI1.data.shape[1],len(s_on_data_list)))
+            for i in range(len(s_on_data_list)):
+                s_active_data[:,i] = s_on_data_list[i] - s_off_data[:,i]
+                s_on_data[:,i] = s_on_data_list[i]
+            s_active_avg = s_active_data.mean(axis = 1)
+            s_active_error = np.sqrt(s_active_data.var(axis = 1))/np.sqrt(len(s_on_data_list))
+            s_off_avg = s_off_data.mean(axis=1)
+            s_off_error = np.sqrt(s_off_data.var(axis = 1))/np.sqrt(len(s_on_data_list))
+            s_on_avg = s_on_data.mean(axis=1)
+            s_on_error = np.sqrt(s_on_data.var(axis = 1))/np.sqrt(len(s_on_data_list))
+            
+            s_on = None
+            s_off = None
+            s_sub = None
             if(type(roi) == list):
                 s_on = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
                 s_off = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
@@ -776,21 +819,51 @@ class spectra:
                 s_on = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
                 s_off = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
                 s_sub = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
-            substracted_spec = s_on_data-s_off_data
-            if(abs(min(substracted_spec))>abs(max(substracted_spec))):
-                s_on.data = s_off_data
-                s_off.data = s_on_data
-                s_on.error = s_off_error
-                s_off.error = s_on_error
-                s_sub.data = s_off_data - s_on_data
-                s_sub.error = suberror
-            else:
-                s_on.data = s_on_data
-                s_on.error = s_on_error
-                s_off.data = s_off_data
-                s_off.error = s_off_error
-                s_sub.data = substracted_spec
-                s_sub.error = suberror
+            s_on.data = s_on_avg
+            s_off.data = s_off_avg
+            s_sub.data = s_active_avg
+            s_on.error = s_on_error
+            s_off.error = s_off_error
+            s_sub.error = s_active_error
+
+            
+            # raise ValueError("stop")
+            # s_on_data = np.zeros((ROI1.data.shape[1]))
+            # s_off_data = np.zeros((ROI1.data.shape[1]))
+            # s_on_error = np.zeros((ROI1.data.shape[1]))
+            # s_off_error = np.zeros((ROI1.data.shape[1]))
+            # for i in range(int(ROI1.data.shape[0]/2)): #it might miss the last frame
+            #     s_on_data += ROI1.data[i*2,:]/int(ROI1.data.shape[0]/2)
+            #     s_off_data += ROI1.data[i*2+1,:]/int(ROI1.data.shape[0]/2)
+            # for i in range(int(ROI1.data.shape[0]/2)):
+            #     s_on_error += (ROI1.data[i*2,:]-s_on_data)**2
+            #     s_off_error += (ROI1.data[i*2+1,:]-s_off_data)**2
+            # s_on_error = np.sqrt(s_on_error)/int(ROI1.data.shape[0]/2)
+            # s_off_error = np.sqrt(s_off_error)/int(ROI1.data.shape[0]/2)
+            # suberror = np.sqrt(s_on_error**2 + s_off_error**2)#/np.sqrt(2)
+            # if(type(roi) == list):
+            #     s_on = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
+            #     s_off = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
+            #     s_sub = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
+            # else:
+            #     s_on = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
+            #     s_off = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
+            #     s_sub = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
+            # substracted_spec = s_on_data-s_off_data
+            # if(abs(min(substracted_spec))>abs(max(substracted_spec))):
+            #     s_on.data = s_off_data
+            #     s_off.data = s_on_data
+            #     s_on.error = s_off_error
+            #     s_off.error = s_on_error
+            #     s_sub.data = s_off_data - s_on_data
+            #     s_sub.error = suberror
+            # else:
+            #     s_on.data = s_on_data
+            #     s_on.error = s_on_error
+            #     s_off.data = s_off_data
+            #     s_off.error = s_off_error
+            #     s_sub.data = substracted_spec
+            #     s_sub.error = suberror
             
             flap.list_data_objects(s_on)
             plt.figure()
