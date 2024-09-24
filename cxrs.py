@@ -4,7 +4,7 @@ Created on Tue Aug 8 15:27:49 2023
 
 @author: bcsillag
 
-Data processing code for Wendelstein 7-X QSI CXRS spectra measured during OP2.1
+Data processing code for Wendelstein 7-X QSI CXRS spectra measured during OP2.1 & 2
 It can be modified easely to process data from later campaigns as well
 """
 
@@ -436,7 +436,7 @@ class spectra:
             
         if(self.campaign == "OP2.2"):
             wl_values = np.zeros((self.dataobj.coordinate("Device R")[0].shape[1], 1024))
-            for i in range(1, self.dataobj.coordinate("Device R")[0].shape[1]):
+            for i in range(1, self.dataobj.coordinate("Device R")[0].shape[1]+1):
                 wl_values[i-1, :] = wavelength_grid_generator_op22(
                     self.grid, self.wavelength_setting, datapath_base)
 
@@ -783,64 +783,34 @@ class spectra:
                 
                 
                 
-            flap.list_data_objects(ROI1)
-            s_on_data_list = []
-            s_off_data_list = []
-            for i in range(ROI1.data.shape[0]):
-                if(i % 2 ==  1):
-                    s_on_data_list.append(ROI1.data[i,:])
-                elif(i % 2 == 0):
-                    s_off_data_list.append(ROI1.data[i,:])
+            # flap.list_data_objects(ROI1)
+            # s_on_data_list = []
+            # s_off_data_list = []
+            # for i in range(ROI1.data.shape[0]):
+            #     if(i % 2 ==  1):
+            #         s_on_data_list.append(ROI1.data[i,:])
+            #     elif(i % 2 == 0):
+            #         s_off_data_list.append(ROI1.data[i,:])
                     
-            s_off_data = np.zeros((ROI1.data.shape[1],len(s_on_data_list)))
-            for i in range(len(s_on_data_list)):
-                s_off_data[:,i] = (s_off_data_list[i] + s_off_data_list[i+1])/2
+            # s_off_data = np.zeros((ROI1.data.shape[1],len(s_on_data_list)))
+            # for i in range(len(s_on_data_list)):
+            #     s_off_data[:,i] = (s_off_data_list[i] + s_off_data_list[i+1])/2
                 
-            s_active_data = np.zeros((ROI1.data.shape[1],len(s_on_data_list)))
-            s_on_data = np.zeros((ROI1.data.shape[1],len(s_on_data_list)))
-            for i in range(len(s_on_data_list)):
-                s_active_data[:,i] = s_on_data_list[i] - s_off_data[:,i]
-                s_on_data[:,i] = s_on_data_list[i]
-            s_active_avg = s_active_data.mean(axis = 1)
-            s_active_error = np.sqrt(s_active_data.var(axis = 1))/np.sqrt(len(s_on_data_list))
-            s_off_avg = s_off_data.mean(axis=1)
-            s_off_error = np.sqrt(s_off_data.var(axis = 1))/np.sqrt(len(s_on_data_list))
-            s_on_avg = s_on_data.mean(axis=1)
-            s_on_error = np.sqrt(s_on_data.var(axis = 1))/np.sqrt(len(s_on_data_list))
+            # s_active_data = np.zeros((ROI1.data.shape[1],len(s_on_data_list)))
+            # s_on_data = np.zeros((ROI1.data.shape[1],len(s_on_data_list)))
+            # for i in range(len(s_on_data_list)):
+            #     s_active_data[:,i] = s_on_data_list[i] - s_off_data[:,i]
+            #     s_on_data[:,i] = s_on_data_list[i]
+            # s_active_avg = s_active_data.mean(axis = 1)
+            # s_active_error = np.sqrt(s_active_data.var(axis = 1))/np.sqrt(len(s_on_data_list))
+            # s_off_avg = s_off_data.mean(axis=1)
+            # s_off_error = np.sqrt(s_off_data.var(axis = 1))/np.sqrt(len(s_on_data_list))
+            # s_on_avg = s_on_data.mean(axis=1)
+            # s_on_error = np.sqrt(s_on_data.var(axis = 1))/np.sqrt(len(s_on_data_list))
             
-            s_on = None
-            s_off = None
-            s_sub = None
-            if(type(roi) == list):
-                s_on = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
-                s_off = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
-                s_sub = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
-            else:
-                s_on = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
-                s_off = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
-                s_sub = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
-            s_on.data = s_on_avg
-            s_off.data = s_off_avg
-            s_sub.data = s_active_avg
-            s_on.error = s_on_error
-            s_off.error = s_off_error
-            s_sub.error = s_active_error
-
-            
-            # raise ValueError("stop")
-            # s_on_data = np.zeros((ROI1.data.shape[1]))
-            # s_off_data = np.zeros((ROI1.data.shape[1]))
-            # s_on_error = np.zeros((ROI1.data.shape[1]))
-            # s_off_error = np.zeros((ROI1.data.shape[1]))
-            # for i in range(int(ROI1.data.shape[0]/2)): #it might miss the last frame
-            #     s_on_data += ROI1.data[i*2,:]/int(ROI1.data.shape[0]/2)
-            #     s_off_data += ROI1.data[i*2+1,:]/int(ROI1.data.shape[0]/2)
-            # for i in range(int(ROI1.data.shape[0]/2)):
-            #     s_on_error += (ROI1.data[i*2,:]-s_on_data)**2
-            #     s_off_error += (ROI1.data[i*2+1,:]-s_off_data)**2
-            # s_on_error = np.sqrt(s_on_error)/int(ROI1.data.shape[0]/2)
-            # s_off_error = np.sqrt(s_off_error)/int(ROI1.data.shape[0]/2)
-            # suberror = np.sqrt(s_on_error**2 + s_off_error**2)#/np.sqrt(2)
+            # s_on = None
+            # s_off = None
+            # s_sub = None
             # if(type(roi) == list):
             #     s_on = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
             #     s_off = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
@@ -849,21 +819,55 @@ class spectra:
             #     s_on = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
             #     s_off = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
             #     s_sub = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
-            # substracted_spec = s_on_data-s_off_data
-            # if(abs(min(substracted_spec))>abs(max(substracted_spec))):
-            #     s_on.data = s_off_data
-            #     s_off.data = s_on_data
-            #     s_on.error = s_off_error
-            #     s_off.error = s_on_error
-            #     s_sub.data = s_off_data - s_on_data
-            #     s_sub.error = suberror
-            # else:
-            #     s_on.data = s_on_data
-            #     s_on.error = s_on_error
-            #     s_off.data = s_off_data
-            #     s_off.error = s_off_error
-            #     s_sub.data = substracted_spec
-            #     s_sub.error = suberror
+            # s_on.data = s_on_avg
+            # s_off.data = s_off_avg
+            # s_sub.data = s_active_avg
+            # s_on.error = s_on_error
+            # s_off.error = s_off_error
+            # s_sub.error = s_active_error
+
+            
+            # raise ValueError("stop")
+            s_on_data = np.zeros((ROI1.data.shape[1]))
+            s_off_data = np.zeros((ROI1.data.shape[1]))
+            s_on_error = np.zeros((ROI1.data.shape[1]))
+            s_off_error = np.zeros((ROI1.data.shape[1]))
+            for i in range(int(ROI1.data.shape[0]/2)): #it might miss the last frame
+                s_on_data += ROI1.data[i*2,:]/int(ROI1.data.shape[0]/2)
+                s_off_data += ROI1.data[i*2+1,:]/int(ROI1.data.shape[0]/2)
+            for i in range(int(ROI1.data.shape[0]/2)):
+                s_on_error += (ROI1.data[i*2,:]-s_on_data)**2
+                s_off_error += (ROI1.data[i*2+1,:]-s_off_data)**2
+            s_on_error = np.sqrt(s_on_error)/int(ROI1.data.shape[0]/2)
+            s_off_error = np.sqrt(s_off_error)/int(ROI1.data.shape[0]/2)
+            suberror = np.sqrt(s_on_error**2 + s_off_error**2)#/np.sqrt(2)
+            if(type(roi) == list):
+                s_on = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
+                s_off = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
+                s_sub = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
+            else:
+                s_on = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
+                s_off = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
+                s_sub = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
+            substracted_spec = s_on_data-s_off_data
+            if(abs(min(substracted_spec))>abs(max(substracted_spec))):
+                s_on.data = s_off_data
+                s_off.data = s_on_data
+                s_on.error = s_off_error
+                s_off.error = s_on_error
+                # s_on.data = s_on_data
+                # s_on.error = s_on_error
+                # s_off.data = s_off_data
+                # s_off.error = s_off_error
+                s_sub.data = s_off_data - s_on_data
+                s_sub.error = suberror
+            else:
+                s_on.data = s_on_data
+                s_on.error = s_on_error
+                s_off.data = s_off_data
+                s_off.error = s_off_error
+                s_sub.data = substracted_spec
+                s_sub.error = suberror
             
             flap.list_data_objects(s_on)
             plt.figure()
