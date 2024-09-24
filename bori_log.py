@@ -60,8 +60,11 @@ class BORIMonitor():
                       'VG HighVac2':"Pressure:mbar",
                       'Neut Shut Closed':"n.a.:n.a"}
         if self.date is not None:
-            t,d,u = read_data(data_names=list(data_names.keys()),startdate=self.date,datapath=self.datapath)
+            t,d,u = read_date_tdms(data_names=list(data_names.keys()),startdate=self.date,datapath=self.datapath)
             reftime = np.datetime64(self.date)
+        elif self.exp_id is not None:
+            t,d,u = read_exp_tdms(data_names=list(data_names.keys()),exp_id=self.exp_id,datapath=self.datapath)
+            reftime = t[0]
         
         #normalizing the time and creating a flap dataobject
         t = t-reftime
@@ -410,7 +413,7 @@ def find_files(startdate=None,starttime='0000',start_datetime=None,
         endtime_sorted.append(file_endtime_list[i])
     return fname_sorted,starttime_sorted,endtime_sorted
             
-def read_data(data_names=None,startdate=None,starttime='0000',start_datetime=None,
+def read_date_tdms(data_names=None,startdate=None,starttime='0000',start_datetime=None,
               enddate=None,endtime='2359',end_datetime=None,
                datapath='',UTC_offset_minutes=None,verbose=True):
     """
@@ -566,9 +569,9 @@ def read_data(data_names=None,startdate=None,starttime='0000',start_datetime=Non
         for i in range(len(data)):
             data[i] = np.concatenate((np.array([data[i][0]]),data[i][ind_good + 1]))
     
-    return time,data,data_unit
+    return time, data, data_unit
 
-def read_channels(startdate,datapath,page='MnitorData'):
+def read_channels(startdate,datapath,page='MonitorData'):
     channels = []
     file = find_files(startdate,datapath=datapath)
     with TdmsFile.open(file[0][0]) as tdms_file:
@@ -610,34 +613,37 @@ def page_list(file):
    return group_names
     
     
-# def read_exp_tdms(exp_id,datapath='/data/W7X/APDCAM'):
-#     dirname = os.path.join(datapath,exp_id)
-#     files = os.listdir(dirname)
-#     filelist = []
-#     phase_list = ['Neut-Active','HV-Raise','HV-Beam']
-#     phase_data = [[],[],[]]
-#     for f in files:
-#         if f[-5:] == '.tdms':
-#             d = {'Filename':os.path.join(dirname,f)}
-#             d['Pages'] = page_list(os.path.join(dirname,f))
-#             for p in d['Pages']:
-#                 d[p] = {'Channels':channel_list(os.path.join(dirname,f),page=p)}
-#                 with TdmsFile.open(os.path.join(dirname,f)) as tdms_file:
-#                     d[p]['Start time'] = tdms_file[p]['TimeStamp'][0] 
-#                     d[p]['End time'] = tdms_file[p]['TimeStamp'][-1]             
-#                 for i,ph in enumerate(phase_list):
-#                     if (p[:len(ph)] == ph):
-#                         pdi = {'Filename' : os.path.join(dirname,f),
-#                                'Start time' : d[p]['Start time'],
-#                                'End time' : d[p]['End time'] 
-#                                } 
-#                         for ii in range()
-#                         phase_data[i].append(
-#                         phase_data[i]
-                        
-                        
-#              filelist.append(d)
-#     print(phase_list)
+def read_exp_tdms(data_names, exp_id,datapath='/data/W7X/APDCAM'):
+    dirname = os.path.join(datapath,exp_id)
+    tdms_files = [filename for filename in os.listdir(dirname) if ("tdms" in filename and "tdms_index" not in filename)]
+    all_data = dict()
+    for file in tdms_files:
+        with TdmsFile.open(os.path.join(dirname,file)) as tdms_file:
+            for group in tdms_file.groups():
+                currtime =  group['TimeStamp'][:]
+                #getting the times
+                if 'time_vect' not in locals():
+                    time_vect = currtime
+                else:
+                    time_vect = np.concatenate([time_vect, currtime])
+                    
+                #getting the data
+                for data in data_names:
+                    currdata =  group[data][:]
+                    #getting the times
+                    if data not in all_data.keys():
+                        all_data[data] = currdata
+                    else:
+                        all_data[data] = np.concatenate([all_data[data], currdata])
+    data_unit = []
+    #Sorting the time vector
+    for key in all_data.keys():
+        all_data[key] = np.array([x for _, x in sorted(zip(time_vect, all_data[key]))])
+    time_vect = np.array(sorted(time_vect))
+    
+    return_data = [all_data[key] for key in data_names]
+    
+    return time_vect, return_data, data_unit
 
 def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapath='',start_datetime=None,end_datetime=None,figure=None,
                   R_emit=81,R_ext=73, last_minutes=None):
@@ -785,7 +791,7 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
         legend.append('Top')
     ind = np.nonzero(np.logical_and(d_dict['TC Torus Side Cone'] > 20, d_dict['TC Torus Side Cone'] < 300))[0]
     if (len(ind) > 0):
-        plt.plot(time,np.clip(d_dict['TC Torus Side Cone'],20,300))
+        plt.plot(time,np.clip(d_dict['TC Torus Side Conedata_unit'],20,300))
         legend.append('Cone torus side')
     ind = np.nonzero(np.logical_and(d_dict['TC Emit Side Cone'] > 20, d_dict['TC Emit Side Cone'] < 300))[0]
     if (len(ind) > 0):
@@ -840,6 +846,7 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
     plt.xlim(*trange)
 
 if __name__ == "__main__":
-    plot_beamdata(startdate="20240924",datapath='/data',last_minutes=20)
+    # plot_beamdata(startdate="20240924",datapath='/data',last_minutes=20)
+    beam_log = BORIMonitor(exp_id="20240924.027")
 
             
