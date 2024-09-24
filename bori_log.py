@@ -58,7 +58,8 @@ class BORIMonitor():
                       'FC2 Resistor Current mA':"Current:mA",
                       'VG HighVac1':"Pressure:mbar",
                       'VG HighVac2':"Pressure:mbar",
-                      'Neut Shut Closed':"n.a.:n.a"}
+                      'Neut Shut Closed':"n.a.:n.a",
+                      'PB Feedback-Open':"n.a.:n.a"}
         if self.date is not None:
             t,d,u = read_date_tdms(data_names=list(data_names.keys()),startdate=self.date,datapath=self.datapath)
             reftime = np.datetime64(self.date)
@@ -90,7 +91,7 @@ class BORIMonitor():
         timevec = self.data['Emit Current A'].get_coordinate_object("Time").values
         xlim = [timevec[np.where(timevec > timevec[-1] - last_minutes*60)][0], timevec[-1]]
         for key in self.data.keys():
-            return_dataobject.data[key] = self.data[key].slice_data(slicing={"Time":flap.Intervals(xlim[0], xlim[1])})
+            return_dataobject.data[key] = return_dataobject.data[key].slice_data(slicing={"Time":flap.Intervals(xlim[0], xlim[1])})
         return return_dataobject
 
     def get_load_resistance(self):
@@ -122,8 +123,7 @@ class BORIMonitor():
         
         if (hasattr(self, "em_resistance") is False) or (hasattr(self, "ex_resistance") is False):
             self.get_load_resistance()
-        
-        
+
         extractor_overcurrent = copy.deepcopy(self.data['HV Ex Meas Current'])
         extractor_overcurrent.data = self.data['HV Ex Meas Current'].data-self.data['HV Ex Meas Voltage'].data/self.ex_resistance
         extractor_overcurrent.name = "Extractor overcurrent"
@@ -158,14 +158,13 @@ class BORIMonitor():
         else:
             rel_time = np.where((em_voltage_der<0.1)*\
                                 (ex_voltage_der<0.1)*\
-                                (self.data['Neut Shut Closed'].data[1:] == neutralizer_shutter)*\
+                                (abs(self.data['Neut Shut Closed'].data[1:] - neutralizer_shutter)<0.5)*\
                                 (self.data['HV Em Meas Voltage'].data[1:]>0.1)*\
                                 (self.data['HV Ex Meas Voltage'].data[1:]<self.data['HV Em Meas Voltage'].data[1:]))
-            
         voltage_difference = self.data['HV Em Meas Voltage'].data[1:][rel_time] - self.data['HV Ex Meas Voltage'].data[1:][rel_time]
         heating_current = self.data['Emit Current A'].data[1:][rel_time]
         beam_current = self.data["Emitter overcurrent"].data[1:][rel_time]
-        
+
         #rounds the heating_current to 1A accuracy
         heating_current_approx = (heating_current+0.5).astype(int)
         heating_current_values = np.unique(heating_current_approx)
@@ -176,13 +175,12 @@ class BORIMonitor():
             rel_points = np.where(heating_current_approx == heating_curr)
             self.child_langmuir[str(heating_curr)] = [voltage_difference[rel_points],
                                                       beam_current[rel_points]]
-
         
     def plot_child_langmuir(self, newfigure=True, plotcolor=None, neutralizer_shutter=None,
-                            label=None):
+                            label=None, alpha=None):
         if (hasattr(self, "child_langmuir") is False) or neutralizer_shutter is not None:
             self.get_child_langmuir(neutralizer_shutter=neutralizer_shutter)
-        
+
         if newfigure is True:
             plt.figure()
             plt.title(f"Child-Langmuir plot based on BORI logs")
@@ -201,12 +199,14 @@ class BORIMonitor():
                 current_marker = marker_list[index%len(marker_list)]
             if label is None:
                 label=f"{heating_curr}A ({self.date})"
+            if alpha is None:
+                alpha = 0.2
             plt.scatter(self.child_langmuir[heating_curr][0],
                         self.child_langmuir[heating_curr][1],
                         c=current_color,
                         marker=current_marker,
                         label=label,
-                        alpha=0.2)
+                        alpha=alpha)
         plt.xlabel("Extraction voltage [kV]")
         plt.ylabel("Beam current [mA]")
         plt.legend()
@@ -626,7 +626,7 @@ def read_exp_tdms(data_names, exp_id,datapath='/data/W7X/APDCAM'):
                     time_vect = currtime
                 else:
                     time_vect = np.concatenate([time_vect, currtime])
-                    
+                # print([groupname.path.split("/")[2] for groupname in group.channels()])
                 #getting the data
                 for data in data_names:
                     currdata =  group[data][:]
@@ -847,6 +847,6 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
 
 if __name__ == "__main__":
     # plot_beamdata(startdate="20240924",datapath='/data',last_minutes=20)
-    beam_log = BORIMonitor(exp_id="20240924.027")
+    beam_log = BORIMonitor(exp_id="20240919.035")
 
             
