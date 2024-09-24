@@ -7,27 +7,32 @@ Created on Fri May 10 18:54:29 2019
 
 import matplotlib.pyplot as plt
 import os
+import numpy as np
 
 import flap
 import flap_w7x_abes
 
 flap_w7x_abes.register()
-
-def test_w7x_chopper(test_type):
     
+def test_w7x_chopper(test_type,exp_id=None,timerange=None):
+
     plt.figure()
     flap.delete_data_object('*')
     # Camera chopper
     if (test_type == 'timed'):
         print("***** Testing timed chopper")
         # timed chopper
-        exp_id = '20181017.024'
-        timerange = [3,3.001]
+        if (exp_id is None):
+            exp_id = '20181017.024'
+        if (timerange is None):
+            timerange = [3,3.001]
     elif (test_type == 'camera'):
         # Camera chopper
         print("***** Testing camera chopper")
-        exp_id = '20181018.008'
-        timerange = [4,6]
+        if (exp_id is None):
+            exp_id = '20181018.008'
+        if (timerange is None):
+            timerange = [4,6]
     else:
         raise ValueError("Invalid test type.")
 
@@ -107,12 +112,76 @@ def test_w7x_chopper(test_type):
     legend = ['Mean','Minimum','Maximum']
     plt.legend(legend)
 
-# Reading configuration file in the test directory
-thisdir = os.path.dirname(os.path.realpath(__file__))
-fn = os.path.join(thisdir,"w7x_config.cfg")
-flap.config.read(file_name=fn)
+def test_chopper_timing(exp_id=None, timerange=None,signal='ABES-15',resample=1e3,x_axis='Time',start_shift=0,end_shift=0):
+    """
+    Test the chopper timing visually. Plots a signal and the chopper on and off periods.
+    Also calculates the mean signal in on/off intervals and plots them.
+
+    Parameters
+    ----------
+    exp_id : string
+        The experiment ID.
+    timerange : 2-element list, optional
+        The time range. The default is None, which means all data.
+    signal : string, optional
+        The signal name. The default is 'ABES-15'.
+    resample : float, optional
+        The resampling during data read. The default is 1e3. If None no resampling is done.
+    x_axis : string, optional
+        'Time' or 'Sample'. The default is 'Time'.
+    start_shift : float
+        The shift of the chopper start points [microsec]
+    end_shift : float
+        The shift of the chopper end points [microsec]
+
+    Returns
+    -------
+    None.
+
+    """
+    if (resample is not None):
+        options = {'Resample':resample}
+    else:
+        options = None
+    d=flap.get_data('W7X_ABES',
+                    exp_id = exp_id,
+                    name = signal,
+                    options = options,
+                    coordinates = {'Time': timerange}
+                    )
+    d_beam_on=flap.get_data('W7X_ABES',
+                             exp_id=exp_id,
+                             name='Chopper_time',
+                             coordinates = {'Time': timerange},
+                             options={'State':{'Chop': 0, 'Defl': 0},'Start':start_shift,'End':end_shift}
+                             )
+    d_beam_off=flap.get_data('W7X_ABES',
+                             exp_id=exp_id,
+                             name='Chopper_time',
+                             coordinates = {'Time': timerange},
+                             options={'State':{'Chop': 1, 'Defl': 0},'Start':start_shift,'End':end_shift}
+                             )           
+    print('Chopper mode: '+ d_beam_on.info['Chopper mode'],flush=True)
+    on1,on2,on3 = d_beam_on.coordinate('Time')
+    off1,off2,off3 = d_beam_on.coordinate('Time')
+    print('Beam on {:7.3f} [ms], Beam off {:7.3f} [ms]'.format((on3[1]-on2[1]) * 1000,(off3[1]-off2[1]) * 1000))
+    d.plot(axes=x_axis)
+    d_beam_on.plot(plot_type='scatter',axes=[x_axis,np.min(d.data)],options={'Force':True})
+    d_beam_off.plot(plot_type='scatter',axes=[x_axis,np.min(d.data)],options={'Force':True})
+
+    d_on = d.slice_data(slicing={'Time':d_beam_on},
+                        summing={'Rel. Sample in int(Time)':'Mean'},
+                        options={'Regenerate':True}
+                        )
+    d_off = d.slice_data(slicing={'Time':d_beam_off},
+                         summing={'Rel. Sample in int(Time)':'Mean'},
+                         options={'Regenerate':True}
+                         )
+    d_on.plot(axes=x_axis,plot_options={'marker':'o'})
+    d_off.plot(axes=x_axis,plot_options={'marker':'s'})
+    plt.legend([signal,'Beam on','Beam off','Mean signal on','Mean signal off'])
 
 
-plt.close('all')
-test_w7x_chopper('camera')
-test_w7x_chopper('timed')
+#plt.close('all')
+#test_w7x_chopper('camera',exp_id='20181018.003')
+#test_w7x_chopper('timed',exp_id='20181018.003')
