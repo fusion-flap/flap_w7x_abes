@@ -862,6 +862,8 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                     d = np.fromfile(f, dtype=np.int16, count=ndata_read)
                 except Exception:
                     raise IOError("Error reading from file: " + fn)
+                if (len(d) != ndata_read):
+                    raise(IOError("Truncated file, could not read enough data."))
                 if (scale_to_volts):
                     d = ((2 ** config['APDCAM_bits'] - 1) - d) \
                                 / (2. ** config['APDCAM_bits'] - 1) * 2
