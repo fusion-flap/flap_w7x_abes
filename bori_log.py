@@ -134,6 +134,25 @@ class BORIMonitor():
         emitter_overcurrent.name = "Emitter overcurrent"
         self.data["Emitter overcurrent"] = emitter_overcurrent
 
+    def get_extracted_charge(self):
+        if ("Emitter overcurrent" not in list(self.data.keys())) or ("Extractor overcurrent" not in list(self.data.keys())):
+            self.get_overcurrent()
+        timevect = self.data["Emitter overcurrent"].get_coordinate_object("Time").values
+        rel_data = self.data["Emitter overcurrent"].data.clip(min=0)
+        failed_data = np.where(np.isnan(self.data["Emitter overcurrent"].data))
+        rel_data[failed_data] = 0
+        
+        extracted_charge = copy.deepcopy(self.data["Emitter overcurrent"])
+        extracted_charge.data_title = "Extracted charge"
+        extracted_charge.data_unit.name = "Charge"
+        extracted_charge.data_unit.unit = "mC"
+        extracted_charge.data[0] = 0
+        for index in range(len(extracted_charge.data)-1):
+            extracted_charge.data[index+1] = extracted_charge.data[index] + rel_data[index]*(timevect[index+1]-timevect[index])
+        
+        self.data["Extracted charge"] = extracted_charge
+        
+
     def get_child_langmuir(self, neutralizer_shutter=None):
         """
         Checks the locations where the Emitter voltage and the extractor voltage are stable, 
@@ -208,7 +227,7 @@ class BORIMonitor():
                         label=label,
                         alpha=alpha)
         plt.xlabel("Extraction voltage [kV]")
-        plt.ylabel("Beam current [mA]")
+        plt.ylabel("Emitter extra current [mA]")
         plt.legend()
         
     def plot_neutralizer(self, newfigure=True, plotcolor=None):
