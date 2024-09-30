@@ -293,11 +293,11 @@ def test_tempfit_op22():
 # test_tempfit()
 # test_error_simulation()
 
-# test_read_webapi_op22()
+test_read_webapi_op22()
 # test_calibration_op22()
 # test_slice_wavelength_op22()
 # test_passive_op22()
 # test_slice_wavelength_range_op22()
 # test_active_passive_op22()
 # test_autocorr_op22()
-test_tempfit_op22()
+# test_tempfit_op22()
