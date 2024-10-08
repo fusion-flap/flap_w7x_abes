@@ -108,3 +108,5 @@ venv.bak/
 
 # images
 *.png
+
+spatcal/*cmos_spat.cal
