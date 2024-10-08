@@ -45,8 +45,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
     if (datapath is not None):
         options['Datapath'] = datapath
     
-#    try:
-    while True:
+    try:
         d_beam_on=flap.get_data('W7X_ABES',
                                  exp_id=exp_ID,
                                  name='Chopper_time',
@@ -64,7 +63,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         beam_on_time = on3[1]-on2[1]
         beam_off_time = off3[1]-off2[1]
         period_time = beam_on_time + beam_off_time
-        if (period_time > 1e-3):
+        if (period_time > 3e-3):
             chop_str = "{:3.0f}-{:3.0f}[ms]".format(beam_on_time * 1e3, beam_off_time * 1e3)
         else:
             chop_str = "{:3.0f}-{:3.0f}[us]".format(beam_on_time * 1e6, beam_off_time * 1e6) 
@@ -133,9 +132,8 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         s = np.sum(sig,axis=1)
         ind = np.nonzero(s > np.max(s) * 0.1)[0]
         txt += ' ... Time range:({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
-        break
-    # except Exception as e:
-    #     txt += ' --- {:s} ---'.format(str(e))
+    except Exception as e:
+        txt += ' --- {:s} ---'.format(str(e))
     return txt
         
          
