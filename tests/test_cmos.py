@@ -16,7 +16,7 @@ import numpy as np
 flap_w7x_abes.register()
 
 if __name__ == "__main__":
-    shotID = "20230316.089"
+    shotID = "20230323.062"
     # shotID = '20230316.016'
     flap.config.read()
 

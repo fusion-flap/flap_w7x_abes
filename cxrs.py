@@ -4,7 +4,7 @@ Created on Tue Aug 8 15:27:49 2023
 
 @author: bcsillag
 
-Data processing code for Wendelstein 7-X QSI CXRS spectra measured during OP2.1
+Data processing code for Wendelstein 7-X QSI CXRS spectra measured during OP2.1 & 2
 It can be modified easely to process data from later campaigns as well
 """
 
@@ -35,7 +35,7 @@ def wavelength_grid_generator_op21(grid, w_s, roi,datapath_base):
         1D numpy array with the calibrated wavelength values
     """
     
-    calib_array = np.loadtxt(datapath_base+"wavelength_calib_2023_"+grid+".txt")
+    calib_array = np.loadtxt(datapath_base+"/OP2_1/wavelength_calib_2023_"+grid+".txt")
     # loading the calibration coeffs
     c0 = calib_array[roi-1, 0]
     c1 = calib_array[roi-1, 2]
@@ -44,12 +44,39 @@ def wavelength_grid_generator_op21(grid, w_s, roi,datapath_base):
     pix_values = np.arange(0, 1024, 1) - 511 #centralizing the pixel range
     return c3*pix_values**3 + c2*pix_values**2 + c1*pix_values + c0 + w_s
 
+def wavelength_grid_generator_op22(grid, w_s,datapath_base):
+    """
+    Generates a wavelength grid for spectra measured by IsoPlane using 
+    coefficients that were fitted by calibration (which assumed second-order
+    polynomial relation between the wavelength values and the pixels).
+    
+    INPUT:
+        grid: "1200g_per_mm", "1800g_per_mm" or "2400g_per_mm"
+        w_s: central wavelength setting of the measurement (float)
+        roi: Region Of Interest (ROI), which belongs to the channel in question (int)
+        datapath_base : string, path of the supplementary data (like wavelength calibration)
+        
+    OUTPUT:
+        1D numpy array with the calibrated wavelength values
+    """
+    
+    calib_array = np.loadtxt(datapath_base+"/OP2_2/wavelength_calib_2024_"+grid+".txt")
+    # loading the calibration coeffs
+    c0 = calib_array[0]
+    c1 = calib_array[2]
+    c2 = calib_array[4] # writing the out to clear variables
+    pix_values = np.arange(0, 1024, 1) - 511 #centralizing the pixel range
+    return -(c2*pix_values**2 + c1*pix_values) + c0 + w_s
+
 
 def interval_shift(expe_id):
     """
     A function to correct the discrepancies between the clock of the CMOS and
     the spectrometer camera. It can be determined using the spectra.tshif()
     function.
+    
+    This problem was solved in OP2.2 during the comissioning phase, thus this function
+    should no longer be necessary.
     
     Parameters
     ----------
@@ -176,10 +203,13 @@ class spectra:
                          time axis using interval_shift()
     """
 
-    def __init__(self, data_source, expe_id, get_data="by shotID",
-                 campaign="OP2.1", spatcal=False, time_correction=False):
+    def __init__(self, expe_id, data_source = 'W7X_WEBAPI', get_data="by shotID",
+                 campaign="OP2.1", spatcal=False, time_correction=False,
+                 starttime = None, stoptime = None):
         self.data_source = data_source
         self.expe_id = expe_id
+        self.starttime = starttime
+        self.stoptime = stoptime
         self.campaign = campaign
         self.d_beam_on = None
         self.d_beam_off = None
@@ -204,19 +234,41 @@ class spectra:
         self.supl_data_path = None
         self.instr_funcs_datapath = None
 
+        #loading data
         if(data_source == 'W7X_WEBAPI' and get_data == "by shotID" and
                 campaign == "OP2.1"):
-            #loading data
             self.dataobj = flap.get_data(data_source,
                             name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
                             exp_id=expe_id,
                             options={'Scale Time': True,'Cache Data': False},
                             object_name='QSI_spectral_data')
+        elif(data_source == 'W7X_WEBAPI' and get_data == "by shotID" and
+                campaign == "OP2.2"):
+            self.dataobj = flap.get_data(data_source,
+                            name='Test/raw/W7X/QSS_DivertorSpectroscopy/PI_CCD_06_1-QSS60OC095_DATASTREAM/0/Images/',
+                            exp_id=expe_id,
+                            options={'Scale Time': True,'Cache Data': False},
+                            object_name='QSI_spectral_data')
+            
+        elif(data_source == 'W7X_WEBAPI' and get_data == "by date" and
+                campaign == "OP2.2"):
+            self.dataobj = flap.get_data(data_source,
+                            name='Test/raw/W7X/QSS_DivertorSpectroscopy/PI_CCD_06_1-QSS60OC095_DATASTREAM/0/Images/',
+                            options={'Scale Time': True,
+                                    'Cache Data': False,
+                                    'Time Start':starttime,
+                                    'Time Stop': stoptime},
+                            object_name='QSI_CXRS_data')
         else:
             raise ValueError("Undefined data source or loading process.")
 
         if(self.campaign == "OP2.1"):
             self.APDCAM_timerange = [1, 40]
+            
+        if(self.campaign == "OP2.1" or self.campaign == "OP2.2"):
+            c = self.dataobj.get_coordinate_object("Time")
+            c.values = c.values + 1
+            c = self.dataobj.get_coordinate_object("Time")
 
         if(spatcal == True and self.campaign == "OP2.1"):
             # changing to ROI coord
@@ -234,11 +286,122 @@ class spectra:
                         6.207903188440903,6.22187706429289,6.241915857714211],
                         dimension_list=[1])
             self.dataobj.add_coordinate_object(R_coord_flap)
+            
+        elif(spatcal == True and self.campaign == "OP2.2"):
+             # changing to ROI coord
+                 
+             R = np.array([6.293059135830338, 6.2897433102196425, 6.282918800528584,
+                6.279458799458963, 6.272669351913926, 6.269447416797882, 6.266085454939522,
+                 6.262930900535314, 6.259547174174694, 6.256461264924082, 6.253178242429531,
+                 6.249862490169024, 6.24672350880663, 6.24359766244676, 6.240321727569183,
+                 6.236897386799785, 6.233779095172339, 6.230665258520083, 6.227379257119197,
+                 6.223951996772624, 6.220689629845548, 6.217540732736645, 6.214282963138542,
+                 6.211038157975195, 6.207817143440373, 6.204563612303382, 6.2012502196384025,
+                 6.19792986024226, 6.194863184888834, 6.191594702107762, 6.188308284436116,
+                 6.1852009904008725, 6.1818390814506055, 6.178727995166606, 6.175485610754039,
+                 6.1692158817996345, 6.166041027734105, 6.1626192157767665, 6.159254607469957,
+                 6.156563221733177, 6.1527441048330616, 6.149042227295538, 6.268732856366072,
+                 6.272232623433274, 6.243925216276585, 6.245108851088215, 6.220893704066086,
+                 6.221021025161864, 6.1966897824227])
+             
+             roi_coord_flap = flap.Coordinate(name='ROI', unit="1",
+                             mode=flap.CoordinateMode(equidistant=False),
+                             shape=(R.shape[0]),values=["1","2","3","4","5","7","8",
+                             "9","10","11","12","13","14","15","17","18","19","20",
+                             "21","22","23","24","25","27","28","29","30",
+                             "31","32","33","34","35","37","38","39","40","41","42",
+                             "43","44","45","47","48","49","50",
+                             "51","52","53","54"],dimension_list=[1])
+             self.dataobj.add_coordinate_object(roi_coord_flap)
+             self.dataobj.del_coordinate("Coord 1")
 
-            # correcting a systematic error on the time coordinate
-            c = self.dataobj.get_coordinate_object("Time")
-            c.values = c.values + 1
-            c = self.dataobj.get_coordinate_object("Time")
+             # adding coordinate Device R
+             R_coord_flap = flap.Coordinate(name='Device R', unit="m",
+                         mode=flap.CoordinateMode(equidistant=False), shape=(R.shape[0]),
+                         values=R,
+                         dimension_list=[1])
+             self.dataobj.add_coordinate_object(R_coord_flap)
+             
+        elif(spatcal == "SOL" and self.campaign == "OP2.2"):
+             # changing to ROI coord                 
+             R = np.array([6.293059135830338, 6.2897433102196425, 6.282918800528584,
+                6.279458799458963, 6.272669351913926, 6.269447416797882, 6.266085454939522,
+                 6.262930900535314, 6.259547174174694, 6.256461264924082, 6.253178242429531,
+                 6.249862490169024, 6.24672350880663, 6.24359766244676, 6.240321727569183,
+                 6.236897386799785, 6.233779095172339, 6.230665258520083, 6.227379257119197,
+                 6.223951996772624, 6.220689629845548, 6.217540732736645, 6.214282963138542,
+                 6.268732856366072, 6.272232623433274,6.243925216276585, 6.245108851088215,
+                 6.220893704066086, 6.221021025161864])
+            
+             roi_coord_flap = flap.Coordinate(name='ROI', unit="1",
+                             mode=flap.CoordinateMode(equidistant=False),
+                             shape=(R.shape[0]),values=["4","5","7","8","9","10","11",
+                             "12","13","14","15","17","18","19","20","21","22","23",
+                             "24","25","27","28","29","30","48","49","50","51","52","53"],
+                             dimension_list=[1])
+             self.dataobj.add_coordinate_object(roi_coord_flap)
+             self.dataobj.del_coordinate("Coord 1")
+
+             # adding coordinate Device R
+             R_coord_flap = flap.Coordinate(name='Device R', unit="m",
+                         mode=flap.CoordinateMode(equidistant=False), shape=(R.shape[0]),
+                         values=R,
+                         dimension_list=[1])
+             self.dataobj.add_coordinate_object(R_coord_flap)
+             
+        elif(spatcal == "SOL2" and self.campaign == "OP2.2"):
+             # changing to ROI coord                 
+             R = np.array([ 6.253178242429531,
+                 6.249862490169024, 6.24672350880663, 6.24359766244676, 6.240321727569183,
+                 6.236897386799785, 6.233779095172339, 6.230665258520083, 6.227379257119197,
+                 6.223951996772624, 6.220689629845548, 6.217540732736645, 6.214282963138542,
+                 6.211038157975195, 6.207817143440373, 6.204563612303382, 6.2012502196384025,
+                 6.19792986024226, 6.194863184888834, 6.191594702107762, 6.188308284436116,
+                 6.1852009904008725, 6.1818390814506055, 6.268732856366072, 6.272232623433274,
+                 6.243925216276585, 6.245108851088215, 6.220893704066086, 6.221021025161864])
+            
+             roi_coord_flap = flap.Coordinate(name='ROI', unit="1",
+                             mode=flap.CoordinateMode(equidistant=False),
+                             shape=(R.shape[0]),values=["15","17","18","19","20","21",
+                             "22","23","24","25","27","28","29","30","31","32","33",
+                             "34","35","37","38","39","40","48","49","50","51","52","53"],
+                             dimension_list=[1])
+
+             self.dataobj.add_coordinate_object(roi_coord_flap)
+             self.dataobj.del_coordinate("Coord 1")
+
+             # adding coordinate Device R
+             R_coord_flap = flap.Coordinate(name='Device R', unit="m",
+                         mode=flap.CoordinateMode(equidistant=False), shape=(R.shape[0]),
+                         values=R,
+                         dimension_list=[1])
+             self.dataobj.add_coordinate_object(R_coord_flap)
+             
+        elif(spatcal == "edge" and self.campaign == "OP2.2"):
+             # changing to ROI coord                 
+             R = np.array([6.233779095172339, 6.230665258520083, 6.227379257119197,
+                 6.223951996772624, 6.220689629845548, 6.217540732736645, 6.214282963138542,
+                 6.211038157975195, 6.207817143440373, 6.204563612303382, 6.2012502196384025,
+                 6.19792986024226, 6.194863184888834, 6.191594702107762, 6.188308284436116,
+                 6.1852009904008725, 6.1818390814506055, 6.178727995166606, 6.175485610754039,
+                 6.1692158817996345,6.166041027734105, 6.1626192157767665, 6.159254607469957, 
+                 6.156563221733177,6.1527441048330616, 6.149042227295538, 6.220893704066086,
+                 6.221021025161864,6.1966897824227])
+             
+             roi_coord_flap = flap.Coordinate(name='ROI', unit="1",
+                             mode=flap.CoordinateMode(equidistant=False),
+                             shape=(R.shape[0]),values=["19","20","21","22","23","24","25","27",
+                             "28","29","30","31","32","33","34","35","37","38","39",
+                             "40","41","42","43","44","45","47","52","53","54"],dimension_list=[1])
+             self.dataobj.add_coordinate_object(roi_coord_flap)
+             self.dataobj.del_coordinate("Coord 1")
+
+             # adding coordinate Device R
+             R_coord_flap = flap.Coordinate(name='Device R', unit="m",
+                         mode=flap.CoordinateMode(equidistant=False), shape=(R.shape[0]),
+                         values=R,
+                         dimension_list=[1])
+             self.dataobj.add_coordinate_object(R_coord_flap)
 
         elif(spatcal == True and self.campaign != "OP2.1"):
             raise ValueError(
@@ -267,6 +430,10 @@ class spectra:
 
             self.d_beam_on = d_beam_on
             self.d_beam_off = d_beam_off
+            
+        elif(self.campaign == "OP2.2" and time_correction == True):
+            print("Since the trigger problem was solved in the comissioning phase of"+
+                  "OP2.2, this time_correction should not be necessary.")
 
     def wavelength_calibration(self,man=False,grid=None,wavelength_setting=None,
                                options=None):
@@ -294,7 +461,7 @@ class spectra:
             datapath_base = 'data'
         if(self.campaign == "OP2.1" and man == False): #for OP2.1 a table contains the values
             settings_df = pd.read_excel(
-                datapath_base+"discharge_table_for_spectral_measurements.xlsx")
+                datapath_base+"/OP2_1/discharge_table_for_spectral_measurements.xlsx")
             settings = settings_df.loc[settings_df["Discharge"] == float(
                 self.expe_id)]
             self.grid = str(settings["Grid [g/mm]"].to_numpy()[0])+"g_per_mm"
@@ -317,6 +484,19 @@ class spectra:
             self.dataobj.add_coordinate_object(wl_coord_flap)
             self.dataobj.del_coordinate("Coord 2")
             
+        if(self.campaign == "OP2.2"):
+            wl_values = np.zeros((self.dataobj.coordinate("Device R")[0].shape[1], 1024))
+            for i in range(1, self.dataobj.coordinate("Device R")[0].shape[1]+1):
+                wl_values[i-1, :] = wavelength_grid_generator_op22(
+                    self.grid, self.wavelength_setting, datapath_base)
+
+            wl_coord_flap = flap.Coordinate(name='Wavelength', unit="nm",
+                            mode=flap.CoordinateMode(equidistant=False),
+                            shape=(self.dataobj.coordinate("Device R")[0].shape[1],1024),
+                            values=wl_values,dimension_list=[1,2])
+            self.dataobj.add_coordinate_object(wl_coord_flap)
+            self.dataobj.del_coordinate("Coord 2")
+            
         elif(self.campaign != "OP2.1"):
             raise ValueError(
             "Wavelength calibration for that campaign has not been implemented yet.")
@@ -333,7 +513,12 @@ class spectra:
                         If it is a list two floats, then the function first slices,
                         then averages the signal between the two wavelengths.
         """
-        spectra_1w = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi)})
+        
+        spectra_1w = None
+        if(self.campaign == "OP2.1"):
+            spectra_1w = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi)})
+        elif(self.campaign == "OP2.2"):
+            spectra_1w = self.dataobj.slice_data(slicing={"ROI": str(roi)})
         if(type(wavelength) == float or type(wavelength) == int):
             spectra_1w = spectra_1w.slice_data(
                 slicing={"Wavelength": wavelength})
@@ -363,8 +548,13 @@ class spectra:
             t_stop: end of the interval (float)
             
         """
-        ROI1 = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
-                                                "Time": flap.Intervals(t_start, t_stop)})
+        ROI1 = None
+        if(self.campaign == "OP2.1"):
+            ROI1 = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
+                                                    "Time": flap.Intervals(t_start, t_stop)})
+        elif(self.campaign == "OP2.2"):
+            ROI1 = self.dataobj.slice_data(slicing={"ROI": str(roi),
+                                                    "Time": flap.Intervals(t_start, t_stop)})
         errors = None
             
         avg_spectrum = ROI1.slice_data(summing={"Time": "Mean"})
@@ -376,9 +566,12 @@ class spectra:
             avg_spectrum.error = errors
         plt.figure()
         avg_spectrum.plot(axes="Wavelength")
-        plt.title(self.expe_id, fontsize=15)
-        plt.title(self.expe_id+", averaged spectra, ROI = P0" +
-                  str(roi), fontsize=15)
+        if(self.campaign == "OP2.1"):
+            plt.title(self.expe_id+", averaged spectra, ROI = P0" +
+                      str(roi), fontsize=15)
+        elif(self.campaign == "OP2.2"):
+            plt.title(self.expe_id+", averaged spectra, ROI = " +
+                      str(roi), fontsize=15)
         plt.grid()
         return avg_spectrum
 
@@ -397,8 +590,13 @@ class spectra:
         """
         
         #slicing
-        ROI1 = self.dataobj.slice_data(
-            slicing={"ROI": "P0"+str(roi), "Time": flap.Intervals(t_start, t_stop)})
+        ROI1 = None
+        if(self.campaign == "OP2.1"):
+            ROI1 = self.dataobj.slice_data(slicing={"ROI": "P0"+str(roi),
+                                                    "Time": flap.Intervals(t_start, t_stop)})
+        elif(self.campaign == "OP2.2"):
+            ROI1 = self.dataobj.slice_data(slicing={"ROI": str(roi),
+                                                    "Time": flap.Intervals(t_start, t_stop)})
         line = ROI1.slice_data(slicing={"Wavelength": flap.Intervals(lstart, lstop)},
                                summing={"Wavelength": "Sum"})
 
@@ -427,6 +625,10 @@ class spectra:
         shift between the spectral data time axis and the beam interval times is varying.
         Finally, it plots the average spectral intensity / frame in the given intervals
         in the subtracted spectra vs the temporalshifts.
+        
+        
+        The trigger problem was solved in OP2.2 during the comissioning phase,
+        thus this function should no longer be necessary.
 
         Parameters
         ----------
@@ -613,6 +815,85 @@ class spectra:
                 plt.grid()
 
             return s_subs
+        if(self.campaign == "OP2.2"):
+            print("Warning: for this campaign this function is not finished, it may"+
+                          " mistakes the beam-on spectra for the beam-off spectra,"+
+                          " and vice versa.")
+            ROI1 = None
+            if(type(roi) == list):
+                ROI1 = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),
+                                            "Time": flap.Intervals(t_start, t_stop)})
+                for i in range(1,len(roi)):
+                    ROI1.data += self.dataobj.slice_data(slicing={"ROI": str(roi[i]),
+                                        "Time": flap.Intervals(t_start, t_stop)}).data
+                ROI1.data = ROI1.data/len(roi)
+            else:
+                ROI1 = self.dataobj.slice_data(slicing={"ROI": str(roi),
+                                            "Time": flap.Intervals(t_start, t_stop)})
+            if(background_interval != [0]):
+                ROI1_witbg = self.dataobj.slice_data(slicing={"ROI": str(roi),
+                            "Wavelength": flap.Intervals(background_interval[0],
+                             background_interval[1])},
+                             summing={"Wavelength": "Mean", "Time": "Mean"})
+                ROI1.data[:, :] = ROI1.data[:, :] - ROI1_witbg.data
+
+            s_on_data = np.zeros((ROI1.data.shape[1]))
+            s_off_data = np.zeros((ROI1.data.shape[1]))
+            s_on_error = np.zeros((ROI1.data.shape[1]))
+            s_off_error = np.zeros((ROI1.data.shape[1]))
+            for i in range(int(ROI1.data.shape[0]/2)): #it might miss the last frame
+                s_on_data += ROI1.data[i*2,:]/int(ROI1.data.shape[0]/2)
+                s_off_data += ROI1.data[i*2+1,:]/int(ROI1.data.shape[0]/2)
+            for i in range(int(ROI1.data.shape[0]/2)):
+                s_on_error += (ROI1.data[i*2,:]-s_on_data)**2
+                s_off_error += (ROI1.data[i*2+1,:]-s_off_data)**2
+            s_on_error = np.sqrt(s_on_error)/int(ROI1.data.shape[0]/2)
+            s_off_error = np.sqrt(s_off_error)/int(ROI1.data.shape[0]/2)
+            suberror = np.sqrt(s_on_error**2 + s_off_error**2)#/np.sqrt(2)
+            if(type(roi) == list):
+                s_on = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
+                s_off = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
+                s_sub = self.dataobj.slice_data(slicing={"ROI": str(roi[0]),"Time": t_start})
+            else:
+                s_on = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
+                s_off = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
+                s_sub = self.dataobj.slice_data(slicing={"ROI": str(roi),"Time": t_start})
+            substracted_spec = s_on_data-s_off_data
+            if(abs(min(substracted_spec))>abs(max(substracted_spec))):
+                s_on.data = s_off_data
+                s_off.data = s_on_data
+                s_on.error = s_off_error
+                s_off.error = s_on_error
+                s_sub.data = s_off_data - s_on_data
+                s_sub.error = suberror
+            else:
+                s_on.data = s_on_data
+                s_on.error = s_on_error
+                s_off.data = s_off_data
+                s_off.error = s_off_error
+                s_sub.data = substracted_spec
+                s_sub.error = suberror
+            if(plotting == True):
+                plt.figure()
+                s_on.plot(axes="Wavelength")
+                s_off.plot(axes="Wavelength")
+                legend = ["beam on", "beam off"]
+                plt.legend(legend,fontsize = 15)
+                plt.title(self.expe_id+", beam on and off spectra, ROI = "+str(roi)+
+                          ", ["+str(t_start)+","+str(t_stop)+"] s",fontsize=15)
+                plt.ylabel("Intensity [a.u.]")
+                plt.grid()
+                
+                plt.figure()
+                s_sub.plot(axes="Wavelength")
+                plt.title(self.expe_id+", active spectrum, ROI = "+str(roi)+
+                          ", ["+str(t_start)+","+str(t_stop)+"] s",fontsize=15)
+                plt.ylabel("Intensity [a.u.]")
+                plt.grid()
+                print("The R coordinate of the channel (in m):")
+                print(ROI1.coordinate("Device R")[0][0,0])
+            return s_sub
+            
         else:
             raise ValueError(
                 "For that campaign this method is not implemented yet.")
@@ -864,17 +1145,31 @@ class spectra:
         """
         wl_grid = None
         if(sim==False):
-            wl_values = wavelength_grid_generator_op21(
-                self.grid, self.wavelength_setting, self.current_roi,self.supl_data_path)
-            # slicing the wavelength grid
-            wl_grid0 = wl_values[wl_values > self.wstart]
-            wl_grid = wl_grid0[self.wstop > wl_grid0]
+            if(self.campaign == "OP2.1"):
+                wl_values = wavelength_grid_generator_op21(
+                    self.grid, self.wavelength_setting, self.current_roi,self.supl_data_path)
+                # slicing the wavelength grid
+                wl_grid0 = wl_values[wl_values > self.wstart]
+                wl_grid = wl_grid0[self.wstop > wl_grid0]
+            elif(self.campaign == "OP2.2"):
+                wl_values = wavelength_grid_generator_op22(
+                    self.grid, self.wavelength_setting,self.supl_data_path)
+                # slicing the wavelength grid
+                wl_grid0 = wl_values[wl_values > self.wstart]
+                wl_grid = wl_grid0[self.wstop > wl_grid0]
         elif(sim==True):
-            wl_values = wavelength_grid_generator_op21(
-                self.simgrid, self.wavelength_setting, self.current_roi,self.supl_data_path)
-            # slicing the wavelength grid
-            wl_grid0 = wl_values[wl_values > self.wstart]
-            wl_grid = wl_grid0[self.wstop > wl_grid0] 
+            if(self.campaign == "OP2.1"):
+                wl_values = wavelength_grid_generator_op21(
+                    self.simgrid, self.wavelength_setting, self.current_roi,self.supl_data_path)
+                # slicing the wavelength grid
+                wl_grid0 = wl_values[wl_values > self.wstart]
+                wl_grid = wl_grid0[self.wstop > wl_grid0]
+            elif(self.campaign == "OP2.2"):
+                wl_values = wavelength_grid_generator_op22(
+                    self.grid, self.wavelength_setting,self.supl_data_path)
+                # slicing the wavelength grid
+                wl_grid0 = wl_values[wl_values > self.wstart]
+                wl_grid = wl_grid0[self.wstop > wl_grid0]
         # Doppler shift + calibration uncertainty
         locations = self.zc_locations
         projection = np.zeros((wl_grid.shape[0]))
@@ -895,20 +1190,36 @@ class spectra:
         doppler_spectrum = np.convolve(projection, gaussian, mode="same")
         instr = None
         if(sim==False):
-            # convolution with instrumental function
-            instr = np.load(self.instr_funcs_datapath+self.grid+"_P0"+
+            if(self.campaign == "OP2.1"):
+                # convolution with instrumental function
+                instr = np.load(self.instr_funcs_datapath+"OP2_1/instr_funcs/"+self.grid+"_P0"+
+                        str(self.current_roi)+"_"+str(int(self.dslit))+
+                        "micron_slit.npy").ravel()
+            elif(self.campaign == "OP2.2"):
+                # convolution with instrumental function
+                instr = np.load(self.instr_funcs_datapath+"OP2_2/instr_funcs/"+self.grid+"_channel"+
                             str(self.current_roi) +
-                            "_"+str(int(self.dslit))+"micron_slit.npy").ravel()
+                            "_"+str(int(self.dslit))+"micron_slit_546nm.npy").ravel()
         elif(sim==True):
             # convolution with instrumental function
             if(self.simd == 100):
-                instr = np.load(self.instr_funcs_datapath+self.simgrid+"_P0"+
+                if(self.campaign == "OP2.1"):
+                    instr = np.load(self.instr_funcs_datapath+"OP2_1/instr_funcs/"+self.simgrid+"_P0"+
+                                    str(self.current_roi) +
+                                "_"+str(int(self.simd))+"micron_slit.npy").ravel()
+                    
+                if(self.campaign == "OP2.2"):
+                    instr = np.load(self.instr_funcs_datapath+"OP2_2/instr_funcs/"+self.grid+"_channel"+
                                 str(self.current_roi) +
-                            "_"+str(int(self.simd))+"micron_slit.npy").ravel()
+                                "_"+str(int(self.dslit))+"micron_slit_546nm.npy").ravel()
             else:
-                instr = np.load(self.instr_funcs_datapath+self.simgrid+"_P03" +
-                            "_"+str(int(self.simd))+"micron_slit.npy").ravel()
-                
+                if(self.campaign == "OP2.1"):
+                    instr = np.load(self.instr_funcs_datapath+"/OP2_1/instr_funcs/"+self.simgrid+"_P03" +
+                                "_"+str(int(self.simd))+"micron_slit.npy").ravel()
+                elif(self.campaign == "OP2.2"):
+                    instr = np.load(self.instr_funcs_datapath+"OP2_2/instr_funcs/"+self.grid+"_channel"+
+                                str(self.current_roi) +
+                                "_"+str(int(self.dslit))+"micron_slit_546nm.npy").ravel()
         complete_spectrum = np.convolve(doppler_spectrum, instr, mode="same")
 
         return complete_spectrum
@@ -988,74 +1299,6 @@ class spectra:
         plt.legend(["Calculated", "Measured"], loc="best", fontsize=(fs-2))
         return (np.dot(C, C) - 3) / self.active.data.shape[0]
     
-    def second_deriv(self,sol, fmin, h, i):
-        """
-        It is part of an error calculation algorithm that is based on the Hessian matrix
-        of chi^2. However, this algorithm gave unreasonably large errors, therefore it
-        is not in use
-        """
-        sol_p = sol.copy()
-        sol_n = sol.copy()
-        sol_p[i] = sol_p[i] + h
-        sol_n[i] = sol_n[i] - h
-        fp1 = self.C_fitfunc(sol_p)
-        fm1 = self.C_fitfunc(sol_n)
-        return (fp1 + fm1 - 2*fmin)/h**2
-
-    def partial_cross_deriv(self,sol, fmin, i, j, hi, hj):
-        """
-        It is part of an error calculation algorithm that is based on the Hessian matrix
-        of chi^2. However, this algorithm gave unreasonably large errors, therefore it
-        is not in use
-        """
-        sol_pp = sol.copy()
-        sol_pn = sol.copy()
-        sol_np = sol.copy()
-        sol_nn = sol.copy()
-        sol_pp[i] = sol_pp[i] + hi
-        sol_pp[j] = sol_pp[j] + hj
-
-        sol_pn[i] = sol_pn[i] + hi
-        sol_pn[j] = sol_pn[j] - hj
-
-        sol_np[i] = sol_np[i] - hi
-        sol_np[j] = sol_np[j] + hj
-
-        sol_nn[i] = sol_nn[i] - hi
-        sol_nn[j] = sol_nn[j] - hj
-
-        fpp = self.C_fitfunc(sol_pp)
-        fpn = self.C_fitfunc(sol_pn)
-        fnp = self.C_fitfunc(sol_np)
-        fnn = self.C_fitfunc(sol_nn)
-
-        return (fpp-fpn-fnp+fnn) / (4*hi*hj)
-
-    def hesse(self,sol, fmin, h):
-        """
-        It is part of an error calculation algorithm that is based on the Hessian matrix
-        of chi^2. However, this algorithm gave unreasonably large errors, therefore it
-        is not in use
-        """
-        hess = np.matrix(np.zeros((3, 3)))
-        for i in range(3):
-            for j in range(3):
-                if(i == j):
-                    hess[i, i] = self.second_deriv(sol, fmin, h[i], i)
-                else:
-                    hess[i, j] = self.partial_cross_deriv(sol, fmin, i, j, h[i], h[j])
-        return hess
-
-    def error_from_hesse(self,sol,fmin, h):
-        """
-        It is part of an error calculation algorithm that is based on the Hessian matrix
-        of chi^2. However, this algorithm gave unreasonably large errors, therefore it
-        is not in use
-        """
-        alpha = self.hesse(sol, fmin, h)
-        I = np.linalg.inv(alpha)
-        return np.sqrt(abs(I))
-    
     def C_fitfunc_plot_sim(self, esti):
         """
         It computes the weighted, squared, summed difference between the simulated
@@ -1074,14 +1317,27 @@ class spectra:
         mu = esti[0]
         kbt = esti[1]
         A = esti[2]
-        modelled = self.C_line_generator(mu, kbt, A,sim = True)
+        modelled = None
+        if(self.simgrid == None):
+            modelled = self.C_line_generator(mu, kbt, A,sim = False)
+        else:
+            modelled = self.C_line_generator(mu, kbt, A,sim = True)
+            
         C = (modelled - self.simulated)/self.simulated_error
 
-        # loading the wavelength grid
-        wl_values = wavelength_grid_generator_op21(
-            self.simgrid, self.wavelength_setting, self.current_roi,self.supl_data_path)
-        wl_grid0 = wl_values[wl_values > self.wstart]  # slicing the wavelength grid
-        lambd = wl_grid0[self.wstop > wl_grid0]
+        if(self.campaign == "OP2.1"):
+            # loading the wavelength grid
+            wl_values = wavelength_grid_generator_op21(
+                self.simgrid, self.wavelength_setting, self.current_roi,self.supl_data_path)
+            wl_grid0 = wl_values[wl_values > self.wstart]  # slicing the wavelength grid
+            lambd = wl_grid0[self.wstop > wl_grid0]
+            
+        elif(self.campaign == "OP2.2"):
+            # loading the wavelength grid
+            wl_values = wavelength_grid_generator_op22(
+                self.grid, self.wavelength_setting,self.supl_data_path)
+            wl_grid0 = wl_values[wl_values > self.wstart]  # slicing the wavelength grid
+            lambd = wl_grid0[self.wstop > wl_grid0]
 
         fs = 15
         plt.figure()
@@ -1342,8 +1598,7 @@ class spectra:
             chisq[i] = solution.fun
             if(plots == True): #plotting the line shape with the fitted parameters
                 self.C_fitfunc_plot_sim(sol)
-                R_plot = round(self.dataobj.coordinate("Device R")[0][0,
-                                                        (self.current_roi-1), 0], 4)
+                R_plot = round(self.active.coordinate("Device R")[0][0], 4)
                 plt.title("R = "+str(R_plot)+" m, $\chi^2 = $" +
                           str(round(solution.fun, 6))+", $T_C$ = "+str(round(sol[1], 2)))
 
@@ -1396,7 +1651,7 @@ class spectra:
             #central position of the first lens
             centre_of_lens = np.array([1.305624, 6.094843, -3.013095])
             #viewed positions of the channels
-            roi_pos = np.loadtxt(self.supl_data_path+"ROI_pos.txt")
+            roi_pos = np.loadtxt(self.supl_data_path+"/OP2_1/ROI_pos.txt")
             self.observation_directions = np.zeros(
                 (roi_pos.shape[0], roi_pos.shape[1]))
             for i in range(roi_pos.shape[1]):
@@ -1415,7 +1670,7 @@ class spectra:
                 slicing={"Wavelength": flap.Intervals(wstart, wstop)})
             if(fittype == "CV"):
                 #magnetic field data from Gábor Cseh
-                self.B = np.loadtxt(self.supl_data_path+self.expe_id+".txt")
+                self.B = np.loadtxt(self.supl_data_path+"/OP2_1/"+self.expe_id+".txt")
                 self.Babs = np.sqrt(np.sum(self.B[:, roi-1]**2))
                 divider = np.sqrt(
                     np.sum(self.observation_directions[:, roi-1]**2))*self.Babs
@@ -1425,7 +1680,8 @@ class spectra:
                 
                 #no exact data - saved approximation proposed by Oliver Ford
                 #for the Zeeman components, done by the webservice of Dorothea Gradic
-                with open(self.supl_data_path+'getZeeman_CV_ROI'+str(self.current_roi)+'.json', 'r') as f:
+                with open(self.supl_data_path+"/OP2_1/"+'getZeeman_CV_ROI'+
+                          str(self.current_roi)+'.json', 'r') as f:
                     datafile = json.load(f)
                 
                 self.zc_locations = np.array(datafile['wavelengths'])/10
@@ -1445,11 +1701,6 @@ class spectra:
                     sol = solution.x
                     Terr, T_iters, chi_iters = self.C_Ti_error_sim_me(sol[0],
                                         sol[1],sol[2],N,fittype,plots=plots)
-                    # h = np.array([1e-5, 1e-3, 1e-8])
-                    # hessian_error = self.error_from_hesse(sol, solution.fun, h)[1,1]
-                    # print("Error based on Hessian matrix (in eV):")
-                    # print(hessian_error)
-                    #plotting
                     R_plot = round(self.dataobj.coordinate(
                         "Device R")[0][0, (roi-1), 0], 4)
                     self.C_fitfunc_plot(sol)
@@ -1478,7 +1729,7 @@ class spectra:
                     plt.grid()
                 
             elif(fittype == "CVI"):
-                self.B = np.loadtxt(self.supl_data_path+self.expe_id+".txt")
+                self.B = np.loadtxt(self.supl_data_path+"/OP2_1/"+self.expe_id+".txt")
                 self.Babs = np.sqrt(np.sum(self.B[:, roi-1]**2))
                 divider = np.sqrt(
                     np.sum(self.observation_directions[:, roi-1]**2))*self.Babs
@@ -1512,10 +1763,6 @@ class spectra:
                     sol = solution.x
                     Terr, T_iters, chi_iters = self.C_Ti_error_sim_me(sol[0],
                                         sol[1],sol[2],N,fittype,plots=plots)
-                    # h = np.array([1e-5, 1e-3, 1e-8])
-                    # hessian_error = self.error_from_hesse(sol, solution.fun, h)[1,1]
-                    # print("Error based on Hessian matrix (in eV):")
-                    # print(hessian_error)
                     R_plot = round(self.dataobj.coordinate( #plotting
                         "Device R")[0][0, (roi-1), 0], 4)
                     self.C_fitfunc_plot(sol)
@@ -1542,6 +1789,95 @@ class spectra:
                     plt.xlabel("number of iterations",fontsize = 15)
                     plt.xlim(0,N-1)
                     plt.grid()
+                    
+        if(self.campaign == "OP2.2"): #NOT FINISHED
+        
+            print("The temperature fit for the OP2.2 data is not fully implemented yet.")
+            print("The present version of the code uses a guess for the magnetic field "+
+                  "vector, and can only fit C VI data. It also does not uses the exact "+
+                  "measurement areas of the ROI-s.")
+
+            #getting the measured spectra
+            self.active = self.active_passive(roi, t_start, t_stop,
+                                    background_interval=bcg, error=True, plotting=True)
+            self.active = self.active.slice_data(
+                slicing={"Wavelength": flap.Intervals(wstart, wstop)})
+            
+            #central position of the first lens
+            centre_of_lens = np.array([1.305624, 6.094843, -3.013095])
+            R = self.active.coordinate("Device R")[0][0]
+            
+            #viewed positions of the channels
+            roi_pos = R*np.array([np.cos(2*np.pi/5), np.sin(2*np.pi/5), 0])
+            self.observation_directions = roi_pos-centre_of_lens
+            self.current_roi = roi
+            self.dslit = dslit
+            self.wstart = wstart
+            self.wstop = wstop
+            self.simgrid = self.grid
+            self.simd = dslit
+            if(fittype == "CVI"):
+                self.B = np.array([-2.14,0.7,0.5]) #INCORRECT!!!!
+                self.Babs = np.sqrt(np.sum(self.B**2))
+                divider = np.sqrt(
+                    np.sum(self.observation_directions**2))*self.Babs
+                n = self.observation_directions
+                self.current_theta = np.arccos(
+                    np.sum(n*self.B)/divider)*180/np.pi
+                
+                # location where the web service is hosted
+                pc_location = 'http://sv-coda-wsvc-28.ipp-hgw.mpg.de:6055'
+
+                # fetching the fine structure of the predefined line
+                fine_structure_query = '/getZeeman.json?name=C-VI-5291&B=' + \
+                    str(self.Babs)+'&theta1='+str(self.current_theta)
+                fine_structure = requests.get(
+                    pc_location + fine_structure_query).json()
+
+                self.zc_locations = np.array(fine_structure['wavelengths'])/10
+                self.zc_intensities = np.array(fine_structure['amplitude'])
+                
+                #fitting the ion temperature, and other parameters
+                esti = np.array([mu, kbt, A])
+                es_chisq = self.C_fitfunc_plot(esti)
+                plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
+                solution = minimize(self.C_fitfunc, esti, method="Powell",
+                                    bounds=((None, None), (0.1, None), (None, None)),
+                                    tol=1e-8,options={"maxiter": 2000})
+
+                print(solution)
+                if(solution.success == True):
+                    #error calculation
+                    sol = solution.x
+                    Terr, T_iters, chi_iters = self.C_Ti_error_sim_me(sol[0],
+                                        sol[1],sol[2],N,fittype,plots=plots)
+                    R_plot = round(self.active.coordinate( #plotting
+                        "Device R")[0][0], 4)
+                    self.C_fitfunc_plot(sol)
+                    plt.title(self.expe_id+", channel "+str(roi)+
+                              ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
+                              str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
+                              "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
+                    plt.figure()
+                    plt.subplot(211)
+                    plt.ylabel("$T_i [eV]$",fontsize = 15)
+                    plt.grid()
+                    plt.title(self.expe_id+", channel "+str(roi)+
+                              ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
+                              str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
+                              "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
+                    plt.hlines(sol[1], 0, N, color = "red")
+                    plt.fill_between(np.arange(N), sol[1] - Terr, sol[1] + Terr,color='red',
+                                     alpha=0.2)
+                    plt.plot(np.arange(N),T_iters,marker = "o",linestyle="",color="blue")
+                    plt.xlim(0,N-1)
+                    plt.subplot(212)
+                    plt.plot(np.arange(N),chi_iters,marker = "o",linestyle="",color="green")
+                    plt.ylabel("$\chi^2$",fontsize = 15)
+                    plt.xlabel("number of iterations",fontsize = 15)
+                    plt.xlim(0,N-1)
+                    plt.grid()
+                    print(Terr)
 
     def C_Ti_error_sim(self,mu,kbt,A,tstart,tstop,iter_num,scalef,fittype,plots=False):
         """
@@ -1668,7 +2004,7 @@ class spectra:
             self.instr_funcs_datapath = 'data'
         if(self.campaign == "OP2.1"):
             centre_of_lens = np.array([1.305624, 6.094843, -3.013095])
-            roi_pos = np.loadtxt(self.supl_data_path+"ROI_pos.txt")
+            roi_pos = np.loadtxt(self.supl_data_path+"/OP2_1/"+"ROI_pos.txt")
             self.observation_directions = np.zeros(
                 (roi_pos.shape[0], roi_pos.shape[1]))
             for i in range(roi_pos.shape[1]):
@@ -1685,7 +2021,7 @@ class spectra:
             self.active = self.active.slice_data(
                 slicing={"Wavelength": flap.Intervals(wstart, wstop)})
             if(fittype == "CV"):
-                self.B = np.loadtxt(self.supl_data_path+self.expe_id+".txt")
+                self.B = np.loadtxt(self.supl_data_path+"/OP2_1/"+self.expe_id+".txt")
                 self.Babs = np.sqrt(np.sum(self.B[:, roi-1]**2))
                 divider = np.sqrt(
                     np.sum(self.observation_directions[:, roi-1]**2))*self.Babs
@@ -1709,7 +2045,7 @@ class spectra:
                 return Terr
             
             elif(fittype == "CVI"):
-                self.B = np.loadtxt(self.supl_data_path+self.expe_id+".txt")
+                self.B = np.loadtxt(self.supl_data_path+"/OP2_1/"+self.expe_id+".txt")
                 self.Babs = np.sqrt(np.sum(self.B[:, roi-1]**2))
                 divider = np.sqrt(
                     np.sum(self.observation_directions[:, roi-1]**2))*self.Babs

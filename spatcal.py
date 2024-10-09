@@ -710,9 +710,9 @@ class ShotSpatCalCXRS(ShotSpatCal):
         clusters = ["A", "B","C","D","E","F","G","H","I","J",]
         if options['Plot'] is True:
             colors = {'A':'tab:blue', 'H':'xkcd:grass green', 'HF': 'tab:red',
-                      'Z':'tab:purple', "BR2":"white", "BR1":"white"}
+                      'Z':'tab:purple', "NE": 'tab:pink', "BR2":"white", "BR1":"white"}
             edgecolors = {'A':None, 'H':None, 'HF': None,
-                      'Z':None, "BR2":"black", "BR1":"black"}
+                      'Z':None, 'NE':None, "BR2":"black", "BR1":"black"}
             
             
             plt.figure()
