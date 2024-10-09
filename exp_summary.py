@@ -56,7 +56,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
                                  name='Chopper_time',
                                  options={'State':{'Chop': 1, 'Defl': 0},'Start':0,'End':0}
                                  )           
-       
+
         chopper_mode = d_beam_on.info['Chopper mode']
         on1,on2,on3 = d_beam_on.coordinate('Time')
         off1,off2,off3 = d_beam_on.coordinate('Time')
@@ -130,8 +130,11 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         txt += ' ... Max:{:4.0f}[mV] '.format(d_max * 1000)
         timescale = d_on.coordinate('Time')[0][ind]
         s = np.sum(sig,axis=1)
-        ind = np.nonzero(s > np.max(s) * 0.1)[0]
-        txt += ' ... Time range:({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
+        if (np.max(s) <= 0):
+            txt += '... Time range: ---'
+        else:
+            ind = np.nonzero(s >= np.max(s) * 0.1)[0]
+            txt += ' ... Time range:({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
     except Exception as e:
         txt += ' --- {:s} ---'.format(str(e))
     return txt

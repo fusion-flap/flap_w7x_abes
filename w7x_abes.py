@@ -508,7 +508,16 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
     else:
         start_phase = phase
         end_phase = phase
-    chop_clk_in_sample = round(config['APDCAM_f_sample'] / config['Chopper clock'])
+    chop_clk_in_sample = config['APDCAM_f_sample'] / config['Chopper clock']
+    if (chop_clk_in_sample >= 1):
+        if (abs(chop_clk_in_sample - round(chop_clk_in_sample)) > 1e-6):
+            print("Chopper clock period time is not compatible with sample period.")
+        else:
+            chop_clk_in_sample = round(chop_clk_in_sample)
+    else:
+        if (abs(Decimal(1)/chop_clk_in_sample - round(Decimal(1)/chop_clk_in_sample)) > 1e-6):
+            print("Chopper clock period time is not compatible with sample period (sampletime longer).")            
+
     # This is temporary, has to be corrected with the flight time and APDCAM trigger delay
     instrument_delay = -3/Decimal(1000000)
     clock_unit = Decimal(1.) / config['Chopper clock']
@@ -562,15 +571,17 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
         raise ValueError("Invalid chopper end delay.")
 
     if (read_samplerange is not None):
-        start_sample = start_clk * chop_clk_in_sample
-        period_time_sample = period_time_clk * chop_clk_in_sample
+        start_sample = round(start_clk * chop_clk_in_sample)
+        period_time_sample = round(period_time_clk * chop_clk_in_sample)
+        if (period_time_sample < 2):
+            raise ValueError("Less than one sample in chopper period.")
         if (start_sample < read_samplerange[0]):
             start_ind = int((read_samplerange[0] - start_sample)
                             / period_time_sample + 1)
             start_clk += period_time_clk * start_ind
             stop_clk += period_time_clk * start_ind
         stop_sample = stop_clk * chop_clk_in_sample
-        n_period =  int((read_samplerange[1] - stop_sample) / period_time_sample+0.5)
+        n_period =  int(float((read_samplerange[1] - stop_sample) / period_time_sample) + 0.5)
         if (n_period <= 0):
             raise ValueError("No chopper intervals in time (sample) range.")
     else:
