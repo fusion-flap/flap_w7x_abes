@@ -1400,6 +1400,114 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
     
         return dataobject_beam_on
 
+def chopped_signals(exp_ID,timerange=None,signals='ABES-[1-40]',datapath=None,background=False):
+    """
+    Processes chopped ABES measurements. Averages the signal in chopping periods and corrects for the background.
+    Returns a data object with all the requested channels. The time resolution will be the chopper period time.
+    For background correction the background is linearly interplated between chopping periods to find the background
+    when the beam is on. If background is requested the timescale will be the background measurement time vector, 
+    otherwise the beam-on time vector.
+
+    Parameters
+    ----------
+    exp_ID : string
+        Experiment ID. E.g. 202410109.062
+    timerange : list of two floats, optional
+        The time range to process. The default is None, all times will be processed.
+    signals : string or string array, optional
+        The signals to process. The default is 'ABES-[1-40]'.
+    datapath : string, optional
+        The data path. The default is None, in this case the default from the flap_defaults.cfg 
+        config file will be used.
+    background : boolean, optional
+        If True the background signal is returned. The default is False.
+
+    Returns
+    -------
+    flap.dataObject
+        The data.
+
+    """    
+    options = {}
+    if (datapath is not None):
+        options['Datapath'] = datapath
+   
+
+    d_beam_on=flap.get_data('W7X_ABES',
+                             exp_id=exp_ID,
+                             name='Chopper_time',
+                             options={'State':{'Chop': 0, 'Defl': 0},'Start':0,'End':0}
+                             )
+    d_beam_off=flap.get_data('W7X_ABES',
+                             exp_id=exp_ID,
+                             name='Chopper_time',
+                             options={'State':{'Chop': 1, 'Defl': 0},'Start':0,'End':0}
+                             )           
+
+    chopper_mode = d_beam_on.info['Chopper mode']
+    on1,on2,on3 = d_beam_on.coordinate('Time')
+    off1,off2,off3 = d_beam_off.coordinate('Time')
+    beam_on_time = on3[1]-on2[1]
+    beam_off_time = off3[1]-off2[1]
+    period_time = beam_on_time + beam_off_time
+    
+    on_start = 0
+    on_end = 0
+    off_start = 0
+    off_end = 0
+ 
+    if (d_beam_on.info['APDCAM_clock_source'] == 'External'):
+        if (period_time < 0.01):
+            warnings.warn("Fast chopping with external clock, background separation might not be correct.")
+        else:
+            on_start = 1000
+            on_end = -1000
+            off_start = 1000
+            off_end = -1000
+            options['Resample'] = 1e4
+    else:
+        on_start = 0
+        on_end = 0
+        off_start = 0
+        off_end = 0
+        options['Resample'] = None
+        
+    d_beam_on=flap.get_data('W7X_ABES',
+                             exp_id=exp_ID,
+                             name='Chopper_time',
+                             options={'State':{'Chop': 0, 'Defl': 0},'Start':on_start,'End':on_end}
+                             )
+    d_beam_off=flap.get_data('W7X_ABES',
+                             exp_id=exp_ID,
+                             name='Chopper_time',
+                             options={'State':{'Chop': 1, 'Defl': 0},'Start':off_start,'End':off_end}
+                             ) 
+      
+    d=flap.get_data('W7X_ABES',
+                    exp_id = exp_ID,
+                    name = signals,
+                    options = options,
+                    coordinates = {'Time': timerange}
+                    )
+    d_off = d.slice_data(slicing={'Time':d_beam_off},
+                         summing={'Rel. Sample in int(Time)':'Mean'},
+                         options={'Regenerate':True}
+                         )
+
+    if (background):
+        return d_off
+    else:
+        d_on = d.slice_data(slicing={'Time':d_beam_on},
+                            summing={'Rel. Sample in int(Time)':'Mean'},
+                            options={'Regenerate':True}
+                            )
+        d_off = d_off.slice_data(slicing={'Time':d_on},
+                                 options={'Interpolation':'Linear'}
+                                 )
+    d_on = d_on - d_off
+    return d_on
+    
+    
 def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,signals='ABES-[1-40]', on_options=None,
                      off_options=None, test=None, options={}):
     """ Calculate signals in beam on and beam/off phases of the measurement and
