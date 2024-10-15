@@ -52,9 +52,9 @@ def plot_chopper(exp_ID, signal='ABES-15', timerange=None, resample=""):
         options['Resample'] = 1e4
     else:
         on_start = 0
-        on_end = -3
+        on_end = 0
         off_start = 0
-        off_end = -3
+        off_end = 0
         options['Resample'] = None
 
     if (resample != ""):
@@ -67,3 +67,6 @@ def plot_chopper(exp_ID, signal='ABES-15', timerange=None, resample=""):
                                       start_shift=on_start,
                                       end_shift=on_end
                                       )
+
+# plt.close('all')
+# plot_chopper('20230315.025',signal='ABES-24',timerange=[1,1.001],resample=None)

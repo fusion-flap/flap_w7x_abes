@@ -10,7 +10,7 @@ This is the flap module for W7-X alkali BES diagnostic
 import os
 import time
 import warnings
-from decimal import *
+from decimal import Decimal
 import gc
 import psutil
 import numpy as np
@@ -19,8 +19,6 @@ import h5py
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 from functools import partial
-import warnings
-
 
 import flap
 from . import spatcal
@@ -523,18 +521,20 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
     if (config['APDCAM_clock_source'] == 'External'):
         warnings.warn("APDCAM clock source is external, chopper drifts relative to signal.")
 
-    # These are values detemined from the signals
+    # These are values [microsec] detemined from the signals
+    switch_time = 3/Decimal(1000000)
+    switch_time_sample = round(switch_time / config['APDCAM_sampletime'])
     if (config['APDCAM_f_ADC'] == Decimal(20e6)):
         if (config['APDCAM_f_sample'] == Decimal(2e6)):
-            instrument_delay = -3/Decimal(1000000)
+            instrument_delay = -9/Decimal(1000000)
         elif (config['APDCAM_f_sample'] == Decimal(1e6)):
             instrument_delay = -6/Decimal(1000000)
         else:
-            warning.warn("Unknown sample delay relative to chopper. Check chopper timing.")
-            instrument_delay = -3/Decimal(1000000)
+            warnings.warn("Unknown sample delay relative to chopper. Check chopper timing.")
+            instrument_delay = -9/Decimal(1000000)
     else:
-        warning.warn("Unknown sample delay relative to chopper. Check chopper timing.")
-        instrument_delay = -3/Decimal(1000000)
+        warnings.warn("Unknown sample delay relative to chopper. Check chopper timing.")
+        instrument_delay = -9/Decimal(1000000)
         
     clock_unit = Decimal(1.) / config['Chopper clock']
     if (config['Chopper mode'] == 'Camera'):
@@ -609,20 +609,18 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
                                              mode=mode,
                                              start=round(start_clk * chop_clk_in_sample
                                                     + instrument_delay/config['APDCAM_sampletime'])
-                                                    + start_delay_sample,
+                                                    + start_delay_sample + switch_time_sample,
                                              step=round(period_time_clk*chop_clk_in_sample) ,
                                              value_ranges=[0,round((stop_clk-start_clk) * chop_clk_in_sample)
-                                                           + stop_delay_sample - start_delay_sample],
+                                                           + stop_delay_sample - start_delay_sample - switch_time_sample],
                                            dimension_list=[0]
                                            ))
     c_time = copy.deepcopy(flap.Coordinate(name='Time',
                                            unit='Second',
                                            mode=mode,
-                                           start = c_sample.start * config['APDCAM_sampletime'] + config['APDCAM_starttime'],
+                                           start = c_sample.start * float(config['APDCAM_sampletime'])+ float(config['APDCAM_starttime']),
                                            step=period_time_clk*clock_unit,
-                                           value_ranges=[0, float((stop_clk-start_clk) * clock_unit)
-                                                           + (stop_delay_sample - start_delay_sample)
-                                                             * float(config['APDCAM_sampletime'])],
+                                           value_ranges=[0, c_sample.value_ranges[1] * float(config['APDCAM_sampletime'])],
                                            dimension_list=[0]
                                            ))
 
