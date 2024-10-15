@@ -19,6 +19,8 @@ import h5py
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 from functools import partial
+import warnings
+
 
 import flap
 from . import spatcal
@@ -518,8 +520,22 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
         if (abs(Decimal(1)/chop_clk_in_sample - round(Decimal(1)/chop_clk_in_sample)) > 1e-6):
             print("Chopper clock period time is not compatible with sample period (sampletime longer).")            
 
-    # This is temporary, has to be corrected with the flight time and APDCAM trigger delay
-    instrument_delay = -3/Decimal(1000000)
+    if (config['APDCAM_clock_source'] == 'External'):
+        warnings.warn("APDCAM clock source is external, chopper drifts relative to signal.")
+
+    # These are values detemined from the signals
+    if (config['APDCAM_f_ADC'] == Decimal(20e6)):
+        if (config['APDCAM_f_sample'] == Decimal(2e6)):
+            instrument_delay = -3/Decimal(1000000)
+        elif (config['APDCAM_f_sample'] == Decimal(1e6)):
+            instrument_delay = -6/Decimal(1000000)
+        else:
+            warning.warn("Unknown sample delay relative to chopper. Check chopper timing.")
+            instrument_delay = -3/Decimal(1000000)
+    else:
+        warning.warn("Unknown sample delay relative to chopper. Check chopper timing.")
+        instrument_delay = -3/Decimal(1000000)
+        
     clock_unit = Decimal(1.) / config['Chopper clock']
     if (config['Chopper mode'] == 'Camera'):
         period_time_clk = round(config['CMOS frametime'] / Decimal(1000) \

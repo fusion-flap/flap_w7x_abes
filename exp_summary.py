@@ -59,7 +59,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
 
         chopper_mode = d_beam_on.info['Chopper mode']
         on1,on2,on3 = d_beam_on.coordinate('Time')
-        off1,off2,off3 = d_beam_on.coordinate('Time')
+        off1,off2,off3 = d_beam_off.coordinate('Time')
         beam_on_time = on3[1]-on2[1]
         beam_off_time = off3[1]-off2[1]
         period_time = beam_on_time + beam_off_time
@@ -113,6 +113,10 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
             d_off = d_off.slice_data(slicing={'Time':d_on},
                                      options={'Interpolation':'Linear'}
                                      )
+            if (test):
+                plt.figure()
+                d_on.plot(axes='Time')
+                d_off.plot(axes='Time')
             d_on_data = d_on.data
             d_off_data = d_off.data
             ind = np.nonzero(np.logical_and(np.isfinite(d_off_data),
@@ -122,6 +126,11 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
             d_on_data = d_on_data[ind]
             d_off_data = d_off_data[ind]
             d = d_on_data - d_off_data
+            plt.figure()
+            plt.plot(d_on_data)
+            plt.plot(d_off_data)
+            plt.figure()
+            plt.plot(d)
             if (i == 0):
                 sig = np.zeros((len(d),len(channels)))
             sig[:,i] = d
