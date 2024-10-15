@@ -77,9 +77,9 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
             options['Resample'] = 1e4
         else:
             on_start = 0
-            on_end = -3
+            on_end = 0
             off_start = 0
-            off_end = -3
+            off_end = 0
             options['Resample'] = None
             
         d_beam_on=flap.get_data('W7X_ABES',
