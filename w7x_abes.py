@@ -1491,7 +1491,7 @@ def chopped_signals(exp_ID,timerange=None,signals='ABES-[1-40]',datapath=None,ba
                     )
     d_off = d.slice_data(slicing={'Time':d_beam_off},
                          summing={'Rel. Sample in int(Time)':'Mean'},
-                         options={'Regenerate':True}
+                         options={'Regenerate':True,'Partial intervals':False}
                          )
 
     if (background):
@@ -1499,13 +1499,13 @@ def chopped_signals(exp_ID,timerange=None,signals='ABES-[1-40]',datapath=None,ba
     else:
         d_on = d.slice_data(slicing={'Time':d_beam_on},
                             summing={'Rel. Sample in int(Time)':'Mean'},
-                            options={'Regenerate':True}
+                            options={'Regenerate':True,'Partial intervals':False}
                             )
         d_off = d_off.slice_data(slicing={'Time':d_on},
                                  options={'Interpolation':'Linear'}
                                  )
-    d_on = d_on - d_off
-    return d_on
+        d_on.data = d_on.data - d_off.data
+        return d_on
     
     
 def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,signals='ABES-[1-40]', on_options=None,
