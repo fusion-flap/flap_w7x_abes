@@ -46,15 +46,22 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         options['Datapath'] = datapath
     
     try:
+        options['State'] ={'Chop': 0, 'Defl': 0}
+        options['Start'] = 0
+        options['End'] = 0
+        
         d_beam_on=flap.get_data('W7X_ABES',
                                  exp_id=exp_ID,
                                  name='Chopper_time',
-                                 options={'State':{'Chop': 0, 'Defl': 0},'Start':0,'End':0}
+                                 options=options
                                  )
+        options['State'] ={'Chop': 1, 'Defl': 0}
+        options['Start'] = 0
+        options['End'] = 0
         d_beam_off=flap.get_data('W7X_ABES',
                                  exp_id=exp_ID,
                                  name='Chopper_time',
-                                 options={'State':{'Chop': 1, 'Defl': 0},'Start':0,'End':0}
+                                 options=options
                                  )           
 
         chopper_mode = d_beam_on.info['Chopper mode']
@@ -126,11 +133,6 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
             d_on_data = d_on_data[ind]
             d_off_data = d_off_data[ind]
             d = d_on_data - d_off_data
-            plt.figure()
-            plt.plot(d_on_data)
-            plt.plot(d_off_data)
-            plt.figure()
-            plt.plot(d)
             if (i == 0):
                 sig = np.zeros((len(d),len(channels)))
             sig[:,i] = d
