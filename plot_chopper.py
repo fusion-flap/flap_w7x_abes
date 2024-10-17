@@ -62,7 +62,7 @@ def plot_chopper(exp_ID, signal='ABES-15', timerange=None, resample=""):
     flap_w7x_abes.test_chopper_timing(exp_id=exp_ID,
                                       timerange=timerange,
                                       signal=signal,
-                                      resample=None,
+                                      resample=options['Resample'],
                                       x_axis='Time',
                                       start_shift=on_start,
                                       end_shift=on_end
