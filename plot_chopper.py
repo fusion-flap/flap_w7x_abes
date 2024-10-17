@@ -31,8 +31,8 @@ def plot_chopper(exp_ID, signal='ABES-15', timerange=None, resample=""):
     chopper_mode = d_beam_on.info['Chopper mode']
     on1, on2, on3 = d_beam_on.coordinate('Time')
     off1, off2, off3 = d_beam_off.coordinate('Time')
-    beam_on_time = on3[1]-on2[1]
-    beam_off_time = off3[1]-off2[1]
+    beam_on_time = on3[0]-on2[0]
+    beam_off_time = off3[0]-off2[0]
     period_time = beam_on_time + beam_off_time
     if (period_time > 3e-3):
         chop_str = "{:3.0f}-{:3.0f}[ms]".format(
