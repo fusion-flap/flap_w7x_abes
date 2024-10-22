@@ -164,7 +164,7 @@ def test_chopper_timing(exp_id=None, timerange=None,signal='ABES-15',resample=1e
     print('Chopper mode: '+ d_beam_on.info['Chopper mode'],flush=True)
     on1,on2,on3 = d_beam_on.coordinate('Time')
     off1,off2,off3 = d_beam_on.coordinate('Time')
-    print('Beam on {:7.3f} [ms], Beam off {:7.3f} [ms]'.format((on3[1]-on2[1]) * 1000,(off3[1]-off2[1]) * 1000))
+    print('Beam on {:7.3f} [ms], Beam off {:7.3f} [ms]'.format((on3[0]-on2[0]) * 1000,(off3[0]-off2[0]) * 1000))
     d.plot(axes=x_axis,options={'All':True})
     d_beam_on.plot(plot_type='scatter',axes=[x_axis,np.min(d.data)],options={'Force':True})
     d_beam_off.plot(plot_type='scatter',axes=[x_axis,np.min(d.data)],options={'Force':True})

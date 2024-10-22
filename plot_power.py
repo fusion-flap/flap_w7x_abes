@@ -11,7 +11,7 @@ import flap_w7x_abes
 flap_w7x_abes.register()
 
 def plot_power(exp_ID,timerange=None,signals=['ABES-10','ABES-15','ABES-19', 'ABES-23'],
-               datapath=None,background=False,fastchop=True,
+               datapath=None,background=False,fastchop=None,
                frange=None,fres=None,flog=None):
     """
     Plots the power spectrum of background corrected signals or background signals.
@@ -62,22 +62,22 @@ def plot_power(exp_ID,timerange=None,signals=['ABES-10','ABES-15','ABES-19', 'AB
     d_beam_on = flap.get_data('W7X_ABES',
                               exp_id=exp_ID,
                               name='Chopper_time',
-                              coordinate = {'Time':timerange},
+                              coordinates = {'Time':timerange},
                               options={'State': {'Chop': 0, 'Defl': 0},
                                        'Start': 0, 'End': 0}
                               )
     d_beam_off = flap.get_data('W7X_ABES',
                                exp_id=exp_ID,
                                name='Chopper_time',
-                               coordinate = {'Time':timerange},
+                               coordinates = {'Time':timerange},
                                options={'State': {'Chop': 1, 'Defl': 0},
                                         'Start': 0, 'End': 0}
                                )
     chopper_mode = d_beam_on.info['Chopper mode']
     on1, on2, on3 = d_beam_on.coordinate('Time')
     off1, off2, off3 = d_beam_off.coordinate('Time')
-    beam_on_time = on3[1]-on2[1]
-    beam_off_time = off3[1]-off2[1]
+    beam_on_time = on3[0]-on2[0]
+    beam_off_time = off3[0]-off2[0]
     period_time = beam_on_time + beam_off_time
     if (fastchop is None):
         if (period_time < 1e-4):
@@ -94,9 +94,10 @@ def plot_power(exp_ID,timerange=None,signals=['ABES-10','ABES-15','ABES-19', 'AB
         p = d.apsd(coordinate='Time',options=options)
     else:
         if (background):
-            d_chop = d_beam_on 
+            d_chop = d_beam_off 
         else:
-            d_chop = d_beam_off
+            d_chop = d_beam_on
+        d = flap.get_data('W7X_ABES',exp_id=exp_ID,name=signals,coordinates={'Time':timerange})
         p = d.apsd(coordinate='Time',intervals={'Time':d_chop},options=options)
  
     options = {'Log x':True,'Log y':True}
