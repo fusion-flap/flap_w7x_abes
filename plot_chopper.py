@@ -16,27 +16,33 @@ flap_w7x_abes.register()
 
 
 def plot_chopper(exp_ID, signal='ABES-15', timerange=None, resample="", datapath=None):
+    """
+    Plot a beam signal, mark chopper times and overplot the chopper-period averaged signal.
+
+    Parameters
+    ----------
+    exp_ID : string
+        The experiment ID.
+    datapath : string or None, optional
+        The data path. If None the one in flap_defaults.cfg will be used. The default is None.
+    signal : string, optional
+        The signal name. The default is 'ABES-15'.
+    timerange : List of two floats or None, optional
+        Time range to process. The default is None.
+    resample : float of "", optional
+        A float number indecates a resample frequency for reading the data. This us useful for flow chopper. 
+        The default is "".
+ 
+    Returns
+    -------
+    None.
+
+    """
+    
     plt.close('all')
 
     chopper_mode,beam_on_time,beam_off_time,period_time,d_beam_on,d_beam_off = flap_w7x_abes.chopper_parameters(exp_ID,datapath=datapath)
-    # d_beam_on = flap.get_data('W7X_ABES',
-    #                           exp_id=exp_ID,
-    #                           name='Chopper_time',
-    #                           options={'State': {'Chop': 0, 'Defl': 0},
-    #                                    'Start': 0, 'End': 0}
-    #                           )
-    # d_beam_off = flap.get_data('W7X_ABES',
-    #                            exp_id=exp_ID,
-    #                            name='Chopper_time',
-    #                            options={'State': {'Chop': 1, 'Defl': 0},
-    #                                     'Start': 0, 'End': 0}
-    #                            )
-    # chopper_mode = d_beam_on.info['Chopper mode']
-    # on1, on2, on3 = d_beam_on.coordinate('Time')
-    # off1, off2, off3 = d_beam_off.coordinate('Time')
-    # beam_on_time = on3[0]-on2[0]
-    # beam_off_time = off3[0]-off2[0]
-    # period_time = beam_on_time + beam_off_time
+
     if (period_time > 3e-3):
         chop_str = "{:3.0f}-{:3.0f}[ms]".format(
             beam_on_time * 1e3, beam_off_time * 1e3)

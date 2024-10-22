@@ -2,6 +2,7 @@
 """
 Created on Tue Oct 22 15:03:53 2024
 
+Functions to handle background corrected beam and background signals.
 @author: Zoletnik
 """
 import copy
@@ -14,6 +15,34 @@ import flap_w7x_abes
 flap_w7x_abes.register()
 
 def get_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type='raw',timerange=None):
+    """
+    Calculate background corrected beam signals or background signals. Can handle camera and timed chopping as well
+    with all frequencies. 
+
+    Parameters
+    ----------
+    exp_ID : string
+        The experiment ID.
+    datapath : string or None, optional
+        The data path. If None the one in flap_defaults.cfg will be used. The default is None.
+    signals : string or list of strings, optional
+        The signals to process. The default is 'ABES-*'.
+    resample : float of "", optional
+        A float number indecates a resample frequency for reading the data. This us useful for flow chopper. 
+        The default is "".
+    signal_type : string, optional
+        "raw": Now correction for background. 
+        "beam": Background corrected beam signal.
+        "background": The background signal.
+        The default is 'raw'.
+    timerange : List of two floats or None, optional
+        Time range to process. The default is None.
+
+    Returns
+    -------
+    d : flap.DataObject
+        The processed data.
+    """
     
     chopper_mode,beam_on_time,beam_off_time,period_time,d_beam_on,d_beam_off = flap_w7x_abes.chopper_parameters(exp_ID,datapath=datapath)
     options = {}
@@ -55,7 +84,38 @@ def get_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type
       
 
 def plot_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type='raw',plot_type='xy',timerange=None,options={}):
-    
+    """
+    Plot background corrected beam signals or background signals. Can handle camera and timed chopping as well
+    with all frequencies. 
+ 
+    Parameters
+    ----------
+    exp_ID : string
+        The experiment ID.
+    datapath : string or None, optional
+        The data path. If None the one in flap_defaults.cfg will be used. The default is None.
+    signals : string or list of strings, optional
+        The signals to process. The default is 'ABES-*'.
+    resample : float of "", optional
+        A float number indecates a resample frequency for reading the data. This us useful for flow chopper. 
+        The default is "".
+    signal_type : string, optional
+        "raw": Now correction for background. 
+        "beam": Background corrected beam signal.
+        "background": The background signal.
+        The default is 'raw'.
+    timerange : List of two floats or None, optional
+        Time range to process. The default is None.
+    plot_type: string, optional
+        The plot type for the flap.plot method.
+ 
+    Returns
+    -------
+    d : flap.DataObject
+        The processed data.
+
+    """
+     
     d = get_clean_abes(exp_ID,
                        signals=signals,
                        datapath=datapath,
