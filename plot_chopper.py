@@ -8,32 +8,35 @@ Created on Mon Oct 14 14:38:14 2024
 
 import matplotlib.pyplot as plt
 
+
 import flap
 import flap_w7x_abes
+
 flap_w7x_abes.register()
 
 
-def plot_chopper(exp_ID, signal='ABES-15', timerange=None, resample=""):
+def plot_chopper(exp_ID, signal='ABES-15', timerange=None, resample="", datapath=None):
     plt.close('all')
 
-    d_beam_on = flap.get_data('W7X_ABES',
-                              exp_id=exp_ID,
-                              name='Chopper_time',
-                              options={'State': {'Chop': 0, 'Defl': 0},
-                                       'Start': 0, 'End': 0}
-                              )
-    d_beam_off = flap.get_data('W7X_ABES',
-                               exp_id=exp_ID,
-                               name='Chopper_time',
-                               options={'State': {'Chop': 1, 'Defl': 0},
-                                        'Start': 0, 'End': 0}
-                               )
-    chopper_mode = d_beam_on.info['Chopper mode']
-    on1, on2, on3 = d_beam_on.coordinate('Time')
-    off1, off2, off3 = d_beam_off.coordinate('Time')
-    beam_on_time = on3[0]-on2[0]
-    beam_off_time = off3[0]-off2[0]
-    period_time = beam_on_time + beam_off_time
+    chopper_mode,beam_on_time,beam_off_time,period_time,d_beam_on,d_beam_off = flap_w7x_abes.chopper_parameters(exp_ID,datapath=datapath)
+    # d_beam_on = flap.get_data('W7X_ABES',
+    #                           exp_id=exp_ID,
+    #                           name='Chopper_time',
+    #                           options={'State': {'Chop': 0, 'Defl': 0},
+    #                                    'Start': 0, 'End': 0}
+    #                           )
+    # d_beam_off = flap.get_data('W7X_ABES',
+    #                            exp_id=exp_ID,
+    #                            name='Chopper_time',
+    #                            options={'State': {'Chop': 1, 'Defl': 0},
+    #                                     'Start': 0, 'End': 0}
+    #                            )
+    # chopper_mode = d_beam_on.info['Chopper mode']
+    # on1, on2, on3 = d_beam_on.coordinate('Time')
+    # off1, off2, off3 = d_beam_off.coordinate('Time')
+    # beam_on_time = on3[0]-on2[0]
+    # beam_off_time = off3[0]-off2[0]
+    # period_time = beam_on_time + beam_off_time
     if (period_time > 3e-3):
         chop_str = "{:3.0f}-{:3.0f}[ms]".format(
             beam_on_time * 1e3, beam_off_time * 1e3)
