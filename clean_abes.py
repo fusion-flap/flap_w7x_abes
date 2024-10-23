@@ -54,21 +54,24 @@ def get_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type
             print("Resample set for fast chopping. Signal processign might be incorrect.")
     if (resample != ""):
         options['Resample'] = resample
-        
+ 
     d=flap.get_data('W7X_ABES',
-                    exp_id = exp_ID,
-                    name = signals,
-                    options = options,
-                    coordinates = {'Time': timerange}
-                    )
-    if (signal_type == 'beam'):
+                exp_id = exp_ID,
+                name = signals,
+                options = options,
+                coordinates = {'Time': timerange}
+                )
+
+    if (signal_type == 'raw'):
+        pass
+    elif (signal_type == 'beam'):
         d_on = d.slice_data(slicing={'Time':d_beam_on},
                             summing={'Rel. Sample in int(Time)':'Mean'},
-                            options={'Regenerate':True}
+                            options={'Regenerate':True,'Slice type':'Multi','Partial intervals':False}
                             )
         d_off = d.slice_data(slicing={'Time':d_beam_off},
                              summing={'Rel. Sample in int(Time)':'Mean'},
-                             options={'Regenerate':True}
+                             options={'Regenerate':True,'Slice type':'Multi','Partial intervals':False}
                              )
         d_off = d_off.slice_data(slicing={'Time':d_on},
                                  options={'Interpolation':'Linear'}
@@ -80,6 +83,8 @@ def get_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type
                          summing={'Rel. Sample in int(Time)':'Mean'},
                          options={'Regenerate':True}
                          )
+    else:
+        raise ValueError("Invalid signal type. Valid: raw, beam, background.")
     return d
       
 
