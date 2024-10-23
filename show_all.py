@@ -12,7 +12,7 @@ import flap_w7x_abes
 
 flap_w7x_abes.register()
 
-def show_all_abes(exp_id,time=[0,5],yrange=[-0.1,1]):
+def show_all_abes(exp_id,time=[0,5],yrange=[-0.1,0.2],):
     """
     Plot the 40 ABES signals on the beam in a 5x8 pot matrix.
 

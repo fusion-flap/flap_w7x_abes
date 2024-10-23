@@ -126,7 +126,7 @@ def plot_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_typ
     axes = ['Time']
     _options = copy.deepcopy(options)
     if (len(d.shape) == 1):
-        if ((plot_type == 'xy') and (plot_type != 'scatter')):
+        if ((plot_type != 'xy') and (plot_type != 'scatter')):
             raise ValueError("For one signal only xy or scatter plot is possible.")
         d.plot(axes=axes,options=_options)
     else:       
