@@ -81,7 +81,7 @@ def get_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type
     elif (signal_type == 'background'):
         d = d.slice_data(slicing={'Time':d_beam_off},
                          summing={'Rel. Sample in int(Time)':'Mean'},
-                         options={'Regenerate':True}
+                         options={'Regenerate':True,'Slice type':'Multi','Partial intervals':False}
                          )
     else:
         raise ValueError("Invalid signal type. Valid: raw, beam, background.")
@@ -154,8 +154,7 @@ def plot_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_typ
             try:
                 _options['Y range']
             except KeyError:
-                _options['Y range'] = [0,np.nanmax(d.data)]
-                
+                _options['Y range'] = [0,np.nanmax(d.data)]              
 
         d.plot(plot_type=_plot_type,axes=axes,options=_options)
         if (_plot_type == 'multi xy'):

@@ -1402,6 +1402,8 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
 
 def chopped_signals(exp_ID,timerange=None,signals='ABES-[1-40]',datapath=None,background=False):
     """
+    
+     *****THIS IS OUTDATED! Use get_clean_abes ****
     Processes chopped ABES measurements. Averages the signal in chopping periods and corrects for the background.
     Returns a data object with all the requested channels. The time resolution will be the chopper period time.
     For background correction the background is linearly interplated between chopping periods to find the background
@@ -1428,6 +1430,8 @@ def chopped_signals(exp_ID,timerange=None,signals='ABES-[1-40]',datapath=None,ba
         The data.
 
     """    
+    
+    print("Chopped_signals is outdated. Use get_clean_abes")
     options = {}
     if (datapath is not None):
         options['Datapath'] = datapath
