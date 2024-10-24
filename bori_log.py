@@ -18,6 +18,7 @@ except ModuleNotFoundError:
 import datetime
 import os
 import copy
+from scipy.interpolate import interp1d
 import flap
 import matplotlib.gridspec as gridspec
 
@@ -31,7 +32,8 @@ except ModuleNotFoundError:
     from flap_w7x_abes.utc_offset import UTC_offset
 
 class BORIMonitor():
-    def __init__(self, date=None, exp_id=None, datapath='/data'):
+    def __init__(self, date=None, exp_id=None, datapath='/data',
+                 material="Na"):
         if date is None and exp_id is None:
             raise ValueError("Either date or experiment id should be given to read a beam log")
         self.date = date
@@ -39,6 +41,7 @@ class BORIMonitor():
         self.datapath = datapath
         
         self.read_tdms()
+        self.get_vap_pressure(material=material)
         
 
     def read_tdms(self):
@@ -58,6 +61,7 @@ class BORIMonitor():
                       'FC2 Resistor Current mA':"Current:mA",
                       'VG HighVac1':"Pressure:mbar",
                       'VG HighVac2':"Pressure:mbar",
+                      'VG ForeVac':"Pressure:mbar",
                       'Neut Shut Closed':"n.a.:n.a",
                       'PB Feedback-Open':"n.a.:n.a"}
         if self.date is not None:
@@ -85,6 +89,7 @@ class BORIMonitor():
                                                    coordinates=[time_coord], exp_id=self.date,
                                                    data_title=data_name, data_shape=d[index].shape,
                                                    info="BORI log data")
+        
 
     def slice_time(self, last_minutes=20):
         return_dataobject = copy.deepcopy(self)
@@ -216,8 +221,7 @@ class BORIMonitor():
             else:
                 current_color = plotcolor
                 current_marker = marker_list[index%len(marker_list)]
-            if label is None:
-                label=f"{heating_curr}A ({self.date})"
+            label=f"{heating_curr}A ({self.date})"
             if alpha is None:
                 alpha = 0.2
             plt.scatter(self.child_langmuir[heating_curr][0],
@@ -271,6 +275,24 @@ class BORIMonitor():
         plt.xlabel("Oven bottom temperature [C]")
         plt.ylabel("FC2 current/Beam current")
         plt.legend()
+    
+    def get_vap_pressure(self, material="Na"):
+        datatemp = copy.deepcopy(self.data['TC Oven Top'])
+        datatemp.data_unit.name = "Pressure"
+        datatemp.data_unit.unit = "mbar"
+        datatemp.data = vap_pressure(self.data['TC Oven Top'].data, material=material)
+        datatemp.name = "Vap Press Oven Top"
+        self.data["Vap Press Oven Top"] = copy.deepcopy(datatemp)
+        datatemp.data = vap_pressure(self.data['TC Oven Bottom'].data, material=material)
+        datatemp.name = "Vap Press Oven Bottom"
+        self.data["Vap Press Oven Bottom"] = copy.deepcopy(datatemp)
+        datatemp.data = vap_pressure(self.data['TC Torus Side Cone'].data, material=material)
+        datatemp.name = "Vap Press Torus Side Cone"
+        self.data["Vap Press Torus Side Cone"] = copy.deepcopy(datatemp)
+        datatemp.data = vap_pressure(self.data['TC Emit Side Cone'].data, material=material)
+        datatemp.name = "Vap Press Emit Side Cone"
+        self.data["Vap Press Emit Side Cone"] = copy.deepcopy(datatemp)
+        
 
 def find_files(startdate=None,starttime='0000',start_datetime=None,
                enddate=None,endtime='2359',end_datetime=None,
@@ -538,6 +560,8 @@ def read_date_tdms(data_names=None,startdate=None,starttime='0000',start_datetim
         if (verbose):
             print('Processing {:s}'.format(fn),flush=True)
         with TdmsFile.open(fn) as tdms_file:
+            # for channelname in list(sorted(tdms_file['MonitorData']._channels.keys())):
+            #     print(channelname)
             try:
                 tdms_version =  tdms_file.properties['Version']
             except KeyError:
@@ -863,6 +887,41 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
     plt.ylabel('[mA]')
     plt.title('Extra currents')
     plt.xlim(*trange)
+
+def vap_pressure(T, material="Na"):
+    # Returns the equilibirum vapor pressure of the given alkali metal
+    # T in celsius
+    # Based on Honig (Courtesy RCA laboratories)
+    T = T + 273.15
+    
+    temp_list_kelvin = np.array([300, 350, 360, 370, 380, 390, 400, 410, 420, 430, 440, 450,
+                 460, 470, 480, 490, 500, 510, 520, 530])
+    if material == "Na":
+        if str(type(T)) != "<class 'numpy.ndarray'>":
+            if T < 97.79:
+                return np.nan
+        press_list = [1e-8, 3e-8, 7e-8, 2e-7, 4e-7, 8e-7, 2e-6, 4e-6, 8e-6,
+                      2e-5, 4e-5, 6e-5, 1e-4, 2e-4, 3.5e-4, 6.5e-4, 1.5e-3,
+                      3.5e-3, 8e-3]
+        vap_press = interp1d(temp_list_kelvin[1:], np.log(press_list), fill_value="extrapolate")
+        result = np.exp(vap_press(T))
+        if str(type(T)) == "<class 'numpy.ndarray'>":
+            result[np.where(T < 97.79)] = np.nan
+    if material == "K":
+        if str(type(T)) != "<class 'numpy.ndarray'>":
+            if T < 63.5:
+                return np.nan
+        press_list = [2e-8, 3e-6, 7e-6, 1.2e-5, 3e-5, 6e-5, 1e-4, 2e-4, 3.2e-4, 6e-4, 1e-3,
+                      2e-3, 3e-3, 5e-3, 8e-3, 1.2e-2, 2.2e-2, 5e-2, 1e-1, 2e-1]
+        vap_press = interp1d(temp_list_kelvin, np.log(press_list), fill_value="extrapolate")
+        result = np.exp(vap_press(T))
+        if str(type(T)) == "<class 'numpy.ndarray'>":
+            result[np.where(T < 63.5)] = np.nan
+    
+#    plt.plot(temp_list_kelvin-273.15, press_list)
+#    plt.yscale("log")
+#    plt.ylim([1e-8, 1e-2])
+    return result
 
 if __name__ == "__main__":
     # plot_beamdata(startdate="20240924",datapath='/data',last_minutes=20)
