@@ -18,6 +18,7 @@ except ModuleNotFoundError:
 import datetime
 import os
 import copy
+from scipy.interpolate import interp1d
 import flap
 import matplotlib.gridspec as gridspec
 
@@ -31,7 +32,8 @@ except ModuleNotFoundError:
     from flap_w7x_abes.utc_offset import UTC_offset
 
 class BORIMonitor():
-    def __init__(self, date=None, exp_id=None, datapath='/data'):
+    def __init__(self, date=None, exp_id=None, datapath='/data',
+                 material="Na"):
         if date is None and exp_id is None:
             raise ValueError("Either date or experiment id should be given to read a beam log")
         self.date = date
@@ -39,6 +41,7 @@ class BORIMonitor():
         self.datapath = datapath
         
         self.read_tdms()
+        self.get_vap_pressure(material=material)
         
 
     def read_tdms(self):
@@ -58,7 +61,9 @@ class BORIMonitor():
                       'FC2 Resistor Current mA':"Current:mA",
                       'VG HighVac1':"Pressure:mbar",
                       'VG HighVac2':"Pressure:mbar",
-                      'Neut Shut Closed':"n.a.:n.a"}
+                      'VG ForeVac':"Pressure:mbar",
+                      'Neut Shut Closed':"n.a.:n.a",
+                      'PB Feedback-Open':"n.a.:n.a"}
         if self.date is not None:
             t,d,u = read_date_tdms(data_names=list(data_names.keys()),startdate=self.date,datapath=self.datapath)
             reftime = np.datetime64(self.date)
@@ -84,13 +89,14 @@ class BORIMonitor():
                                                    coordinates=[time_coord], exp_id=self.date,
                                                    data_title=data_name, data_shape=d[index].shape,
                                                    info="BORI log data")
+        
 
     def slice_time(self, last_minutes=20):
         return_dataobject = copy.deepcopy(self)
         timevec = self.data['Emit Current A'].get_coordinate_object("Time").values
         xlim = [timevec[np.where(timevec > timevec[-1] - last_minutes*60)][0], timevec[-1]]
         for key in self.data.keys():
-            return_dataobject.data[key] = self.data[key].slice_data(slicing={"Time":flap.Intervals(xlim[0], xlim[1])})
+            return_dataobject.data[key] = return_dataobject.data[key].slice_data(slicing={"Time":flap.Intervals(xlim[0], xlim[1])})
         return return_dataobject
 
     def get_load_resistance(self):
@@ -122,8 +128,7 @@ class BORIMonitor():
         
         if (hasattr(self, "em_resistance") is False) or (hasattr(self, "ex_resistance") is False):
             self.get_load_resistance()
-        
-        
+
         extractor_overcurrent = copy.deepcopy(self.data['HV Ex Meas Current'])
         extractor_overcurrent.data = self.data['HV Ex Meas Current'].data-self.data['HV Ex Meas Voltage'].data/self.ex_resistance
         extractor_overcurrent.name = "Extractor overcurrent"
@@ -133,6 +138,25 @@ class BORIMonitor():
         emitter_overcurrent.data = self.data['HV Em Meas Current'].data-self.data['HV Em Meas Voltage'].data/self.em_resistance
         emitter_overcurrent.name = "Emitter overcurrent"
         self.data["Emitter overcurrent"] = emitter_overcurrent
+
+    def get_extracted_charge(self):
+        if ("Emitter overcurrent" not in list(self.data.keys())) or ("Extractor overcurrent" not in list(self.data.keys())):
+            self.get_overcurrent()
+        timevect = self.data["Emitter overcurrent"].get_coordinate_object("Time").values
+        rel_data = self.data["Emitter overcurrent"].data.clip(min=0)
+        failed_data = np.where(np.isnan(self.data["Emitter overcurrent"].data))
+        rel_data[failed_data] = 0
+        
+        extracted_charge = copy.deepcopy(self.data["Emitter overcurrent"])
+        extracted_charge.data_title = "Extracted charge"
+        extracted_charge.data_unit.name = "Charge"
+        extracted_charge.data_unit.unit = "mC"
+        extracted_charge.data[0] = 0
+        for index in range(len(extracted_charge.data)-1):
+            extracted_charge.data[index+1] = extracted_charge.data[index] + rel_data[index]*(timevect[index+1]-timevect[index])
+        
+        self.data["Extracted charge"] = extracted_charge
+        
 
     def get_child_langmuir(self, neutralizer_shutter=None):
         """
@@ -158,14 +182,13 @@ class BORIMonitor():
         else:
             rel_time = np.where((em_voltage_der<0.1)*\
                                 (ex_voltage_der<0.1)*\
-                                (self.data['Neut Shut Closed'].data[1:] == neutralizer_shutter)*\
+                                (abs(self.data['Neut Shut Closed'].data[1:] - neutralizer_shutter)<0.5)*\
                                 (self.data['HV Em Meas Voltage'].data[1:]>0.1)*\
                                 (self.data['HV Ex Meas Voltage'].data[1:]<self.data['HV Em Meas Voltage'].data[1:]))
-            
         voltage_difference = self.data['HV Em Meas Voltage'].data[1:][rel_time] - self.data['HV Ex Meas Voltage'].data[1:][rel_time]
         heating_current = self.data['Emit Current A'].data[1:][rel_time]
         beam_current = self.data["Emitter overcurrent"].data[1:][rel_time]
-        
+
         #rounds the heating_current to 1A accuracy
         heating_current_approx = (heating_current+0.5).astype(int)
         heating_current_values = np.unique(heating_current_approx)
@@ -176,13 +199,12 @@ class BORIMonitor():
             rel_points = np.where(heating_current_approx == heating_curr)
             self.child_langmuir[str(heating_curr)] = [voltage_difference[rel_points],
                                                       beam_current[rel_points]]
-
         
     def plot_child_langmuir(self, newfigure=True, plotcolor=None, neutralizer_shutter=None,
-                            label=None):
+                            label=None, alpha=None):
         if (hasattr(self, "child_langmuir") is False) or neutralizer_shutter is not None:
             self.get_child_langmuir(neutralizer_shutter=neutralizer_shutter)
-        
+
         if newfigure is True:
             plt.figure()
             plt.title(f"Child-Langmuir plot based on BORI logs")
@@ -199,16 +221,17 @@ class BORIMonitor():
             else:
                 current_color = plotcolor
                 current_marker = marker_list[index%len(marker_list)]
-            if label is None:
-                label=f"{heating_curr}A ({self.date})"
+            label=f"{heating_curr}A ({self.date})"
+            if alpha is None:
+                alpha = 0.2
             plt.scatter(self.child_langmuir[heating_curr][0],
                         self.child_langmuir[heating_curr][1],
                         c=current_color,
                         marker=current_marker,
                         label=label,
-                        alpha=0.2)
+                        alpha=alpha)
         plt.xlabel("Extraction voltage [kV]")
-        plt.ylabel("Beam current [mA]")
+        plt.ylabel("Emitter extra current [mA]")
         plt.legend()
         
     def plot_neutralizer(self, newfigure=True, plotcolor=None):
@@ -252,6 +275,24 @@ class BORIMonitor():
         plt.xlabel("Oven bottom temperature [C]")
         plt.ylabel("FC2 current/Beam current")
         plt.legend()
+    
+    def get_vap_pressure(self, material="Na"):
+        datatemp = copy.deepcopy(self.data['TC Oven Top'])
+        datatemp.data_unit.name = "Pressure"
+        datatemp.data_unit.unit = "mbar"
+        datatemp.data = vap_pressure(self.data['TC Oven Top'].data, material=material)
+        datatemp.name = "Vap Press Oven Top"
+        self.data["Vap Press Oven Top"] = copy.deepcopy(datatemp)
+        datatemp.data = vap_pressure(self.data['TC Oven Bottom'].data, material=material)
+        datatemp.name = "Vap Press Oven Bottom"
+        self.data["Vap Press Oven Bottom"] = copy.deepcopy(datatemp)
+        datatemp.data = vap_pressure(self.data['TC Torus Side Cone'].data, material=material)
+        datatemp.name = "Vap Press Torus Side Cone"
+        self.data["Vap Press Torus Side Cone"] = copy.deepcopy(datatemp)
+        datatemp.data = vap_pressure(self.data['TC Emit Side Cone'].data, material=material)
+        datatemp.name = "Vap Press Emit Side Cone"
+        self.data["Vap Press Emit Side Cone"] = copy.deepcopy(datatemp)
+        
 
 def find_files(startdate=None,starttime='0000',start_datetime=None,
                enddate=None,endtime='2359',end_datetime=None,
@@ -519,6 +560,8 @@ def read_date_tdms(data_names=None,startdate=None,starttime='0000',start_datetim
         if (verbose):
             print('Processing {:s}'.format(fn),flush=True)
         with TdmsFile.open(fn) as tdms_file:
+            # for channelname in list(sorted(tdms_file['MonitorData']._channels.keys())):
+            #     print(channelname)
             try:
                 tdms_version =  tdms_file.properties['Version']
             except KeyError:
@@ -626,7 +669,7 @@ def read_exp_tdms(data_names, exp_id,datapath='/data/W7X/APDCAM'):
                     time_vect = currtime
                 else:
                     time_vect = np.concatenate([time_vect, currtime])
-                    
+                # print([groupname.path.split("/")[2] for groupname in group.channels()])
                 #getting the data
                 for data in data_names:
                     currdata =  group[data][:]
@@ -845,8 +888,43 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
     plt.title('Extra currents')
     plt.xlim(*trange)
 
+def vap_pressure(T, material="Na"):
+    # Returns the equilibirum vapor pressure of the given alkali metal
+    # T in celsius
+    # Based on Honig (Courtesy RCA laboratories)
+    T = T + 273.15
+    
+    temp_list_kelvin = np.array([300, 350, 360, 370, 380, 390, 400, 410, 420, 430, 440, 450,
+                 460, 470, 480, 490, 500, 510, 520, 530])
+    if material == "Na":
+        if str(type(T)) != "<class 'numpy.ndarray'>":
+            if T < 97.79:
+                return np.nan
+        press_list = [1e-8, 3e-8, 7e-8, 2e-7, 4e-7, 8e-7, 2e-6, 4e-6, 8e-6,
+                      2e-5, 4e-5, 6e-5, 1e-4, 2e-4, 3.5e-4, 6.5e-4, 1.5e-3,
+                      3.5e-3, 8e-3]
+        vap_press = interp1d(temp_list_kelvin[1:], np.log(press_list), fill_value="extrapolate")
+        result = np.exp(vap_press(T))
+        if str(type(T)) == "<class 'numpy.ndarray'>":
+            result[np.where(T < 97.79)] = np.nan
+    if material == "K":
+        if str(type(T)) != "<class 'numpy.ndarray'>":
+            if T < 63.5:
+                return np.nan
+        press_list = [2e-8, 3e-6, 7e-6, 1.2e-5, 3e-5, 6e-5, 1e-4, 2e-4, 3.2e-4, 6e-4, 1e-3,
+                      2e-3, 3e-3, 5e-3, 8e-3, 1.2e-2, 2.2e-2, 5e-2, 1e-1, 2e-1]
+        vap_press = interp1d(temp_list_kelvin, np.log(press_list), fill_value="extrapolate")
+        result = np.exp(vap_press(T))
+        if str(type(T)) == "<class 'numpy.ndarray'>":
+            result[np.where(T < 63.5)] = np.nan
+    
+#    plt.plot(temp_list_kelvin-273.15, press_list)
+#    plt.yscale("log")
+#    plt.ylim([1e-8, 1e-2])
+    return result
+
 if __name__ == "__main__":
     # plot_beamdata(startdate="20240924",datapath='/data',last_minutes=20)
-    beam_log = BORIMonitor(exp_id="20240924.027")
+    beam_log = BORIMonitor(exp_id="20240919.035")
 
             

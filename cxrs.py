@@ -59,7 +59,6 @@ def wavelength_grid_generator_op22(grid, w_s,datapath_base):
     OUTPUT:
         1D numpy array with the calibrated wavelength values
     """
-    
     calib_array = np.loadtxt(datapath_base+"/OP2_2/wavelength_calib_2024_"+grid+".txt")
     # loading the calibration coeffs
     c0 = calib_array[0]
