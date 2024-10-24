@@ -10,7 +10,7 @@ This is the flap module for W7-X alkali BES diagnostic
 import os
 import time
 import warnings
-from decimal import *
+from decimal import Decimal
 import gc
 import psutil
 import numpy as np
@@ -508,9 +508,34 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
     else:
         start_phase = phase
         end_phase = phase
-    chop_clk_in_sample = round(config['APDCAM_f_sample'] / config['Chopper clock'])
-    # This is temporary, has to be corrected with the flight time and APDCAM trigger delay
-    instrument_delay = -3/Decimal(1000000)
+    chop_clk_in_sample = config['APDCAM_f_sample'] / config['Chopper clock']
+    if (chop_clk_in_sample >= 1):
+        if (abs(chop_clk_in_sample - round(chop_clk_in_sample)) > 1e-6):
+            print("Chopper clock period time is not compatible with sample period.")
+        else:
+            chop_clk_in_sample = round(chop_clk_in_sample)
+    else:
+        if (abs(Decimal(1)/chop_clk_in_sample - round(Decimal(1)/chop_clk_in_sample)) > 1e-6):
+            print("Chopper clock period time is not compatible with sample period (sampletime longer).")            
+
+    if (config['APDCAM_clock_source'] == 'External'):
+        warnings.warn("APDCAM clock source is external, chopper drifts relative to signal.")
+
+    # These are values [microsec] detemined from the signals
+    switch_time = 3/Decimal(1000000)
+    switch_time_sample = round(switch_time / config['APDCAM_sampletime'])
+    if (config['APDCAM_f_ADC'] == Decimal(20e6)):
+        if (config['APDCAM_f_sample'] == Decimal(2e6)):
+            instrument_delay = -9/Decimal(1000000)
+        elif (config['APDCAM_f_sample'] == Decimal(1e6)):
+            instrument_delay = -6/Decimal(1000000)
+        else:
+            warnings.warn("Unknown sample delay relative to chopper. Check chopper timing.")
+            instrument_delay = -9/Decimal(1000000)
+    else:
+        warnings.warn("Unknown sample delay relative to chopper. Check chopper timing.")
+        instrument_delay = -9/Decimal(1000000)
+        
     clock_unit = Decimal(1.) / config['Chopper clock']
     if (config['Chopper mode'] == 'Camera'):
         period_time_clk = round(config['CMOS frametime'] / Decimal(1000) \
@@ -562,15 +587,17 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
         raise ValueError("Invalid chopper end delay.")
 
     if (read_samplerange is not None):
-        start_sample = start_clk * chop_clk_in_sample
-        period_time_sample = period_time_clk * chop_clk_in_sample
+        start_sample = round(start_clk * chop_clk_in_sample)
+        period_time_sample = round(period_time_clk * chop_clk_in_sample)
+        if (period_time_sample < 2):
+            raise ValueError("Less than one sample in chopper period.")
         if (start_sample < read_samplerange[0]):
             start_ind = int((read_samplerange[0] - start_sample)
                             / period_time_sample + 1)
             start_clk += period_time_clk * start_ind
             stop_clk += period_time_clk * start_ind
         stop_sample = stop_clk * chop_clk_in_sample
-        n_period =  int((read_samplerange[1] - stop_sample) / period_time_sample+0.5)
+        n_period =  int(float((read_samplerange[1] - stop_sample) / period_time_sample) + 0.5)
         if (n_period <= 0):
             raise ValueError("No chopper intervals in time (sample) range.")
     else:
@@ -582,20 +609,18 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
                                              mode=mode,
                                              start=round(start_clk * chop_clk_in_sample
                                                     + instrument_delay/config['APDCAM_sampletime'])
-                                                    + start_delay_sample,
+                                                    + start_delay_sample + switch_time_sample,
                                              step=round(period_time_clk*chop_clk_in_sample) ,
                                              value_ranges=[0,round((stop_clk-start_clk) * chop_clk_in_sample)
-                                                           + stop_delay_sample - start_delay_sample],
+                                                           + stop_delay_sample - start_delay_sample - switch_time_sample],
                                            dimension_list=[0]
                                            ))
     c_time = copy.deepcopy(flap.Coordinate(name='Time',
                                            unit='Second',
                                            mode=mode,
-                                           start = c_sample.start * config['APDCAM_sampletime'] + config['APDCAM_starttime'],
+                                           start = c_sample.start * float(config['APDCAM_sampletime'])+ float(config['APDCAM_starttime']),
                                            step=period_time_clk*clock_unit,
-                                           value_ranges=[0, float((stop_clk-start_clk) * clock_unit)
-                                                           + (stop_delay_sample - start_delay_sample)
-                                                             * float(config['APDCAM_sampletime'])],
+                                           value_ranges=[0, c_sample.value_ranges[1] * float(config['APDCAM_sampletime'])],
                                            dimension_list=[0]
                                            ))
 
@@ -1375,6 +1400,118 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
     
         return dataobject_beam_on
 
+def chopped_signals(exp_ID,timerange=None,signals='ABES-[1-40]',datapath=None,background=False):
+    """
+    
+     *****THIS IS OUTDATED! Use get_clean_abes ****
+    Processes chopped ABES measurements. Averages the signal in chopping periods and corrects for the background.
+    Returns a data object with all the requested channels. The time resolution will be the chopper period time.
+    For background correction the background is linearly interplated between chopping periods to find the background
+    when the beam is on. If background is requested the timescale will be the background measurement time vector, 
+    otherwise the beam-on time vector.
+
+    Parameters
+    ----------
+    exp_ID : string
+        Experiment ID. E.g. 202410109.062
+    timerange : list of two floats, optional
+        The time range to process. The default is None, all times will be processed.
+    signals : string or string array, optional
+        The signals to process. The default is 'ABES-[1-40]'.
+    datapath : string, optional
+        The data path. The default is None, in this case the default from the flap_defaults.cfg 
+        config file will be used.
+    background : boolean, optional
+        If True the background signal is returned. The default is False.
+
+    Returns
+    -------
+    flap.dataObject
+        The data.
+
+    """    
+    
+    print("Chopped_signals is outdated. Use get_clean_abes")
+    options = {}
+    if (datapath is not None):
+        options['Datapath'] = datapath
+   
+
+    d_beam_on=flap.get_data('W7X_ABES',
+                             exp_id=exp_ID,
+                             name='Chopper_time',
+                             options={'State':{'Chop': 0, 'Defl': 0},'Start':0,'End':0}
+                             )
+    d_beam_off=flap.get_data('W7X_ABES',
+                             exp_id=exp_ID,
+                             name='Chopper_time',
+                             options={'State':{'Chop': 1, 'Defl': 0},'Start':0,'End':0}
+                             )           
+
+    chopper_mode = d_beam_on.info['Chopper mode']
+    on1,on2,on3 = d_beam_on.coordinate('Time')
+    off1,off2,off3 = d_beam_off.coordinate('Time')
+    beam_on_time = on3[1]-on2[1]
+    beam_off_time = off3[1]-off2[1]
+    period_time = beam_on_time + beam_off_time
+    
+    on_start = 0
+    on_end = 0
+    off_start = 0
+    off_end = 0
+ 
+    if (d_beam_on.info['APDCAM_clock_source'] == 'External'):
+        if (period_time < 0.01):
+            warnings.warn("Fast chopping with external clock, background separation might not be correct.")
+        else:
+            on_start = 1000
+            on_end = -1000
+            off_start = 1000
+            off_end = -1000
+            options['Resample'] = 1e4
+    else:
+        on_start = 0
+        on_end = 0
+        off_start = 0
+        off_end = 0
+        options['Resample'] = None
+        
+    d_beam_on=flap.get_data('W7X_ABES',
+                             exp_id=exp_ID,
+                             name='Chopper_time',
+                             options={'State':{'Chop': 0, 'Defl': 0},'Start':on_start,'End':on_end}
+                             )
+    d_beam_off=flap.get_data('W7X_ABES',
+                             exp_id=exp_ID,
+                             name='Chopper_time',
+                             options={'State':{'Chop': 1, 'Defl': 0},'Start':off_start,'End':off_end}
+                             ) 
+      
+    d=flap.get_data('W7X_ABES',
+                    exp_id = exp_ID,
+                    name = signals,
+                    options = options,
+                    coordinates = {'Time': timerange}
+                    )
+    d_off = d.slice_data(slicing={'Time':d_beam_off},
+                         summing={'Rel. Sample in int(Time)':'Mean'},
+                         options={'Regenerate':True,'Partial intervals':False}
+                         )
+
+    if (background):
+        return d_off
+    else:
+        d_on = d.slice_data(slicing={'Time':d_beam_on},
+                            summing={'Rel. Sample in int(Time)':'Mean'},
+                            options={'Regenerate':True,'Partial intervals':False}
+                            )
+        d_off = d_off.slice_data(slicing={'Time':d_on},
+                                 options={'Interpolation':'Linear'}
+                                 )
+        d_on.data = d_on.data - d_off.data
+        return d_on
+    
+    
 def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,signals='ABES-[1-40]', on_options=None,
                      off_options=None, test=None, options={}):
     """ Calculate signals in beam on and beam/off phases of the measurement and

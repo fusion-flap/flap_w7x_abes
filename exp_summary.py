@@ -46,20 +46,27 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         options['Datapath'] = datapath
     
     try:
+        options['State'] ={'Chop': 0, 'Defl': 0}
+        options['Start'] = 0
+        options['End'] = 0
+        
         d_beam_on=flap.get_data('W7X_ABES',
                                  exp_id=exp_ID,
                                  name='Chopper_time',
-                                 options={'State':{'Chop': 0, 'Defl': 0},'Start':0,'End':0}
+                                 options=options
                                  )
+        options['State'] ={'Chop': 1, 'Defl': 0}
+        options['Start'] = 0
+        options['End'] = 0
         d_beam_off=flap.get_data('W7X_ABES',
                                  exp_id=exp_ID,
                                  name='Chopper_time',
-                                 options={'State':{'Chop': 1, 'Defl': 0},'Start':0,'End':0}
+                                 options=options
                                  )           
-       
+
         chopper_mode = d_beam_on.info['Chopper mode']
         on1,on2,on3 = d_beam_on.coordinate('Time')
-        off1,off2,off3 = d_beam_on.coordinate('Time')
+        off1,off2,off3 = d_beam_off.coordinate('Time')
         beam_on_time = on3[1]-on2[1]
         beam_off_time = off3[1]-off2[1]
         period_time = beam_on_time + beam_off_time
@@ -77,9 +84,9 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
             options['Resample'] = 1e4
         else:
             on_start = 0
-            on_end = -3
+            on_end = 0
             off_start = 0
-            off_end = -3
+            off_end = 0
             options['Resample'] = None
             
         d_beam_on=flap.get_data('W7X_ABES',
@@ -113,6 +120,10 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
             d_off = d_off.slice_data(slicing={'Time':d_on},
                                      options={'Interpolation':'Linear'}
                                      )
+            if (test):
+                plt.figure()
+                d_on.plot(axes='Time')
+                d_off.plot(axes='Time')
             d_on_data = d_on.data
             d_off_data = d_off.data
             ind = np.nonzero(np.logical_and(np.isfinite(d_off_data),
@@ -130,8 +141,11 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         txt += ' ... Max:{:4.0f}[mV] '.format(d_max * 1000)
         timescale = d_on.coordinate('Time')[0][ind]
         s = np.sum(sig,axis=1)
-        ind = np.nonzero(s > np.max(s) * 0.1)[0]
-        txt += ' ... Time range:({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
+        if (np.max(s) <= 0):
+            txt += '... Time range: ---'
+        else:
+            ind = np.nonzero(s >= np.max(s) * 0.1)[0]
+            txt += ' ... Time range:({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
     except Exception as e:
         txt += ' --- {:s} ---'.format(str(e))
     return txt

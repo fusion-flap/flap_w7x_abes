@@ -20,7 +20,7 @@ flap_w7x_abes.test_chopper_timing(exp_id='20230323.062',
                                   resample=None,
                                   x_axis='Time',
                                   start_shift=0,
-                                  end_shift=-3
+                                  end_shift=0
                                   )
 plt.figure()
 # For testing a camera chopping measurement
