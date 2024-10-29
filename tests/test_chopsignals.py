@@ -12,6 +12,7 @@ import flap_w7x_abes
 
 flap_w7x_abes.register()
 
+print("This program is obsolete!!!")
 # Reading configuration file in the test directory
 thisdir = os.path.dirname(os.path.realpath(__file__))
 fn = os.path.join(thisdir,"w7x_config.cfg")

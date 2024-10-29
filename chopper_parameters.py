@@ -10,7 +10,8 @@ import flap_w7x_abes
 
 flap_w7x_abes.register()
 
-def chopper_parameters(exp_ID,datapath=None):
+def chopper_parameters(exp_ID,datapath=None,timerange=None,
+                       beam_on_start_delay=None,beam_on_end_delay=None,beam_off_start_delay=None,beam_off_end_delay=None):
     """
     Returns the beam chopper parameters
 
@@ -40,14 +41,18 @@ def chopper_parameters(exp_ID,datapath=None):
     d_beam_on = flap.get_data('W7X_ABES',
                               exp_id=exp_ID,
                               name='Chopper_time',
+                              coordinates={'Time':timerange},
                               options={'State': {'Chop': 0, 'Defl': 0},
-                                       'Start': 0, 'End': 0}
+                                       'Start delay': beam_on_start_delay, 'End delay': beam_on_end_delay
+                                       }
                               )
     d_beam_off = flap.get_data('W7X_ABES',
                                exp_id=exp_ID,
                                name='Chopper_time',
+                               coordinates={'Time':timerange},
                                options={'State': {'Chop': 1, 'Defl': 0},
-                                        'Start': 0, 'End': 0}
+                                        'Start delay': beam_off_start_delay, 'End delay': beam_off_end_delay
+                                        }
                                )
     chopper_mode = d_beam_on.info['Chopper mode']
     on1, on2, on3 = d_beam_on.coordinate('Time')

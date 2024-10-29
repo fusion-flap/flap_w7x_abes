@@ -16,7 +16,8 @@ flap_w7x_abes.register()
 def plot_power(exp_ID,timerange=None,signals=['ABES-10','ABES-15','ABES-19', 'ABES-23'],
                datapath=None,resample="",signal_type='raw',beam_on=None,
                frange=None,fres=None,flog=None,interval_n=None,
-               plot_type='xy',options=None,plot_id=None,crosspower_amplitude=False,crosspower_phase=False):
+               plot_type='xy',options=None,plot_id=None,crosspower_amplitude=False,crosspower_phase=False,
+               beam_on_start_delay=None,beam_on_end_delay=None,beam_off_start_delay=None,beam_off_end_delay=None):
     """
     Plots the power spectrum of background corrected signals or background signals.
 
@@ -113,7 +114,11 @@ def plot_power(exp_ID,timerange=None,signals=['ABES-10','ABES-15','ABES-19', 'AB
                                          datapath=datapath,
                                          resample=resample,
                                          signal_type=signal_type,
-                                         timerange=timerange
+                                         timerange=timerange,
+                                         beam_on_start_delay=beam_on_start_delay,
+                                         beam_on_end_delay=beam_on_end_delay,
+                                         beam_off_start_delay=beam_off_start_delay,
+                                         beam_off_end_delay=beam_off_end_delay
                                          )
         if (beam_on is None):
             p = d.apsd(coordinate='Time',options=apsd_options)
@@ -152,7 +157,11 @@ def plot_power(exp_ID,timerange=None,signals=['ABES-10','ABES-15','ABES-19', 'AB
                                          datapath=datapath,
                                          resample=resample,
                                          signal_type=signal_type,
-                                         timerange=timerange
+                                         timerange=timerange,
+                                         beam_on_start_delay=beam_on_start_delay,
+                                         beam_on_end_delay=beam_on_end_delay,
+                                         beam_off_start_delay=beam_off_start_delay,
+                                         beam_off_end_delay=beam_off_end_delay
                                          )
         cpsd_names = []
         cpsd_channels = []
@@ -253,7 +262,7 @@ def plot_power(exp_ID,timerange=None,signals=['ABES-10','ABES-15','ABES-19', 'AB
     except KeyError:
         _plot_options['Log y'] = True
             
-    axes = ['Frequency',"__Data__"]
+    axes = ['Frequency']
     if (len(p.shape) == 1):
         if ((plot_type != 'xy') and (plot_type != 'scatter')):
             raise ValueError("For one signal only xy or scatter plot is possible.")

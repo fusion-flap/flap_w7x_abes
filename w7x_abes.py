@@ -462,8 +462,8 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
         options:
         'Phase' : Phase/frame to process in the chopper period (0, ...)
         'State'  :  Dictionary with {'Chop': 0 or 1, 'Defl': 0 or 1}
-        'Start delay' : Start delay relative to the phase start in microsec
-        'End delay' : Delay at the end of the phase in microsec. Positive means later times.
+        'Start delay' : Start delay relative to the phase start in microsec or None. If None use seom standard value depending on settings.
+        'End delay' : Delay at the end of the phase in microsec. Positive means later times. If None use seom standard value depending on settings.
     """
     try:
         sch = config['Chopper scheme']
@@ -518,10 +518,8 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
         if (abs(Decimal(1)/chop_clk_in_sample - round(Decimal(1)/chop_clk_in_sample)) > 1e-6):
             print("Chopper clock period time is not compatible with sample period (sampletime longer).")            
 
-    if (config['APDCAM_clock_source'] == 'External'):
-        warnings.warn("APDCAM clock source is external, chopper drifts relative to signal.")
 
-    # These are values [microsec] detemined from the signals
+    # These are values [microsec] determined from the signals
     switch_time = 3/Decimal(1000000)
     switch_time_sample = round(switch_time / config['APDCAM_sampletime'])
     if (config['APDCAM_f_ADC'] == Decimal(20e6)):
@@ -535,6 +533,7 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
     else:
         warnings.warn("Unknown sample delay relative to chopper. Check chopper timing.")
         instrument_delay = -9/Decimal(1000000)
+       
         
     clock_unit = Decimal(1.) / config['Chopper clock']
     if (config['Chopper mode'] == 'Camera'):
@@ -570,21 +569,37 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
             st += length[i]
         stop_clk = int(round(st / 100 * period_time_clk))
 
-    try:
-        start_delay = float(options['Start delay'])
-        start_delay_sample = int(round(start_delay *1e-6 / float(config['APDCAM_sampletime'])))
-    except KeyError:
-        start_delay_sample = 0
-    except ValueError:
-        raise ValueError("Invalid chopper start delay.")
+    if (options['Start delay'] is None):
+        if (config['APDCAM_clock_source'] == 'External'):
+            if (config['Chopper period'] > 0.01):
+                start_delay_sample = int(round(1e-3 / float(config['APDCAM_sampletime'])))
+                print("APDCAM clock source is external, chopper drifts relative to signal. Shifting chopper start by 1 ms.")
+            else:
+                raise ValueError("APDCAM clock source is external, chopper drifts relative to signal. Set 'start delay'.")
+        else:
+            start_delay_sample = 0
+    else:
+        try:
+            start_delay = float(options['Start delay'])
+            start_delay_sample = int(round(start_delay *1e-6 / float(config['APDCAM_sampletime'])))            
+        except ValueError:
+            raise ValueError("Invalid chopper start delay.")
 
-    try:
-        stop_delay = float(options['End delay'])
-        stop_delay_sample = int(round(stop_delay * 1e-6 / float(config['APDCAM_sampletime'])))
-    except KeyError:
-        stop_delay_sample = 0
-    except ValueError:
-        raise ValueError("Invalid chopper end delay.")
+    if (options['End delay'] is None):
+        if (config['APDCAM_clock_source'] == 'External'):
+            if (config['Chopper period'] > 0.01):
+                stop_delay_sample = int(round(-1e-3 / float(config['APDCAM_sampletime'])))
+                print("APDCAM clock source is external, chopper drifts relative to signal. Shifting chopper end forward by 1 ms.")
+            else:
+                raise ValueError("APDCAM clock source is external, chopper drifts relative to signal. Set 'stop delay'.")
+        else:
+            stop_delay_sample = 0
+    else:
+        try:
+            stop_delay = float(options['End delay'])
+            stop_delay_sample = int(round(stop_delay * 1e-6 / float(config['APDCAM_sampletime'])))
+        except ValueError:
+            raise ValueError("Invalid chopper end delay.")
 
     if (read_samplerange is not None):
         start_sample = round(start_clk * chop_clk_in_sample)
@@ -687,8 +702,8 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                        'Amplitude calib. file': None,
                        'Phase' : None,
                        'State' : None,
-                       'Start delay': 0,
-                       'End delay': 0,
+                       'Start delay': None,
+                       'End delay': None,
                        'Spatial calibration': False,
                        'Spatial calib. path': 'spatcal',
                        'Partial intervals': False,
