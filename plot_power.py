@@ -51,6 +51,22 @@ def plot_power(exp_ID,timerange=None,signals=['ABES-10','ABES-15','ABES-19', 'AB
         Signal ABES-40 will be dropped.
     crosspower_phase: boolean
         Same is crosspower_ampltude, but plots the phase.
+    beam_on_start_delay : float or None
+        The start delay [microsec] to use for the beam on time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_on_end_delay : float or None
+        The end delay [microsec] to use for the beam on time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_off_start_delay : float or None
+        The start delay [microsec] to use for the beam off time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_off_end_delay : float or None
+        The end delay [microsec] to use for the beam off time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
     frange : list, optional
         Frequency range [Hz]. If None use setting in flap_defaults.cfg. The default is None.
     fres : float, optional

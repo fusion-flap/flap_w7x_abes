@@ -112,7 +112,7 @@ def test_w7x_chopper(test_type,exp_id=None,timerange=None):
     legend = ['Mean','Minimum','Maximum']
     plt.legend(legend)
 
-def test_chopper_timing(exp_id=None, timerange=None,signal='ABES-15',resample=1e3,x_axis='Time',start_shift=None,end_shift=None,
+def test_chopper_timing(exp_id=None, timerange=None,signal='ABES-15',resample=1e3,x_axis='Time',
                         beam_on_start_delay=None,beam_on_end_delay=None,beam_off_start_delay=None,beam_off_end_delay=None):
     """
     Test the chopper timing visually. Plots a signal and the chopper on and off periods.
@@ -130,10 +130,22 @@ def test_chopper_timing(exp_id=None, timerange=None,signal='ABES-15',resample=1e
         The resampling during data read. The default is 1e3. If None no resampling is done.
     x_axis : string, optional
         'Time' or 'Sample'. The default is 'Time'.
-    start_shift : float
-        The shift of the chopper start points [microsec]
-    end_shift : float
-        The shift of the chopper end points [microsec]
+    beam_on_start_delay : float or None
+        The start delay [microsec] to use for the beam on time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_on_end_delay : float or None
+        The end delay [microsec] to use for the beam on time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_off_start_delay : float or None
+        The start delay [microsec] to use for the beam off time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_off_end_delay : float or None
+        The end delay [microsec] to use for the beam off time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
 
     Returns
     -------

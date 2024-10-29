@@ -21,6 +21,25 @@ def chopper_parameters(exp_ID,datapath=None,timerange=None,
         The experiment ID.
     datapath : string or None, optional
         The data path. If None the one in flap_defaults.cfg will be used. The default is None.
+    timerange : List of two floats or None, optional
+        Time range to process. The default is None.
+    beam_on_start_delay : float or None
+        The start delay [microsec] to use for the beam on time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_on_end_delay : float or None
+        The end delay [microsec] to use for the beam on time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_off_start_delay : float or None
+        The start delay [microsec] to use for the beam off time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_off_end_delay : float or None
+        The end delay [microsec] to use for the beam off time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+
 
     Returns
     -------
