@@ -56,7 +56,7 @@ if __name__ == '__main__':
             
     get_cxrs_data = False
     if get_cxrs_data is True:
-        shotID= '20230330.028'
+        shotID= '20240926.027'
         flap.config.read()
         flap_w7x_abes.register()
         

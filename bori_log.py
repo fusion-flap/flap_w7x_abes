@@ -201,7 +201,7 @@ class BORIMonitor():
                                                       beam_current[rel_points]]
         
     def plot_child_langmuir(self, newfigure=True, plotcolor=None, neutralizer_shutter=None,
-                            label=None, alpha=None):
+                            label=None, alpha=None, axis=None):
         if (hasattr(self, "child_langmuir") is False) or neutralizer_shutter is not None:
             self.get_child_langmuir(neutralizer_shutter=neutralizer_shutter)
 
@@ -224,17 +224,31 @@ class BORIMonitor():
             label=f"{heating_curr}A ({self.date})"
             if alpha is None:
                 alpha = 0.2
-            plt.scatter(self.child_langmuir[heating_curr][0],
-                        self.child_langmuir[heating_curr][1],
-                        c=current_color,
-                        marker=current_marker,
-                        label=label,
-                        alpha=alpha)
-        plt.xlabel("Extraction voltage [kV]")
-        plt.ylabel("Emitter extra current [mA]")
-        plt.legend()
+            if axis == None:
+                plt.scatter(self.child_langmuir[heating_curr][0],
+                            self.child_langmuir[heating_curr][1],
+                            c=current_color,
+                            marker=current_marker,
+                            label=label,
+                            alpha=alpha)
+            else:
+                axis.scatter(self.child_langmuir[heating_curr][0],
+                             self.child_langmuir[heating_curr][1],
+                             c=current_color,
+                             marker=current_marker,
+                             label=label,
+                             alpha=alpha)
         
-    def plot_neutralizer(self, newfigure=True, plotcolor=None):
+        if axis == None:
+            plt.xlabel("Extraction voltage [kV]")
+            plt.ylabel("Emitter extra current [mA]")
+            plt.legend()
+        else:
+            axis.set_xlabel("Extraction voltage [kV]")
+            axis.set_ylabel("Emitter extra current [mA]")
+            axis.legend()
+        
+    def plot_neutralizer(self, newfigure=True, plotcolor=None, axis=None):
 
         if ("Emitter overcurrent" not in list(self.data.keys())) or ("Extractor overcurrent" not in list(self.data.keys())):
             self.get_overcurrent()
@@ -266,15 +280,25 @@ class BORIMonitor():
         
         if plotcolor is None:
             plotcolor = "tab:blue"
-        
-        plt.scatter(oven_temp_approx,
-                    fc2_current/beam_current,
-                    c=plotcolor,
-                    alpha=0.2,
-                    label=f"{self.date}")
-        plt.xlabel("Oven bottom temperature [C]")
-        plt.ylabel("FC2 current/Beam current")
-        plt.legend()
+
+        if axis is None:
+            plt.scatter(oven_temp_approx,
+                        fc2_current/beam_current,
+                        c=plotcolor,
+                        alpha=0.2,
+                        label=f"{self.date}")
+            plt.xlabel("Oven bottom temperature [C]")
+            plt.ylabel("FC2 current/Beam current")
+            plt.legend()
+        else:
+            axis.scatter(oven_temp_approx,
+                         fc2_current/beam_current,
+                         c=plotcolor,
+                         alpha=0.2,
+                         label=f"{self.date}")
+            axis.set_xlabel("Oven bottom temperature [C]")
+            axis.set_ylabel("FC2 current/Beam current")
+            axis.legend()
     
     def get_vap_pressure(self, material="Na"):
         datatemp = copy.deepcopy(self.data['TC Oven Top'])

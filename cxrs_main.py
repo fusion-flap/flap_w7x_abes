@@ -67,6 +67,24 @@ def w7x_abes_cxrs_get_data(exp_id=None, data_name=None, no_data=False, options=N
     d.del_coordinate("Coord 2")
     d.add_coordinate_object(wavelength_coord)
     d.get_coordinate_object("Wavelength").unit.unit = "px"
+    
+    
+    data_source = [line for line in d.info.split("\n") if "Source:" in line][0].split("Source:")[1][1:]
+    
+    # getting the grating, central wavelength setting, slit width
+    central_wavelength = np.mean(webapi.get_data(exp_id,
+                                                 data_name = f"{data_source.split('DATASTREAM')[0]}PARLOG/parms/IsoPlaneControl/config/centralWavelength/").data)
+    grating = int(np.mean(webapi.get_data(exp_id,
+                                      data_name = f"{data_source.split('DATASTREAM')[0]}PARLOG/parms/IsoPlaneControl/config/gratingNumber/").data))
+    grating_dict={0: "1200g_per_mm", 
+                  1: "1800g_per_mm",
+                  2: "2400g_per_mm"}
+    slit_width = np.mean(webapi.get_data(exp_id,
+                                         data_name = f"{data_source.split('DATASTREAM')[0]}PARLOG/parms/IsoPlaneControl/config/slitWidth/").data)
+    
+    d.config = {"Central wavelength": central_wavelength,
+                "Grating": grating_dict[grating],
+                "Slit width": slit_width}
 
     
     if _options['Spatial calibration'] is True:
@@ -116,15 +134,20 @@ def cxrs_add_coordinate(data_object,
         data_object = cxrs_add_wavelength(data_object)
     
     #Spatial coordinates
-    d = flap.get_data('W7X_WEBAPI', name='Test/raw/W7X/QSI/cxrs_PARLOG/parms/PICam/config/Rois_configString/',
+    data_source = [line for line in data_object.info.split("\n") if "Source:" in line][0].split("Source:")[1][1:]
+    d = flap.get_data('W7X_WEBAPI', name=f"{data_source.split('DATASTREAM')[0]}PARLOG/parms/PICam/config/Rois_configString/",
                       exp_id=exp_id,
                       options={'Scale Time': True,
                                'Cache Data': _options["Cache data"]},
                       object_name="ROIs")
     patch_config, temp1, temp2 = cxrs_util.read_fibre_config(exp_id)
-    roi_names = [ROI.split(",")[0] for ROI in d.data[0].split("{")[2:]]
+    roi_names = [ROI.split(",")[0] for ROI in d.data[0].split("{")[2:] if "Enabled" in ROI]
+
     if int(exp_id[:4])<2024:
         roi_names = ["A."+str(roi[-1]).zfill(2) for roi in roi_names]
+    if "channel" in roi_names[0]: #At some point Barnabas changed the naming convention of the ROIs
+        roi_names = [ROI.split(",")[0] for ROI in d.data[0].split("{")[1:] if "Enabled" in ROI]
+        roi_names = ["A."+str(roi.split("channel ")[1]).zfill(2) for roi in roi_names]
     signal_names = copy.deepcopy(data_object.get_coordinate_object('Channel'))
     signal_names.unit.name = "Signal name"
     signal_names.values = np.asarray(["N.A." for index in range(len(roi_names))])
@@ -144,9 +167,6 @@ def cxrs_add_coordinate(data_object,
     data_object.add_coordinate_object(signal_names)
     data_object.add_coordinate_object(optical_channel_coord)
 
-    # http://archive-webapi.ipp-hgw.mpg.de/Test/raw/W7X/QSI/cxrs_PARLOG/parms/IsoPlaneControl/config/centralWavelength
-    # http://archive-webapi.ipp-hgw.mpg.de/Test/raw/W7X/QSI/cxrs_PARLOG/parms/IsoPlaneControl/config/gratingNumber
-
     channel_coordinate_dim = data_object.get_coordinate_object('Signal name').dimension_list[0]
     channel_names = data_object.get_coordinate_object('Signal name').values
 
@@ -154,7 +174,6 @@ def cxrs_add_coordinate(data_object,
         coord_object = exp_spatcal.create_coordinate_object(channel_coordinate_dim, coord_name,
                                                          channel_names=channel_names)
         data_object.add_coordinate_object(coord_object)
-
 
     return data_object
 

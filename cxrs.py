@@ -8,6 +8,7 @@ Data processing code for Wendelstein 7-X QSI CXRS spectra measured during OP2.1 
 It can be modified easely to process data from later campaigns as well
 """
 
+import os
 import requests
 import json
 import numpy as np
@@ -195,7 +196,7 @@ class spectra:
         expe_id: string, experiment ID or shot ID
     The optional parameters are:
         get_data: string, the way to reach data for the object - default: "by shotID"
-        campaign: string, label of the operation phase - default: "OP2.1"
+        campaign: string, label of the operation phase - default: None
         spatcal: Boolean, wether or not add spatial coordinates to the 
                  dataobject - default: False
         time_correction: Boolean, whether or not perform correction on the
@@ -203,7 +204,7 @@ class spectra:
     """
 
     def __init__(self, expe_id, data_source = 'W7X_WEBAPI', get_data="by shotID",
-                 campaign="OP2.1", spatcal=False, time_correction=False,
+                 campaign=None, spatcal=False, time_correction=False,
                  starttime = None, stoptime = None):
         self.data_source = data_source
         self.expe_id = expe_id
@@ -233,26 +234,25 @@ class spectra:
         self.supl_data_path = None
         self.instr_funcs_datapath = None
 
-        #loading data
+        if campaign is None:
+            if int(expe_id[:4]) > 2023:
+                campaign = "OP2.2"
+                pre = "Test/raw/W7X/QSS_DivertorSpectroscopy/PI_CCD_06_1-QSS60OC095_"
+            else:
+                campaign = "OP2.1"
+                pre = "Test/raw/W7X/QSI/cxrs_"
+
+        #loading raw spectrometer data
         if(data_source == 'W7X_WEBAPI' and get_data == "by shotID" and
                 campaign == "OP2.1"):
             self.dataobj = flap.get_data(data_source,
-                            name='Test/raw/W7X/QSI/cxrs_DATASTREAM/0/Images/',
+                            name=f'{pre}DATASTREAM/0/Images/',
                             exp_id=expe_id,
                             options={'Scale Time': True,'Cache Data': False},
-                            object_name='QSI_spectral_data')
-        elif(data_source == 'W7X_WEBAPI' and get_data == "by shotID" and
-                campaign == "OP2.2"):
+                            object_name='QSI_spectral_data')            
+        elif(data_source == 'W7X_WEBAPI' and get_data == "by date"):
             self.dataobj = flap.get_data(data_source,
-                            name='Test/raw/W7X/QSS_DivertorSpectroscopy/PI_CCD_06_1-QSS60OC095_DATASTREAM/0/Images/',
-                            exp_id=expe_id,
-                            options={'Scale Time': True,'Cache Data': False},
-                            object_name='QSI_spectral_data')
-            
-        elif(data_source == 'W7X_WEBAPI' and get_data == "by date" and
-                campaign == "OP2.2"):
-            self.dataobj = flap.get_data(data_source,
-                            name='Test/raw/W7X/QSS_DivertorSpectroscopy/PI_CCD_06_1-QSS60OC095_DATASTREAM/0/Images/',
+                            name=f'{pre}DATASTREAM/0/Images/',
                             options={'Scale Time': True,
                                     'Cache Data': False,
                                     'Time Start':starttime,
@@ -260,6 +260,8 @@ class spectra:
                             object_name='QSI_CXRS_data')
         else:
             raise ValueError("Undefined data source or loading process.")
+
+
 
         if(self.campaign == "OP2.1"):
             self.APDCAM_timerange = [1, 40]
@@ -452,12 +454,13 @@ class spectra:
         OUTPUT:
             1D numpy array with the calibrated wavelength values
         """
-        default_options = {"Supplementary_data_path":"data"}
-        _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES_CXRS')
         try:
-            datapath_base = _options['Supplementary_data_path']
-        except (KeyError, TypeError):
-            datapath_base = 'data'
+            datapath_base_default = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cxrs_util_data')
+        except NameError:
+            datapath_base_default = "cxrs_util_data"
+        default_options = {"Supplementary_data_path":datapath_base_default}
+        _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES_CXRS')
+        datapath_base = _options['Supplementary_data_path']
         if(self.campaign == "OP2.1" and man == False): #for OP2.1 a table contains the values
             settings_df = pd.read_excel(
                 datapath_base+"/OP2_1/discharge_table_for_spectral_measurements.xlsx")
