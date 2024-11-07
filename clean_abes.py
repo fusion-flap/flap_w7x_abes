@@ -14,7 +14,8 @@ import flap_w7x_abes
 
 flap_w7x_abes.register()
 
-def get_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type='raw',timerange=None):
+def get_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type='raw',timerange=None,options={},
+                   beam_on_start_delay=None,beam_on_end_delay=None,beam_off_start_delay=None,beam_off_end_delay=None):
     """
     Calculate background corrected beam signals or background signals. Can handle camera and timed chopping as well
     with all frequencies. 
@@ -37,6 +38,24 @@ def get_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type
         The default is 'raw'.
     timerange : List of two floats or None, optional
         Time range to process. The default is None.
+    options : dict, optional
+        Options for get_data.
+    beam_on_start_delay : float or None
+        The start delay [microsec] to use for the beam on time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_on_end_delay : float or None
+        The end delay [microsec] to use for the beam on time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_off_start_delay : float or None
+        The start delay [microsec] to use for the beam off time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_off_end_delay : float or None
+        The end delay [microsec] to use for the beam off time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
 
     Returns
     -------
@@ -44,21 +63,27 @@ def get_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type
         The processed data.
     """
     
-    chopper_mode,beam_on_time,beam_off_time,period_time,d_beam_on,d_beam_off = flap_w7x_abes.chopper_parameters(exp_ID,datapath=datapath)
-    options = {}
+    chopper_mode,beam_on_time,beam_off_time,period_time,d_beam_on,d_beam_off = flap_w7x_abes.chopper_parameters(exp_ID,
+                                                                                                                datapath=datapath,
+                                                                                                                beam_on_start_delay=beam_on_start_delay,
+                                                                                                                beam_on_end_delay=beam_on_end_delay,
+                                                                                                                beam_off_start_delay=beam_off_start_delay,
+                                                                                                                beam_off_end_delay=beam_off_end_delay
+                                                                                                                )
+    _options = copy.deepcopy(options)
     if (period_time > 0.01):
-        options['Resample'] = 1e4
+        _options['Resample'] = 1e4
     else:
-        options['Resample'] = None
+        _options['Resample'] = None
         if (resample != ""):
             print("Resample set for fast chopping. Signal processign might be incorrect.")
     if (resample != ""):
-        options['Resample'] = resample
+        _options['Resample'] = resample
  
     d=flap.get_data('W7X_ABES',
                 exp_id = exp_ID,
                 name = signals,
-                options = options,
+                options = _options,
                 coordinates = {'Time': timerange}
                 )
 
@@ -88,7 +113,8 @@ def get_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type
     return d
       
 
-def plot_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type='raw',plot_type='xy',timerange=None,options={}):
+def plot_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_type='raw',plot_type='xy',timerange=None,options={},
+                    beam_on_start_delay=None,beam_on_end_delay=None,beam_off_start_delay=None,beam_off_end_delay=None):
     """
     Plot background corrected beam signals or background signals. Can handle camera and timed chopping as well
     with all frequencies. 
@@ -113,6 +139,25 @@ def plot_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_typ
         Time range to process. The default is None.
     plot_type: string, optional
         The plot type for the flap.plot method.
+    options : dict, optional
+        Options for get_data.        
+    beam_on_start_delay : float or None
+        The start delay [microsec] to use for the beam on time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_on_end_delay : float or None
+        The end delay [microsec] to use for the beam on time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_off_start_delay : float or None
+        The start delay [microsec] to use for the beam off time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_off_end_delay : float or None
+        The end delay [microsec] to use for the beam off time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+
  
     Returns
     -------
@@ -126,7 +171,12 @@ def plot_clean_abes(exp_ID,signals='ABES-*',datapath=None,resample="",signal_typ
                        datapath=datapath,
                        resample=resample,
                        signal_type=signal_type,
-                       timerange=timerange
+                       timerange=timerange,
+                       beam_on_start_delay=beam_on_start_delay,
+                       beam_on_end_delay=beam_on_end_delay,
+                       beam_off_start_delay=beam_off_start_delay,
+                       beam_off_end_delay=beam_off_end_delay,
+                       options=options
                        )
     axes = ['Time']
     _options = copy.deepcopy(options)

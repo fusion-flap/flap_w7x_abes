@@ -19,16 +19,16 @@ flap_w7x_abes.test_chopper_timing(exp_id='20230323.062',
                                   signal='ABES-15',
                                   resample=None,
                                   x_axis='Time',
-                                  start_shift=0,
-                                  end_shift=0
                                   )
 plt.figure()
 # For testing a camera chopping measurement
 flap_w7x_abes.test_chopper_timing(exp_id='20181018.003', 
                                   timerange=[0,3.],
                                   signal='ABES-15',
-                                  resample=1e4,
+                                  resample=1e5,
                                   x_axis='Time',
-                                  start_shift=1000,
-                                  end_shift=-1000
+                                  beam_on_start_delay=1e3,
+                                  beam_on_end_delay=-1e3,
+                                  beam_off_start_delay=1e3,
+                                  beam_off_end_delay=-1e3,
                                   )

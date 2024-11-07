@@ -10,7 +10,8 @@ import flap_w7x_abes
 
 flap_w7x_abes.register()
 
-def chopper_parameters(exp_ID,datapath=None):
+def chopper_parameters(exp_ID,datapath=None,timerange=None,
+                       beam_on_start_delay=None,beam_on_end_delay=None,beam_off_start_delay=None,beam_off_end_delay=None):
     """
     Returns the beam chopper parameters
 
@@ -20,6 +21,25 @@ def chopper_parameters(exp_ID,datapath=None):
         The experiment ID.
     datapath : string or None, optional
         The data path. If None the one in flap_defaults.cfg will be used. The default is None.
+    timerange : List of two floats or None, optional
+        Time range to process. The default is None.
+    beam_on_start_delay : float or None
+        The start delay [microsec] to use for the beam on time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_on_end_delay : float or None
+        The end delay [microsec] to use for the beam on time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_off_start_delay : float or None
+        The start delay [microsec] to use for the beam off time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+    beam_off_end_delay : float or None
+        The end delay [microsec] to use for the beam off time relative to the one calculated from the settings.
+        If None use the one determined by the data read program which may be non zero for measurements when 
+        the camera was run on external timing.
+
 
     Returns
     -------
@@ -40,14 +60,18 @@ def chopper_parameters(exp_ID,datapath=None):
     d_beam_on = flap.get_data('W7X_ABES',
                               exp_id=exp_ID,
                               name='Chopper_time',
+                              coordinates={'Time':timerange},
                               options={'State': {'Chop': 0, 'Defl': 0},
-                                       'Start': 0, 'End': 0}
+                                       'Start delay': beam_on_start_delay, 'End delay': beam_on_end_delay
+                                       }
                               )
     d_beam_off = flap.get_data('W7X_ABES',
                                exp_id=exp_ID,
                                name='Chopper_time',
+                               coordinates={'Time':timerange},
                                options={'State': {'Chop': 1, 'Defl': 0},
-                                        'Start': 0, 'End': 0}
+                                        'Start delay': beam_off_start_delay, 'End delay': beam_off_end_delay
+                                        }
                                )
     chopper_mode = d_beam_on.info['Chopper mode']
     on1, on2, on3 = d_beam_on.coordinate('Time')
