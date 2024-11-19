@@ -50,7 +50,8 @@ def downsample(data_array, maxpoints=100):
     data_array_new=data_array_new.reshape(maxpoints,len(data_array_new)//maxpoints)
     return np.mean(data_array_new, axis=1), np.min(data_array_new, axis=1), np.max(data_array_new, axis=1)
 
-def plot_shot(shotID, resample=1e4, smoothen=0, channel_name=None, canvas=None):
+def plot_shot(shotID, resample=1e4, smoothen=0, channel_name=None, canvas=None,
+              plot_rawdata=True, plot_powerspect=False):
 	    
     datapath = os.path.join('/data', shotID)
     
@@ -61,14 +62,18 @@ def plot_shot(shotID, resample=1e4, smoothen=0, channel_name=None, canvas=None):
     #                         "Camera version": 1},
     #               object_name=channel
     #               )
-    resample = int(resample)
+    try:
+        resample = int(resample)
+    except TypeError:
+        resample = None
     if channel_name is None:
         channel = "ADC*"
-        if resample == 0:
+        if resample == 0 or resample is None:
             dataobject = flap.get_data('APDCAM',
                           name=channel,
                           options={'Datapath':datapath,'Scaling':'Volt',
                                    "Camera type": "APDCAM-10G_FC"},
+                          coordinates={"Time":[3.0,5]},
                           object_name=channel
                           )
         else:
@@ -79,6 +84,7 @@ def plot_shot(shotID, resample=1e4, smoothen=0, channel_name=None, canvas=None):
                                    "Resample": resample},
                           object_name=channel
                           )
+            # dataobject = dataobject.slice_data(slicing={"Time":flap.Intervals(1.0,1.0001)})
         # getting time shift
         xml_file = os.path.join(datapath,f"{shotID}_config.xml")
         xml = flap.FlapXml()
@@ -104,8 +110,7 @@ def plot_shot(shotID, resample=1e4, smoothen=0, channel_name=None, canvas=None):
         coord_ax = dataobject.get_coordinate_object('ADC Channel').values
         #coord_ax = dataobject.get_coordinate_object('Channel').values
 
-        plot_channels = True
-        if plot_channels is True:
+        if plot_rawdata is True:
             
             #get the figure order
             fibres = [name.split("-")[0].zfill(2) for name in dataobject.get_coordinate_object("Fibre ID").values]
@@ -214,7 +219,6 @@ def plot_shot(shotID, resample=1e4, smoothen=0, channel_name=None, canvas=None):
             # fig.show()
             # plt.show(block=True)        
         
-        plot_powerspect = False
         if plot_powerspect is True:
             print("in")
             fig = plt.figure()
@@ -247,8 +251,11 @@ def plot_shot(shotID, resample=1e4, smoothen=0, channel_name=None, canvas=None):
                 plt.plot(newfreq, newps,
                          color = color, alpha=0.75, label=channel_data.coordinate('Detector type')[0][0]+str(channel)+"-"+channel_data.coordinate('Fibre ID')[0][0].split('-')[-1] )
                 plt.ylim([np.min(newps)*0.8, np.max(newps)*1.2])
-                plt.yscale('log')
-                plt.xscale('log')
+                try:
+                    plt.yscale('log')
+                    plt.xscale('log')
+                except:
+                    pass
                 plt.ylabel('')
                 plt.tick_params(axis='y', direction='in', pad=-22)
                 plt.xlabel('')
@@ -260,7 +267,7 @@ def plot_shot(shotID, resample=1e4, smoothen=0, channel_name=None, canvas=None):
             #plt.get_current_fig_manager().full_screen_toggle()
             fig.text(0.5, 0.04, 'Frequency (Hz)', ha='center')
             fig.text(0.04, 0.5, 'Power spectrum', va='center', rotation='vertical')
-            fig.tight_layout(rect=[0.05, 0.05, 0.95, 0.95])
+            # fig.tight_layout(rect=[0.05, 0.05, 0.95, 0.95])
             fig.subplots_adjust(wspace=0,hspace=0)
             fig.show()
             plt.show(block=True)
@@ -313,7 +320,8 @@ def onclick_all(dataobject, axes, plotindex_to_channel, event):
             # plt.plot(channel_data.coordinate('Time')[0], channel_data.data,
             #             alpha = 0.75, color = color)
             channel_data.plot(axes='Time',
-                              plot_options={'color':color, 'alpha':0.75})
+                              plot_options={'color':color, 'alpha':0.75},
+                              options={"All points": True})
             plt.title(f"ADC{channel} - Optical channel {channel_data.coordinate('Fibre ID')[0][0].split('-')[0]} - Fibre {channel_data.coordinate('Fibre ID')[0][0].split('-')[-1]} - {channel_data.coordinate('Detector type')[0][0]}")
             plt.ylabel('Signal (V)')
             plt.xlabel('Time (s)')
@@ -328,6 +336,6 @@ def smooth(y,box_pts):
 
 if __name__ == '__main__':
     # plot_shot("T20240806.018")
-    plot_shot('20241024.038')
+    plot_shot("20241105.053", plot_rawdata=True, plot_powerspect=False, resample=0)
 
     # globals()[sys.argv[1]](*sys.argv[2:])

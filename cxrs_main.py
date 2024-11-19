@@ -19,6 +19,7 @@ import copy
 
 from . import spatcal
 from . import cxrs_util
+from . import cxrs
 
 try:
     import flap_w7x_webapi as webapi
@@ -57,16 +58,17 @@ def w7x_abes_cxrs_get_data(exp_id=None, data_name=None, no_data=False, options=N
                               options={'Scale Time': True,
                                        'Cache Data': _options["Cache data"]},
                               object_name=data_name)
+    time_coord = copy.deepcopy(d.get_coordinate_object("Time"))
+    time_coord.start = time_coord.values[0]
+    time_coord.step = np.median(time_coord.values[1:]-time_coord.values[:-1])
+    time_coord.mode.equidistant = True
+    d.del_coordinate("Time")
+    d.add_coordinate_object(time_coord)
     d.data_source = data_source
     channel_coord = copy.deepcopy(d.get_coordinate_object("Coord 1"))
     channel_coord.unit.name = "Channel"
     d.del_coordinate("Coord 1")
     d.add_coordinate_object(channel_coord)
-    wavelength_coord = copy.deepcopy(d.get_coordinate_object("Coord 2"))
-    wavelength_coord.unit.name = "Wavelength"
-    d.del_coordinate("Coord 2")
-    d.add_coordinate_object(wavelength_coord)
-    d.get_coordinate_object("Wavelength").unit.unit = "px"
     
     
     data_source = [line for line in d.info.split("\n") if "Source:" in line][0].split("Source:")[1][1:]
@@ -89,9 +91,15 @@ def w7x_abes_cxrs_get_data(exp_id=None, data_name=None, no_data=False, options=N
     
     if _options['Spatial calibration'] is True:
          # Getting the spatial calibration
-         d = cxrs_add_coordinate(d, ['Device R', 'Device x', "Device y"],
-                            options={"Shot spatcal dir": flap.config.get("Module W7X_ABES","Spatial calibration directory"),
-                                     "Cache data": _options["Cache data"]})
+         try:
+             spatcal_dir = flap.config.get("Module W7X_ABES","Spatial calibration directory")
+             d = cxrs_add_coordinate(d, ['Device R', 'Device x', "Device y"],
+                                options={"Shot spatcal dir": flap.config.get("Module W7X_ABES","Spatial calibration directory"),
+                                         "Cache data": _options["Cache data"]})
+         except:
+             d = cxrs_add_coordinate(d, ['Device R', 'Device x', "Device y"],
+                                options={"Cache data": _options["Cache data"]})
+         
     return d
 
 def cxrs_add_coordinate(data_object,
@@ -128,11 +136,7 @@ def cxrs_add_coordinate(data_object,
     #Adding the signal names
     if exp_id is None:
         exp_id = data_object.exp_id
-        
-    #Wavelength
-    if "Wavelength" in coordinates:
-        data_object = cxrs_add_wavelength(data_object)
-    
+
     #Spatial coordinates
     data_source = [line for line in data_object.info.split("\n") if "Source:" in line][0].split("Source:")[1][1:]
     d = flap.get_data('W7X_WEBAPI', name=f"{data_source.split('DATASTREAM')[0]}PARLOG/parms/PICam/config/Rois_configString/",
@@ -149,7 +153,7 @@ def cxrs_add_coordinate(data_object,
         roi_names = [ROI.split(",")[0] for ROI in d.data[0].split("{")[1:] if "Enabled" in ROI]
         roi_names = ["A."+str(roi.split("channel ")[1]).zfill(2) for roi in roi_names]
     signal_names = copy.deepcopy(data_object.get_coordinate_object('Channel'))
-    signal_names.unit.name = "Signal name"
+    signal_names.unit.name = "Fiber name"
     signal_names.values = np.asarray(["N.A." for index in range(len(roi_names))])
     signal_names.mode.equidistant = False
     optical_channel = copy.deepcopy(signal_names.values)
@@ -167,15 +171,50 @@ def cxrs_add_coordinate(data_object,
     data_object.add_coordinate_object(signal_names)
     data_object.add_coordinate_object(optical_channel_coord)
 
-    channel_coordinate_dim = data_object.get_coordinate_object('Signal name').dimension_list[0]
-    channel_names = data_object.get_coordinate_object('Signal name').values
+    channel_coordinate_dim = data_object.get_coordinate_object("Fiber name").dimension_list[0]
+    channel_names = data_object.get_coordinate_object("Fiber name").values
 
     for coord_name in coordinates:
         coord_object = exp_spatcal.create_coordinate_object(channel_coordinate_dim, coord_name,
                                                          channel_names=channel_names)
         data_object.add_coordinate_object(coord_object)
 
+    #Wavelength
+    data_object = cxrs_add_wavelength(data_object)
+
     return data_object
 
 def cxrs_add_wavelength(data_object):
+       
+    grid = data_object.config["Grating"]
+    w_s = data_object.config["Central wavelength"]
+    try:
+        datapath_base = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cxrs_util_data')
+    except NameError:
+        datapath_base = "cxrs_util_data"
+    if(int(data_object.exp_id[:8]) < 20231231):
+        wl_values = np.zeros((6, 1024))
+        for i in range(1, 7):
+            wl_values[i-1, :] = cxrs.wavelength_grid_generator_op21(
+                grid, w_s, i, datapath_base)
+
+        wl_coord_flap = flap.Coordinate(name='Wavelength', unit="nm",
+                        mode=flap.CoordinateMode(equidistant=False),
+                        shape=(6,1024),values=wl_values,dimension_list=[1,2])
+        data_object.add_coordinate_object(wl_coord_flap)
+        data_object.del_coordinate("Coord 2")
+        
+    else:
+        wl_values = np.zeros((data_object.coordinate("Device R")[0].shape[1], 1024))
+        for i in range(1, data_object.coordinate("Device R")[0].shape[1]+1):
+            wl_values[i-1, :] = cxrs.wavelength_grid_generator_op22(
+                grid, w_s, datapath_base)
+
+        wl_coord_flap = flap.Coordinate(name='Wavelength', unit="nm",
+                        mode=flap.CoordinateMode(equidistant=False),
+                        shape=(data_object.coordinate("Device R")[0].shape[1],1024),
+                        values=wl_values,dimension_list=[1,2])
+        data_object.add_coordinate_object(wl_coord_flap)
+        data_object.del_coordinate("Coord 2")
+    
     return data_object

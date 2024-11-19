@@ -62,6 +62,7 @@ class BORIMonitor():
                       'VG HighVac1':"Pressure:mbar",
                       'VG HighVac2':"Pressure:mbar",
                       'VG ForeVac':"Pressure:mbar",
+                      'Emit Shutter':"n.a.:n.a",
                       'Neut Shut Closed':"n.a.:n.a",
                       'PB Feedback-Open':"n.a.:n.a"}
         if self.date is not None:

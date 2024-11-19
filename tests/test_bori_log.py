@@ -15,14 +15,19 @@ from scipy import interpolate
 import flap
 import flap_w7x_abes
 
-def overview_plot(date, reference_days=[], last_minutes=None, material="Na",
+def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, material="Na",
                   canvas=None):
-    beam_log = flap_w7x_abes.BORIMonitor(date=date, material=material)
+    if date is not None and date != "":
+        beam_log = flap_w7x_abes.BORIMonitor(date=date, material=material)
+    elif exp_id is not None and exp_id != "":
+        beam_log = flap_w7x_abes.BORIMonitor(exp_id=exp_id, material=material)
     if canvas == None:
         figure = plt.figure(figsize=[18,10], constrained_layout=True)
+        gs = gridspec.GridSpec(8, 6, figure=figure, hspace=2,wspace=0.5)
     else:
         figure = canvas.fig
-    gs = gridspec.GridSpec(8, 6, figure=figure, hspace=2,wspace=0.5)
+        gs = figure.add_gridspec(8, 6)
+    
     logtext = ""
 
     em_resistance, ex_resistance = beam_log.get_load_resistance()
@@ -83,6 +88,7 @@ def overview_plot(date, reference_days=[], last_minutes=None, material="Na",
         ax = canvas.fig.add_subplot(gs[0:2,0:2])
         plot_logdata_on_axis(beam_log_lastminutes.data['Emit Current A'], ax)
         ax.tick_params(right=True, left=True, bottom=True, top=True)
+        ax.set_ylabel("Emitter \n heating current [A]")
 
     if canvas == None:
         plt.subplot(gs[0:2,2:4],sharex=ax)

@@ -295,4 +295,9 @@ def spect_calib_cxrs_get_data_op21(dataset_curr):
     
    
     return cxrs_data
+
+# def autocorr(dataobject):
+#     for ROI in range(dataobject.get_coordinate_object("Channel").shape):
+        
+#     pass
     

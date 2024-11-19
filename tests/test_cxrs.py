@@ -16,10 +16,73 @@ import flap_w7x_abes
 import flap_w7x_webapi as webapi
 webapi.register()
 
+class CXRSPlotter():
+    def __init__(self, shotID, canvas=None):
+        self.shotID=shotID
+        self.curr_sample = 0
+        self.canvas = canvas
+        self.plot_cxrs()
 
-if __name__ == '__main__':
+    def get_data(self):
+        datapath = '/data'
+        flap_w7x_abes.register()
 
-    shotID = '20240314.032'
+        self.cxrs = flap.get_data('W7X_ABES_CXRS', exp_id=self.shotID,
+                                  name="QSI_CXRS")
+
+        self.channelrange = self.cxrs.data.shape[1]
+    
+    def plot_cxrs(self, setto=None, moveby=None):
+    
+        if hasattr(self, "cxrs") is False:
+            self.get_data()
+        
+        if setto is not None:
+            self.curr_sample = int((setto-1)/50.0*self.channelrange)
+        
+        if moveby is not None:
+            self.curr_sample += moveby
+            
+        if hasattr(self, "fig") is False:
+            if self.canvas is None:
+                self.fig, self.ax = plt.subplots()
+            else:
+                self.fig = self.canvas.fig
+                self.ax = self.canvas.fig.add_subplot(1,1,1)
+              
+        self.ax.cla()    
+        self.ax.set_title(f"{self.shotID}  background subtracted CXRS at "+\
+                         f"{int(self.cxrs.get_coordinate_object('Device R').values[self.curr_sample]*1000)/1000.0}m")
+        beam_on = self.cxrs.data[::2,self.curr_sample,:]
+        beam_off = self.cxrs.data[1::2,self.curr_sample,:]
+        signal = beam_on[:beam_off.shape[0],:]-beam_off
+        signal -= np.min(np.abs(signal))
+        norm_signal = signal.transpose()
+        newmat = (np.ones(norm_signal.shape)*np.arange(norm_signal.shape[1])*np.max(norm_signal)/4).transpose()
+        norm_signal = norm_signal+newmat.transpose()
+        # norm_signal =+ np.arange(norm_signal.shape[1])*np.max(norm_signal)*np.ones(norm_signal.shape)
+        self.ax.plot(self.cxrs.get_coordinate_object("Wavelength").values[self.curr_sample,:],norm_signal, alpha = 0.3, color= "tab:blue")
+        self.ax.set_yticks(newmat[:,0],
+                           (self.cxrs.get_coordinate_object("Time").values[1::2]*100).astype(int)/100)
+        self.ax.set_ylabel("Time [s]")
+        self.ax.set_xlabel("Wavelength [nm]")
+
+        
+        
+        if self.canvas is None:
+            plt.show()
+        else:
+            self.fig.canvas.draw_idle()
+            self.fig.canvas.flush_events()
+        
+
+if __name__ == "__main__":
+    shotID = '20240926.027'
+    plot_signal = True
+    if plot_signal == True:
+        plotter = CXRSPlotter(shotID)
+        plotter.plot_cxrs()
+        plotter.plot_cxrs(setto=10)
     
     plot_patchpanel = False
     if plot_patchpanel is True:
@@ -65,16 +128,16 @@ if __name__ == '__main__':
             d = flap.get_data('W7X_WEBAPI', name='QSI-CXRS',
                               exp_id=shotID,
                               options={'Scale Time': True,
-                                       'Cache Data': False},
+                                       'Cache Data': False,
+                                       'Check Time Equidistant': True},
                               object_name='QSI CXRS data',
                               coordinates={'Time': [2, 3]})
         except Exception as e:
             raise ValueError("something is wrong with the flap_w7x_webapi:" + str(e))
-        
-        d = flap.get_data('W7X_ABES_CXRS', name='CXRS_TEST',
-                                  exp_id=shotID,
-                                  object_name=f"CXRS_{shotID}")
-      
+            d = flap.get_data('W7X_ABES_CXRS', name='CXRS_TEST',
+                                      exp_id=shotID,
+                                      object_name=f"CXRS_{shotID}")
+
         timestep = 1.2 #s
         d_slice = d.slice_data(slicing={"Time":timestep})
         
@@ -88,4 +151,5 @@ if __name__ == '__main__':
             if index < len(d.get_coordinate_object("Device R").values)-1:
                 plt.xlabel("")
                 plt.xticks([])
+            plt.yticks([])
             plt.tight_layout()

@@ -74,7 +74,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
             chop_str = "{:3.0f}-{:3.0f}[ms]".format(beam_on_time * 1e3, beam_off_time * 1e3)
         else:
             chop_str = "{:3.0f}-{:3.0f}[us]".format(beam_on_time * 1e6, beam_off_time * 1e6) 
-        txt += ' ... Chopper:{:6s}({:s})'.format(chopper_mode,chop_str)
+        txt += ' ... Chopper: {:6s}({:s})'.format(chopper_mode,chop_str)
      
         if (period_time > 0.01):
             on_start = 1000
@@ -136,16 +136,21 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
             if (i == 0):
                 sig = np.zeros((len(d),len(channels)))
             sig[:,i] = d
-            
-        d_max = np.max(sig)
-        txt += ' ... Max:{:4.0f}[mV] '.format(d_max * 1000)
+        
+        max_loc = np.unravel_index(np.argmax(sig), sig.shape)
+        d_max = sig[max_loc]
+        mean_signal = np.median(np.mean(sig,axis=1))
+        
+        # txt += ' ... Max:{:4.0f}[mV] '.format(d_max * 1000)
+        txt += f' ... Mean signal: {int(mean_signal*1000)}[mV]'
+        txt += f' ... Max: {int(d_max*1000)}[mV] at {channels_str[max_loc[1]]}/{round(d_on.get_coordinate_object("Time").values[max_loc[0]],3)}s'
         timescale = d_on.coordinate('Time')[0][ind]
         s = np.sum(sig,axis=1)
         if (np.max(s) <= 0):
             txt += '... Time range: ---'
         else:
             ind = np.nonzero(s >= np.max(s) * 0.1)[0]
-            txt += ' ... Time range:({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
+            txt += ' ... Time range: ({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
     except Exception as e:
         txt += ' --- {:s} ---'.format(str(e))
     return txt
