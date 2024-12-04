@@ -241,10 +241,14 @@ class spectra:
             else:
                 campaign = "OP2.1"
                 pre = "Test/raw/W7X/QSI/cxrs_"
+        elif campaign == "OP2.2":
+            pre = "Test/raw/W7X/QSS_DivertorSpectroscopy/PI_CCD_06_1-QSS60OC095_"
+        elif campaign == "OP2.1":
+            pre = "Test/raw/W7X/QSI/cxrs_"
+        
 
         #loading raw spectrometer data
-        if(data_source == 'W7X_WEBAPI' and get_data == "by shotID" and
-                campaign == "OP2.1"):
+        if(data_source == 'W7X_WEBAPI' and get_data == "by shotID"):
             self.dataobj = flap.get_data(data_source,
                             name=f'{pre}DATASTREAM/0/Images/',
                             exp_id=expe_id,
