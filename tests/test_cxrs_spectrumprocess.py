@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import flap
 import flap_w7x_abes
 
-plt.close("all")
+# plt.close("all")
 flap_w7x_abes.register()
 try:
     import flap_w7x_webapi as webapi
@@ -33,7 +33,7 @@ def test_calibration():
     spec.wavelength_calibration(man=True,grid="1200g_per_mm",wavelength_setting=530)
     flap.list_data_objects(spec.dataobj)
     
-    spec = flap_w7x_abes.spectra(expe_id,campaign="OP2.1",
+    spec = flap_w7x_abes.spectra(expe_id,catest_slice_wavelength_op22_2mpaign="OP2.1",
                                  spatcal=True, time_correction=True)
     spec.wavelength_calibration()
     flap.list_data_objects(spec.dataobj)
@@ -279,7 +279,14 @@ def test_tempfit_op22():
     spec.tempfit(fittype,roi,wstart,wstop,mu,kbt,A,dslit,
                   tstart,tstop,backg,itern,plots=False)
     
- 
+def test_slice_wavelength_range_op22_2():
+    expe_id = '20241212.033'
+    roi = 20
+    wstart = 588
+    wstop = 590
+    spec = flap_w7x_abes.spectra(expe_id,campaign="OP2.2", spatcal=True)
+    spec.wavelength_calibration(man=True,grid="1800g_per_mm",wavelength_setting=589)
+    spec.slice_by_wl(roi,[wstart, wstop])
 # test_read_webapi()
 # test_calibration()
 # test_slice_wavelength()
@@ -299,5 +306,6 @@ def test_tempfit_op22():
 # test_passive_op22()
 # test_slice_wavelength_range_op22()
 # test_active_passive_op22()
-test_autocorr_op22()
+# test_autocorr_op22()
 # test_tempfit_op22()
+test_slice_wavelength_range_op22_2()

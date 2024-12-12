@@ -508,7 +508,7 @@ class spectra:
             "Wavelength calibration for that campaign has not been implemented yet.")
                 
 
-    def slice_by_wl(self, roi, wavelength):
+    def slice_by_wl(self, roi, wavelength, plotting=True):
         """
         It slices the temporal signal out in the corresponding wavelength, averages
         it if an interval was given, then it plots the result.
@@ -533,16 +533,18 @@ class spectra:
                 slicing={"Wavelength": flap.Intervals(
                     wavelength[0], wavelength[1])},
                 summing={"Wavelength": "Mean"})
-        plt.figure()
-        spectra_1w.plot(axes="Time")
-        plt.xlabel("Time [s]", fontsize=15)
-        plt.ylabel("Intensity", fontsize=15)
-        if(type(wavelength) == float or type(wavelength) == int):
-            plt.title(
-                "Temporal evolution of the pixel at wavelength "+str(wavelength)+" nm")
-        elif(type(wavelength) == list):
-            tit = "Avg. temporal evolution of pixels between wavelength ["
-            plt.title(tit+str(wavelength[0])+", "+str(wavelength[1])+"] nm")
+        if plotting is True:
+            plt.figure()
+            spectra_1w.plot(axes="Time")
+            plt.xlabel("Time [s]", fontsize=15)
+            plt.ylabel("Intensity", fontsize=15)
+            if(type(wavelength) == float or type(wavelength) == int):
+                plt.title(
+                    "Temporal evolution of the pixel at wavelength "+str(wavelength)+" nm")
+            elif(type(wavelength) == list):
+                tit = "ROI: "+str(roi)+"\nAvg. temporal evolution of pixels between wavelength ["
+                plt.title(tit+str(wavelength[0])+", "+str(wavelength[1])+"] nm")
+        return spectra_1w
 
     def passive(self, roi, t_start, t_stop, error=False):
         """
@@ -1272,7 +1274,7 @@ class spectra:
         C = (modelled - self.simulated)/self.simulated_error
         return (np.dot(C, C) - 3) / self.simulated.shape[0]
 
-    def C_fitfunc_plot(self, esti):
+    def C_fitfunc_plot(self, esti, plotting=False):
         """
         It computes the weighted, squared, summed difference between the measured
         and the generated spectral line. It also plots the measured and the generated
@@ -1296,13 +1298,14 @@ class spectra:
         lambd = self.active.coordinate("Wavelength")[0]
 
         fs = 15
-        plt.figure()
-        plt.errorbar(lambd, self.active.data, self.active.error, color="blue")
-        plt.plot(lambd, modelled, color="red")
-        plt.xlabel("Wavelength [nm]", fontsize=fs)
-        plt.ylabel("Intensity [a.u.]", fontsize=fs)
-        plt.grid()
-        plt.legend(["Calculated", "Measured"], loc="best", fontsize=(fs-2))
+        if plotting == True:
+            plt.figure()
+            plt.errorbar(lambd, self.active.data, self.active.error, color="blue")
+            plt.plot(lambd, modelled, color="red")
+            plt.xlabel("Wavelength [nm]", fontsize=fs)
+            plt.ylabel("Intensity [a.u.]", fontsize=fs)
+            plt.grid()
+            plt.legend(["Calculated", "Measured"], loc="best", fontsize=(fs-2))
         return (np.dot(C, C) - 3) / self.active.data.shape[0]
     
     def C_fitfunc_plot_sim(self, esti):
@@ -1611,7 +1614,7 @@ class spectra:
         return np.std(T_i), T_i, chisq
 
     def tempfit(self,fittype,roi,wstart,wstop,mu,kbt,A,dslit,t_start,t_stop,bcg,N,
-                plots=False,options = None):
+                plots=False,options = None, calc_err=True):
         """
         A function for fitting the ion temperature (among A, mu) by modelling the
         line shape. The uncertainties are gained by Monte Carlo error calculation.
@@ -1671,7 +1674,7 @@ class spectra:
 
             #getting the measured spectra
             self.active = self.active_passive(roi, t_start, t_stop,
-                                    background_interval=bcg, error=True, plotting=False)
+                                    background_interval=bcg, error=True, plotting=plots)
             self.active = self.active.slice_data(
                 slicing={"Wavelength": flap.Intervals(wstart, wstop)})
             if(fittype == "CV"):
@@ -1805,7 +1808,7 @@ class spectra:
 
             #getting the measured spectra
             self.active = self.active_passive(roi, t_start, t_stop,
-                                    background_interval=bcg, error=True, plotting=True)
+                                    background_interval=bcg, error=True, plotting=False)
             self.active = self.active.slice_data(
                 slicing={"Wavelength": flap.Intervals(wstart, wstop)})
             
@@ -1845,45 +1848,51 @@ class spectra:
                 
                 #fitting the ion temperature, and other parameters
                 esti = np.array([mu, kbt, A])
-                es_chisq = self.C_fitfunc_plot(esti)
-                plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
+                if plots == True:
+                    es_chisq = self.C_fitfunc_plot(esti)
+                    plt.title("$\chi^2 = $"+str(round(es_chisq, 6)))
                 solution = minimize(self.C_fitfunc, esti, method="Powell",
                                     bounds=((None, None), (0.1, None), (None, None)),
                                     tol=1e-8,options={"maxiter": 2000})
 
                 print(solution)
-                if(solution.success == True):
+                if(solution.success == True and calc_err == True):
                     #error calculation
                     sol = solution.x
                     Terr, T_iters, chi_iters = self.C_Ti_error_sim_me(sol[0],
                                         sol[1],sol[2],N,fittype,plots=plots)
-                    R_plot = round(self.active.coordinate( #plotting
-                        "Device R")[0][0], 4)
-                    self.C_fitfunc_plot(sol)
-                    plt.title(self.expe_id+", channel "+str(roi)+
-                              ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
-                              str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
-                              "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
-                    plt.figure()
-                    plt.subplot(211)
-                    plt.ylabel("$T_i [eV]$",fontsize = 15)
-                    plt.grid()
-                    plt.title(self.expe_id+", channel "+str(roi)+
-                              ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
-                              str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
-                              "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
-                    plt.hlines(sol[1], 0, N, color = "red")
-                    plt.fill_between(np.arange(N), sol[1] - Terr, sol[1] + Terr,color='red',
-                                     alpha=0.2)
-                    plt.plot(np.arange(N),T_iters,marker = "o",linestyle="",color="blue")
-                    plt.xlim(0,N-1)
-                    plt.subplot(212)
-                    plt.plot(np.arange(N),chi_iters,marker = "o",linestyle="",color="green")
-                    plt.ylabel("$\chi^2$",fontsize = 15)
-                    plt.xlabel("number of iterations",fontsize = 15)
-                    plt.xlim(0,N-1)
-                    plt.grid()
-                    print(Terr)
+                    if plots == True:
+                        R_plot = round(self.active.coordinate( #plotting
+                            "Device R")[0][0], 4)
+                        self.C_fitfunc_plot(sol)
+                        plt.title(self.expe_id+", channel "+str(roi)+
+                                  ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
+                                  str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
+                                  "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
+                        plt.figure()
+                        plt.subplot(211)
+                        plt.ylabel("$T_i [eV]$",fontsize = 15)
+                        plt.grid()
+                        plt.title(self.expe_id+", channel "+str(roi)+
+                                  ", R = "+str(round(R_plot,4))+" m, $\chi^2 = $" +
+                                  str(round(solution.fun, 2))+", $T_C$ = "+str(round(sol[1], 2))+
+                                  "$\pm$ "+str(round(Terr, 2))+" eV",fontsize=10)
+                        plt.hlines(sol[1], 0, N, color = "red")
+                        plt.fill_between(np.arange(N), sol[1] - Terr, sol[1] + Terr,color='red',
+                                         alpha=0.2)
+                        plt.plot(np.arange(N),T_iters,marker = "o",linestyle="",color="blue")
+                        plt.xlim(0,N-1)
+                        plt.subplot(212)
+                        plt.plot(np.arange(N),chi_iters,marker = "o",linestyle="",color="green")
+                        plt.ylabel("$\chi^2$",fontsize = 15)
+                        plt.xlabel("number of iterations",fontsize = 15)
+                        plt.xlim(0,N-1)
+                        plt.grid()
+                        print(Terr)
+                    return solution,Terr
+                else:
+                    return solution,np.nan
+                    
 
     def C_Ti_error_sim(self,mu,kbt,A,tstart,tstop,iter_num,scalef,fittype,plots=False):
         """
