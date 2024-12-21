@@ -7,14 +7,15 @@ Created on Sun Oct 10 21:15:27 2021
 
 import matplotlib.pyplot as plt
 import numpy as np
-try:
-    try:
-        from .nptdms_mod import TdmsFile
-    except ImportError:
-        from nptdms_mod import TdmsFile
-except ModuleNotFoundError:
-    from flap_w7x_abes.nptdms_mod import TdmsFile
-    
+# try:
+#     try:
+#         from .nptdms_mod import TdmsFile
+#     except ImportError:
+#         from nptdms_mod import TdmsFile
+# except ModuleNotFoundError:
+#     from flap_w7x_abes.nptdms_mod import TdmsFile
+from nptdms import TdmsFile  
+  
 import datetime
 import os
 import copy
