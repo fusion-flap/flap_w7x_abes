@@ -154,8 +154,8 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         mean_signal = np.median(np.mean(sig,axis=1))
         
         # txt += ' ... Max:{:4.0f}[mV] '.format(d_max * 1000)
-        txt += f' ... Mean signal: {int(mean_signal*1000)}[mV]'
-        txt += f' ... Max: {int(d_max*1000)}[mV] at {channels_str[max_loc[1]]}/{round(d_on.get_coordinate_object("Time").values[max_loc[0]],3)}s'
+        txt += "... Mean signal: {:3d}[mV]".format(int(mean_signal*1000))
+        txt += " ... Max: {:4d}[mV] at {:6s}/{:7.3f}s".format(int(d_max*1000),channels_str[max_loc[1]],round(d_on.get_coordinate_object("Time").values[max_loc[0]],3))
         data['Mean signal'] = mean_signal * 1000
         data['Max signal'] = d_max * 1000
         data['Max signal channel'] = channels_str[max_loc[1]]
@@ -170,7 +170,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
             ind = np.nonzero(s >= np.max(s) * 0.1)[0]
             txt += ' ... Time range: ({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
             data['Good signal start'] = timescale[ind[0]]
-            data['Good signal start'] = timescale[ind[ind[-1]]]                                               
+            data['Good signal start'] = timescale[ind[-1]]                                               
     except Exception as e:
         txt += ' --- {:s} ---'.format(str(e))
         data['exp_ID'] = exp_ID
