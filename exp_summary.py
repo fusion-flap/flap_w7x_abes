@@ -217,6 +217,9 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',
 
     """
     
+    def sort_by_name(entry):
+        return entry.name
+        
     if (datapath is not None):
         options = {'Datapath':datapath}
     else:
@@ -228,7 +231,8 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',
     regexp = regexp.replace('*','.*') 
     txts = []
     data = {}
-    id_list = os.scandir(dp)
+    id_list = list(os.scandir(dp))
+    id_list.sort(key=sort_by_name)
     exp_list = []
     for idi in id_list:
         if (idi.is_dir()):
