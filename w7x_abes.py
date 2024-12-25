@@ -24,7 +24,7 @@ import flap
 from . import spatcal
 
 if (flap.VERBOSE):
-    print("Importing flap_w7x-abes")
+    print("Importing flap_w7x_abes")
 
 def abes_get_config(xml):
     retval = {}
@@ -1797,7 +1797,7 @@ def write_chopshift(shotID, start, end):
             fout.write(dataout)
     os.remove(location+'old')
 
-   
+  
 def register(data_source=None):
     flap.register_data_source('W7X_ABES', get_data_func=w7x_abes_get_data, add_coord_func=add_coordinate)
     from .cxrs_main import w7x_abes_cxrs_get_data, cxrs_add_coordinate

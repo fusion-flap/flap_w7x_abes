@@ -10,6 +10,7 @@ import re
 import time
 import matplotlib.pyplot as plt
 import pickle
+import numpy as np
 
 import flap
 import flap_w7x_abes
@@ -227,7 +228,7 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',
     default_options = {'Datapath':datapath}
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
     dp = _options['Datapath']
-    regexp = exp_ids.replace('.','\.') 
+    regexp = exp_ids.replace('.','\\.') 
     regexp = regexp.replace('*','.*') 
     txts = []
     data = {}
@@ -261,5 +262,73 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',
             pickle.dump(data,f)
        
     return txts,data
+
+def find_experiment(search_dict,datafile='exp_summaries.dat'):
+    """Find an experiment in the datafile fulfilling certain criteria.
+
+    Parameters
+    ----------
+    search_dict : dict
+        Dictionary with search criteria. Keys should be identical to keys in datafile.
+        If a value for a key:
+            is a single element then experiments will be searched where the value is equal to this.
+            is a list then experiments will be serached where the value is between (equal) to the two values in the list. 
+    datafile : str, optional, deafult is 'exp_summaries.dat'
+        The name of the datafile written by exp_summaries. 
+
+    Raises
+    ------
+    ValueError
+        Imvalid key or single element list in value.
+
+    Returns
+    -------
+    array-like
+        The experiment IDs fulfilling the requirement.
+
+    Use this module like this to find experiments with timed fast chopper with signal above 30 mV::
         
-#exp_summary('20230328.028')
+        print(find_experiment({"Chopper mode":'Timed',
+                               'Beam on time':[1e-6,1e-5],
+                               'Mean signal':[30,3000]
+                               },datafile=df)
+              )        
+        
+    """
+
+    with open(datafile,"rb") as f:
+        df = pickle.load(f)
+    index = np.array(list(range(len(df['exp_ID']))))
+    for k in search_dict.keys():
+        if (type(search_dict[k]) is list):
+            try:
+                ind = np.nonzero(np.logical_and(np.array(df[k])[index] >= search_dict[k][0],
+                                                np.array(df[k])[index] <= search_dict[k][1]
+                                                )
+                                 )[0]
+                index = index[ind]
+            except KeyError:
+                txt = ''
+                for kk in df.keys():
+                    txt += ', ' + kk
+                raise ValueError('Key "{:s}" is not present in datafile. \n Valid keys are:{:s}'.format(k,txt))
+            except IndexError:
+                raise ValueError('Error searching for range of data in "{:s}"'.format(k))
+        else:
+            try:
+                index = index[np.nonzero((np.array(df[k])[index] == search_dict[k]))[0]]
+            except KeyError:
+                txt = ''
+                for kk in df.keys():
+                    txt += ', ' + kk
+                raise ValueError('Key "{:s}" is not present in datafile. \n Valid keys are:{:s}'.format(k,txt))
+    return np.array(df['exp_ID'])[index]
+        
+if __name__ == '__main__':        
+    #exp_summary('20230328.028')
+    df = 'c:/Users/Zoletnik/OneDrive - energia.mta.hu/Megosztott dokumentumok - FPL/Projects/Experiments/W7-X/ABES/op21/Log/exp_summaries_2023.dat'
+    print(find_experiment({"Chopper mode":'Timed',
+                           'Beam on time':[1e-6,1e-5],
+                           'Mean signal':[40,300]
+                           },datafile=df)
+          )
