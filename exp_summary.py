@@ -11,6 +11,7 @@ import time
 import matplotlib.pyplot as plt
 import pickle
 import numpy as np
+import copy
 
 import flap
 import flap_w7x_abes
@@ -46,13 +47,17 @@ def w7x_summary(exp_ID,datapath='https://w7x-logbook.ipp-hgw.mpg.de/api//log/his
         raise RuntimeError("Cannot connect to W7-X logbook server.")
 
     if res.status_code == 200:
-        res = {}
-        res['exp_ID'] = exp_ID
+        result = {}
+        result['exp_ID'] = exp_ID
         r = res.json()
         for c in r['hits']['hits'][-1]['_source']['tags']:
             if (c['description'] == 'Configuration main coils'):
-                res['Config' : c['Main field']]
-        return res
+                result['Config'] = c['Main field']
+        try:
+            result['Config']
+        except KeyError:
+            result['Config'] = '???'
+        return result
     
 def summary_line(ABES_data=None, W7X_data=None):
     """ Returns a summary line created from ABES and W7X data. At least one should be present.
@@ -87,7 +92,8 @@ def summary_line(ABES_data=None, W7X_data=None):
     else:
         raise ValueError('No data.')
     if (W7X_data is not None):
-        txt += "{:25s}".format('(' + W7X_data['Conf'] + ')')
+        txt += "{:s}".format('(' + W7X_data['Config'] + ')')
+        txt += '.' * (25 - (len(W7X_data['Config']) + 2))
     if (ABES_data is not None):
         if ((ABES_data['Chopper mode'] == '') or (ABES_data['Beam on time'] is None) or (ABES_data['Beam off time'] is None)):
             try:
@@ -100,7 +106,7 @@ def summary_line(ABES_data=None, W7X_data=None):
                 chop_str = "{:3.0f}-{:3.0f}[ms]".format(ABES_data['Beam on time'] * 1e3, ABES_data['Beam off time'] * 1e3)
             else:
                 chop_str = "{:3.0f}-{:3.0f}[us]".format(ABES_data['Beam on time'] * 1e6, ABES_data['Beam off time'] * 1e6) 
-            txt += ' ... Chopper: {:6s}({:s})'.format(ABES_data['Chopper mode'],chop_str)
+            txt += ' Chopper: {:6s}({:s})'.format(ABES_data['Chopper mode'],chop_str)
             txt += "... Mean signal: {:3d}[mV]".format(int(ABES_data['Mean signal']))
             txt += " ... Max: {:4d}[mV] at {:6s}/{:7.3f}s".format(int(ABES_data['Max signal']),ABES_data['Max signal channel'],round(ABES_data['Max signal time'],3))
             if (ABES_data['Good signal start'] != np.nan):                
@@ -283,14 +289,15 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
     return txt,data
         
          
-def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',datafile='exp_summaries.dat',update_abes=True,update_w7x=False,new_datafile=True):  
+def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',datafile='exp_summaries.dat',abes=True,w7x=False):  
     """
     Generate an experiment summary of a series of experiments.
 
     Parameters
     ----------
     exp_ids : str
-        Experiment IDs. *, ? supported as in Unix regexp. Like 2018101?.*
+        Experiment IDs. *, ? supported as in Unix regexp. Like 2018101?.*. Will not be used if
+        abes is False.
     datapath : str, optional
         The data path. The default is None.
     timerange : list, optional
@@ -301,13 +308,11 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',
         The name of the output data file. This is a pickle file contaiining a dictionary. 
         The names are the data names: exp_ID, Choopper mode, Beam on, Beam off, Mean signal, ...
         The values are lists. Additionally it may contain W7-X data.
-    update_abes: bool, optional, The default is True
-        If True will read ABES data and update the information in the datafile.
-    update_w7x: bool, optional, the default is False
-        If True will read W7-X data and update the information in the datafile.
-    new_datafile: bool, optional, the default is True.
-        If True will write a new datafile and omit the data in the existing one. Otherwise will 
-        update/add the ABES ot W7-X data as requested.
+    abes: bool, optional, The default is True
+        If True will read ABES data and write a new datafile.
+    w7x: bool, optional, the default is False
+        If True will read W7-X data and add the information to the experiments in the 
+        datafile or to the ABES data being read, if abes is True. 
   
     Returns
     -------
@@ -321,17 +326,17 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',
     def sort_by_name(entry):
         return entry.name
         
-    if (datapath is not None):
-        options = {'Datapath':datapath}
-    else:
-        options = {}
-    default_options = {'Datapath':datapath}
-    _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
-    dp = _options['Datapath']
-    regexp = exp_ids.replace('.','\\.') 
-    regexp = regexp.replace('*','.*') 
     txts = []
-    if (new_datafile):
+    if (abes):
+        if (datapath is not None):
+            options = {'Datapath':datapath}
+        else:
+            options = {}
+        default_options = {'Datapath':datapath}
+        _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
+        dp = _options['Datapath']
+        regexp = exp_ids.replace('.','\\.') 
+        regexp = regexp.replace('*','.*') 
         data = {}
         id_list = list(os.scandir(dp))
         id_list.sort(key=sort_by_name)
@@ -343,39 +348,43 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',
         exp_list.sort()
     else:
         with open(datafile,"rb") as f:
-            data = pickle.load(f)
+            data_orig = pickle.load(f)
+            data = copy.deepcopy(data_orig)
         exp_list = data['exp_ID']
     with open(file,"wt") as f:
         for i_exp,exp in enumerate(exp_list):
-            d = {}
-            if (update_abes):
+            print(exp)
+            if (abes):
                 txt,data_abes = exp_summary(exp,datapath=dp,timerange=timerange)
-                d.update(data_abes)
             else:
-                data_abes = None
-            if (update_w7x):
-                try:
-                    data_w7x = w7x_summary(exp)
-                    d.update(data_w7x) 
-                except RuntimeError:
-                    pass
+                data_abes = {}
+                for k in data_orig.keys():
+                    try:
+                        data_abes[k] = data_orig[k][i_exp]
+                    except IndexError:
+                        aaa=0
+            d = copy.deepcopy(data_abes)
+            if (w7x):
+                data_w7x = w7x_summary(exp)
+                d.update(data_w7x) 
             else:
                 data_w7x = None
             txt = summary_line(ABES_data=data_abes, W7X_data=data_w7x)
             txts.append(txt)
-            time.sleep(0.1)
             f.writelines(txt + '\n')
             f.flush()
-            for k in d.keys():
-                try:
+            if (abes):
+                for k in d.keys():
                     data[k].append(d[k])  
-                except KeyError:
-                    data[k] = [None] * i_exp
-                    data[k].append(d[k]) 
-            for k in data.keys():
-                if (len(data[k]) != len(data['exp_ID'])):
-                    data[k].append(None)
-                                            
+            else:
+                for k in data_w7x.keys():
+                    if (i_exp == 0):
+                        try:
+                            data[k]
+                        except KeyError:
+                            data[k] = [None] * len(data['exp_ID'])                 
+                    data[k][i_exp] = data_w7x[k]  
+                                                            
     if (datafile is not None):
         with open(datafile,"wb") as f:
             pickle.dump(data,f)
