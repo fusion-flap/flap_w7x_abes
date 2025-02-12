@@ -375,7 +375,10 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',
             f.flush()
             if (abes):
                 for k in d.keys():
-                    data[k].append(d[k])  
+                    try:
+                        data[k].append(d[k])
+                    except KeyError:
+                        data[k] = [d[k]]
             else:
                 for k in data_w7x.keys():
                     if (i_exp == 0):
