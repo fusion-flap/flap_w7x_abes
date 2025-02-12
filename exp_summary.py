@@ -17,9 +17,101 @@ import flap_w7x_abes
 
 flap_w7x_abes.register()
 
+def w7x_summary(exp_ID,datapath='https://w7x-logbook.ipp-hgw.mpg.de/api//log/history/XP/'):
+    """ Reads some information about the experiment. Needs to be run on the W7-X servers
+
+    Parameters
+    ----------
+    exp_ID : string
+        The exp ID, YYYMMDD.xxx
+    datapath : str, optional
+        The path were to find the log data. The default is 'https://w7x-logbook.ipp-hgw.mpg.de/api//log/history/XP/'.
+
+    Returns
+    -------
+    dict:
+        The disctionary with the data
+        'Config': Main magnetic configuration
+
+    """
+    
+    import requests, json
+
+    path = datapath+'XP_'+exp_ID[:9]+"{:d}".format(int(exp_ID[9:]))
+#    print(path)
+    try:
+        res = requests.get(path)
+    except Exception as e:
+        print("Not on W7-X machine?")
+        raise RuntimeError("Cannot connect to W7-X logbook server.")
+
+    if res.status_code == 200:
+        res = {}
+        res['exp_ID'] = exp_ID
+        r = res.json()
+        for c in r['hits']['hits'][-1]['_source']['tags']:
+            if (c['description'] == 'Configuration main coils'):
+                res['Config' : c['Main field']]
+        return res
+    
+def summary_line(ABES_data=None, W7X_data=None):
+    """ Returns a summary line created from ABES and W7X data. At least one should be present.
+    
+
+    Parameters
+    ----------
+    ABES_data : dict, optional
+        ABES data returned by exp_summary. The default is None.
+    W7X_data : dict, optional
+        W7X data returned by w7x_summary. The default is None.
+
+    Raises
+    ------
+    ValueError
+        No data found or exp_ID in two data do not agree.
+
+    Returns
+    -------
+    The text line.
+
+    """
+    
+    
+    if ((ABES_data is not None) and (W7X_data is not None)):
+        if (ABES_data['exp_ID'] != W7X_data['exp_ID']):
+            raise ValueError('Different exp_ID in ABES and W7X data.')
+    if (ABES_data is not None):
+        txt = ABES_data['exp_ID']
+    elif (W7X_data is not None):
+        txt = W7X_data['exp_ID']
+    else:
+        raise ValueError('No data.')
+    if (W7X_data is not None):
+        txt += "{:25s}".format('(' + W7X_data['Conf'] + ')')
+    if (ABES_data is not None):
+        if ((ABES_data['Chopper mode'] == '') or (ABES_data['Beam on time'] is None) or (ABES_data['Beam off time'] is None)):
+            try:
+                txt += ' --- {:s} ---'.format(ABES_data['error'])
+            except KeyError:
+                txt += ' --- {:s} ---'.format('Error')
+        else:        
+            period_time = ABES_data['Beam on time'] + ABES_data['Beam off time']
+            if (period_time > 3e-3):
+                chop_str = "{:3.0f}-{:3.0f}[ms]".format(ABES_data['Beam on time'] * 1e3, ABES_data['Beam off time'] * 1e3)
+            else:
+                chop_str = "{:3.0f}-{:3.0f}[us]".format(ABES_data['Beam on time'] * 1e6, ABES_data['Beam off time'] * 1e6) 
+            txt += ' ... Chopper: {:6s}({:s})'.format(ABES_data['Chopper mode'],chop_str)
+            txt += "... Mean signal: {:3d}[mV]".format(int(ABES_data['Mean signal']))
+            txt += " ... Max: {:4d}[mV] at {:6s}/{:7.3f}s".format(int(ABES_data['Max signal']),ABES_data['Max signal channel'],round(ABES_data['Max signal time'],3))
+            if (ABES_data['Good signal start'] != np.nan):                
+                txt += ' ... Time range: ({:6.2f}-{:6.2f})[s]'.format(ABES_data['Good signal start'], ABES_data['Good signal end'])
+            else:
+                txt += '... Time range: ---'
+    return txt
+ 
 def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=False):
     """
-    Return a single line summary of the experiment: expID, max APDCAM signal (uncalibrated), time range, channel range
+    Return a single line summary of the experiment and a dictionaty with data.
 
     Parameters
     ----------
@@ -41,7 +133,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
     
     channels_str = ['ABES-'+str(a) for a in channels]
     data = {}
-    txt = exp_ID
+#    txt = exp_ID
     
 
     print('Processing ' + exp_ID,flush=True)
@@ -81,7 +173,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
             chop_str = "{:3.0f}-{:3.0f}[ms]".format(beam_on_time * 1e3, beam_off_time * 1e3)
         else:
             chop_str = "{:3.0f}-{:3.0f}[us]".format(beam_on_time * 1e6, beam_off_time * 1e6) 
-        txt += ' ... Chopper: {:6s}({:s})'.format(chopper_mode,chop_str)
+#        txt += ' ... Chopper: {:6s}({:s})'.format(chopper_mode,chop_str)
         data['exp_ID'] = exp_ID
         data['Chopper mode'] = chopper_mode
         data['Beam on time'] = beam_on_time
@@ -152,11 +244,10 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         
         max_loc = np.unravel_index(np.argmax(sig), sig.shape)
         d_max = sig[max_loc]
-        mean_signal = np.median(np.mean(sig,axis=1))
+        mean_signal = np.mean(np.mean(sig,axis=1))
         
-        # txt += ' ... Max:{:4.0f}[mV] '.format(d_max * 1000)
-        txt += "... Mean signal: {:3d}[mV]".format(int(mean_signal*1000))
-        txt += " ... Max: {:4d}[mV] at {:6s}/{:7.3f}s".format(int(d_max*1000),channels_str[max_loc[1]],round(d_on.get_coordinate_object("Time").values[max_loc[0]],3))
+#        txt += "... Mean signal: {:3d}[mV]".format(int(mean_signal*1000))
+#        txt += " ... Max: {:4d}[mV] at {:6s}/{:7.3f}s".format(int(d_max*1000),channels_str[max_loc[1]],round(d_on.get_coordinate_object("Time").values[max_loc[0]],3))
         data['Mean signal'] = mean_signal * 1000
         data['Max signal'] = d_max * 1000
         data['Max signal channel'] = channels_str[max_loc[1]]
@@ -164,16 +255,17 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         timescale = d_on.coordinate('Time')[0][ind]
         s = np.sum(sig,axis=1)
         if (np.max(s) <= 0):
-            txt += '... Time range: ---'
+#            txt += '... Time range: ---'
             data['Good signal start'] = np.nan
             data['Good signal start'] = np.nan
         else:
             ind = np.nonzero(s >= np.max(s) * 0.1)[0]
-            txt += ' ... Time range: ({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
+#            txt += ' ... Time range: ({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
             data['Good signal start'] = timescale[ind[0]]
-            data['Good signal start'] = timescale[ind[-1]]                                               
+            data['Good signal end'] = timescale[ind[-1]]                                               
     except Exception as e:
-        txt += ' --- {:s} ---'.format(str(e))
+#        txt += ' --- {:s} ---'.format(str(e))
+        data['error'] = str(e)
         data['exp_ID'] = exp_ID
         data['Chopper mode'] = ''
         data['Beam on time'] = np.nan
@@ -187,10 +279,11 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         data['Good signal start'] = np.nan
         data['Good signal start'] = np.nan
 
+    txt = summary_line(ABES_data=data, W7X_data=None)
     return txt,data
         
          
-def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',datafile='exp_summaries.dat'):  
+def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',datafile='exp_summaries.dat',update_abes=True,update_w7x=False,new_datafile=True):  
     """
     Generate an experiment summary of a series of experiments.
 
@@ -203,11 +296,18 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',
     timerange : list, optional
          The processing timerange. The default is None.
     file: str
-        File name where to write the list    
+        File name where to write the list. This will be generated from the updated data.    
     datafile: str
         The name of the output data file. This is a pickle file contaiining a dictionary. 
         The names are the data names: exp_ID, Choopper mode, Beam on, Beam off, Mean signal, ...
-        The values are lists.
+        The values are lists. Additionally it may contain W7-X data.
+    update_abes: bool, optional, The default is True
+        If True will read ABES data and update the information in the datafile.
+    update_w7x: bool, optional, the default is False
+        If True will read W7-X data and update the information in the datafile.
+    new_datafile: bool, optional, the default is True.
+        If True will write a new datafile and omit the data in the existing one. Otherwise will 
+        update/add the ABES ot W7-X data as requested.
   
     Returns
     -------
@@ -231,19 +331,38 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',
     regexp = exp_ids.replace('.','\\.') 
     regexp = regexp.replace('*','.*') 
     txts = []
-    data = {}
-    id_list = list(os.scandir(dp))
-    id_list.sort(key=sort_by_name)
-    exp_list = []
-    for idi in id_list:
-        if (idi.is_dir()):
-            if ((len(idi.name) == 12) and (idi.name[8] == '.') and (re.search(regexp,idi.name) is not None)):
-                exp_list.append(idi.name)
-    exp_list.sort()
-#    print(exp_list)
+    if (new_datafile):
+        data = {}
+        id_list = list(os.scandir(dp))
+        id_list.sort(key=sort_by_name)
+        exp_list = []
+        for idi in id_list:
+            if (idi.is_dir()):
+                if ((len(idi.name) == 12) and (idi.name[8] == '.') and (re.search(regexp,idi.name) is not None)):
+                    exp_list.append(idi.name)
+        exp_list.sort()
+    else:
+        with open(datafile,"rb") as f:
+            data = pickle.load(f)
+        exp_list = data['exp_ID']
     with open(file,"wt") as f:
-        for exp in exp_list:
-            txt,d = exp_summary(exp,datapath=dp,timerange=timerange)
+        for i_exp,exp in enumerate(exp_list):
+            d = {}
+            if (update_abes):
+                txt,data_abes = exp_summary(exp,datapath=dp,timerange=timerange)
+                d.update(data_abes)
+            else:
+                data_abes = None
+            if (update_w7x):
+                try:
+                    data_w7x = w7x_summary(exp)
+                    d.update(data_w7x) 
+                except RuntimeError:
+                    pass
+            else:
+                data_w7x = None
+            txt = summary_line(ABES_data=data_abes, W7X_data=data_w7x)
+            txts.append(txt)
             time.sleep(0.1)
             f.writelines(txt + '\n')
             f.flush()
@@ -251,11 +370,11 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',
                 try:
                     data[k].append(d[k])  
                 except KeyError:
-                    data[k] = []
+                    data[k] = [None] * i_exp
                     data[k].append(d[k]) 
             for k in data.keys():
-                if (len(data[k]) != len(data[list(data.keys())[0]])):
-                    raise ValueError("exp_summary did not return all keys.")
+                if (len(data[k]) != len(data['exp_ID'])):
+                    data[k].append(None)
                                             
     if (datafile is not None):
         with open(datafile,"wb") as f:
@@ -324,11 +443,11 @@ def find_experiment(search_dict,datafile='exp_summaries.dat'):
                 raise ValueError('Key "{:s}" is not present in datafile. \n Valid keys are:{:s}'.format(k,txt))
     return np.array(df['exp_ID'])[index]
         
-if __name__ == '__main__':        
-    #exp_summary('20230328.028')
-    df = 'c:/Users/Zoletnik/OneDrive - energia.mta.hu/Megosztott dokumentumok - FPL/Projects/Experiments/W7-X/ABES/op21/Log/exp_summaries_2023.dat'
-    print(find_experiment({"Chopper mode":'Timed',
-                           'Beam on time':[1e-6,1e-5],
-                           'Mean signal':[40,300]
-                           },datafile=df)
-          )
+# if __name__ == '__main__':        
+#     #exp_summary('20230328.028')
+#     df = 'c:/Users/Zoletnik/OneDrive - energia.mta.hu/Megosztott dokumentumok - FPL/Projects/Experiments/W7-X/ABES/op21/Log/exp_summaries_2023.dat'
+#     print(find_experiment({"Chopper mode":'Timed',
+#                            'Beam on time':[1e-6,1e-5],
+#                            'Mean signal':[40,300]
+#                            },datafile=df)
+#           )
