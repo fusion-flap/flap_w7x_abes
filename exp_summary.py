@@ -263,7 +263,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         if (np.max(s) <= 0):
 #            txt += '... Time range: ---'
             data['Good signal start'] = np.nan
-            data['Good signal start'] = np.nan
+            data['Good signal end'] = np.nan
         else:
             ind = np.nonzero(s >= np.max(s) * 0.1)[0]
 #            txt += ' ... Time range: ({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
