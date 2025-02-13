@@ -283,7 +283,7 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         data['Max signal channel'] = np.nan
         data['Max signal time'] = np.nan 
         data['Good signal start'] = np.nan
-        data['Good signal start'] = np.nan
+        data['Good signal end'] = np.nan
 
     txt = summary_line(ABES_data=data, W7X_data=None)
     return txt,data
