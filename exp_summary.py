@@ -50,9 +50,12 @@ def w7x_summary(exp_ID,datapath='https://w7x-logbook.ipp-hgw.mpg.de/api//log/his
         result = {}
         result['exp_ID'] = exp_ID
         r = res.json()
-        for c in r['hits']['hits'][-1]['_source']['tags']:
-            if (c['description'] == 'Configuration main coils'):
-                result['Config'] = c['Main field']
+        try:
+            for c in r['hits']['hits'][-1]['_source']['tags']:
+                if (c['description'] == 'Configuration main coils'):
+                    result['Config'] = c['Main field']
+        except IndexError:
+            pass
         try:
             result['Config']
         except KeyError:
@@ -394,7 +397,7 @@ def exp_summaries(exp_ids,datapath=None,timerange=None,file='exp_summaries.txt',
        
     return txts,data
 
-def find_experiment(search_dict,datafile='exp_summaries.dat'):
+def find_experiment(search_dict,datafile='exp_summaries.dat',list_keys='True'):
     """Find an experiment in the datafile fulfilling certain criteria.
 
     Parameters
@@ -406,6 +409,8 @@ def find_experiment(search_dict,datafile='exp_summaries.dat'):
             is a list then experiments will be serached where the value is between (equal) to the two values in the list. 
     datafile : str, optional, deafult is 'exp_summaries.dat'
         The name of the datafile written by exp_summaries. 
+    list_keys : bool
+        Lists the keys which can can be used in the search.
 
     Raises
     ------
@@ -429,6 +434,8 @@ def find_experiment(search_dict,datafile='exp_summaries.dat'):
 
     with open(datafile,"rb") as f:
         df = pickle.load(f)
+    if (list_keys):
+        print(list(df.keys()))
     index = np.array(list(range(len(df['exp_ID']))))
     for k in search_dict.keys():
         if (type(search_dict[k]) is list):
