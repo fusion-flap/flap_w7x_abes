@@ -112,13 +112,21 @@ def summary_line(ABES_data=None, W7X_data=None):
             txt += ' Chopper: {:6s}({:s})'.format(ABES_data['Chopper mode'],chop_str)
             txt += "... Mean signal: {:3d}[mV]".format(int(ABES_data['Mean signal']))
             txt += " ... Max: {:4d}[mV] at {:6s}/{:7.3f}s".format(int(ABES_data['Max signal']),ABES_data['Max signal channel'],round(ABES_data['Max signal time'],3))
-            if (ABES_data['Good signal start'] != np.nan):                
-                txt += ' ... Time range: ({:6.2f}-{:6.2f})[s]'.format(ABES_data['Good signal start'], ABES_data['Good signal end'])
-            else:
-                txt += '... Time range: ---'
+            timetext = '... Time range: ---'
+            if 'Good signal start' in ABES_data.keys():
+                if (ABES_data['Good signal start'] != np.nan):                
+                    timetext = ' ... Time range: ({:6.2f}-{:6.2f})[s]'.format(ABES_data['Good signal start'], ABES_data['Good signal end'])
+            
+            txt += timetext
+        # if we're in extended mode:
+        if "APD voltage" in ABES_data.keys():
+            txt += f" ... APD voltage: {(ABES_data['APD voltage'])}"
+            txt += f" ... MPPC voltage: {(ABES_data['MPPC voltage'])}"
+            txt += f" ... Clock source: {(ABES_data['Clock source'])}"
+            txt += f" ... Chopper period: {(ABES_data['Chopper period'])}"
     return txt
  
-def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=False):
+def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=False, extended=False):
     """
     Return a single line summary of the experiment and a dictionaty with data.
 
@@ -130,7 +138,8 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         The processing timerange. The default is None.
     datapath : string, optional
         The datapath. The default is None.
-
+    extended : bool, optional
+        Whether to show some additional information  about the APDCAM configuration
     Returns
     -------
     txt : string
@@ -200,19 +209,22 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
             off_start = 0
             off_end = 0
             options['Resample'] = None
-            
+        
+        beam_on_state = {'State':{'Chop': 0, 'Defl': 0},'Start':on_start,'End':on_end}
         d_beam_on=flap.get_data('W7X_ABES',
                                  exp_id=exp_ID,
                                  name='Chopper_time',
-                                 options={'State':{'Chop': 0, 'Defl': 0},'Start':on_start,'End':on_end}
+                                 options=beam_on_state
                                  )
+        beam_off_state = {'State':{'Chop': 1, 'Defl': 0},'Start':on_start,'End':on_end}
         d_beam_off=flap.get_data('W7X_ABES',
                                  exp_id=exp_ID,
                                  name='Chopper_time',
-                                 options={'State':{'Chop': 1, 'Defl': 0},'Start':off_start,'End':off_end}
+                                 options=beam_off_state
                                  ) 
           
         sig = np.zeros(len(channels))
+        maxraw = 0
         for i in range(len(channels)):
             print('  Processing '+channels_str[i],flush=True)
             d=flap.get_data('W7X_ABES',
@@ -238,6 +250,8 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
                 plt.figure()
                 d_on.plot(axes='Time')
                 d_off.plot(axes='Time')
+                plt.show()
+                plt.pause(0.1)
             d_on_data = d_on.data
             d_off_data = d_off.data
             ind = np.nonzero(np.logical_and(np.isfinite(d_off_data),
@@ -246,10 +260,13 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
                              )[0]
             d_on_data = d_on_data[ind]
             d_off_data = d_off_data[ind]
-            d = d_on_data - d_off_data
+            d_clean = d_on_data - d_off_data
+            maxraw = max([maxraw,
+                          max(d_on_data),
+                          max(d_off_data)])
             if (i == 0):
-                sig = np.zeros((len(d),len(channels)))
-            sig[:,i] = d
+                sig = np.zeros((len(d_clean),len(channels)))
+            sig[:,i] = d_clean
         
         max_loc = np.unravel_index(np.argmax(sig), sig.shape)
         d_max = sig[max_loc]
@@ -269,9 +286,19 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
             data['Good signal end'] = np.nan
         else:
             ind = np.nonzero(s >= np.max(s) * 0.1)[0]
-#            txt += ' ... Time range: ({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
             data['Good signal start'] = timescale[ind[0]]
-            data['Good signal end'] = timescale[ind[-1]]                                               
+            data['Good signal end'] = timescale[ind[-1]]  
+
+        if extended:
+            data["APD voltage"] = d.info['Config']['APDCAM_bias1']
+            data["MPPC voltage"] = d.info['Config']['APDCAM_bias2']
+            data["Clock source"] = d.info['Config']['APDCAM_clock_source']
+            if chopper_mode != "Camera":
+                data["Chopper period"] = d.info['Config']['Chopper period']
+            data["Max raw signal"] = maxraw
+#            txt += ' ... Time range: ({:6.2f}-{:6.2f})[s]'.format(timescale[ind[0]], timescale[ind[-1]])
+                                             
+
     except Exception as e:
 #        txt += ' --- {:s} ---'.format(str(e))
         data['error'] = str(e)
@@ -287,6 +314,11 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=F
         data['Max signal time'] = np.nan 
         data['Good signal start'] = np.nan
         data['Good signal end'] = np.nan
+        if extended:
+            data["APD voltage"] = np.nan
+            data["MPPC voltage"] = np.nan
+            data["Clock source"] = np.nan
+            data["Chopper period"] = np.nan
 
     txt = summary_line(ABES_data=data, W7X_data=None)
     return txt,data
@@ -462,11 +494,12 @@ def find_experiment(search_dict,datafile='exp_summaries.dat',list_keys='True'):
                 raise ValueError('Key "{:s}" is not present in datafile. \n Valid keys are:{:s}'.format(k,txt))
     return np.array(df['exp_ID'])[index]
         
-# if __name__ == '__main__':        
-#     #exp_summary('20230328.028')
-#     df = 'c:/Users/Zoletnik/OneDrive - energia.mta.hu/Megosztott dokumentumok - FPL/Projects/Experiments/W7-X/ABES/op21/Log/exp_summaries_2023.dat'
-#     print(find_experiment({"Chopper mode":'Timed',
-#                            'Beam on time':[1e-6,1e-5],
-#                            'Mean signal':[40,300]
-#                            },datafile=df)
-#           )
+if __name__ == '__main__':
+    pass
+    # out = exp_summary('20250312.099')
+    # df = 'c:/Users/Zoletnik/OneDrive - energia.mta.hu/Megosztott dokumentumok - FPL/Projects/Experiments/W7-X/ABES/op21/Log/exp_summaries_2023.dat'
+    # print(find_experiment({"Chopper mode":'Timed',
+    #                         'Beam on time':[1e-6,1e-5],
+    #                         'Mean signal':[40,300]
+    #                         },datafile=df)
+    #       )
