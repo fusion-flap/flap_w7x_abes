@@ -12,6 +12,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
+from scipy import signal
 
 import flap
 #import flap_apdcam_op1 as flap_apdcam
@@ -218,59 +219,6 @@ def plot_shot(shotID, resample=1e4, smoothen=0, channel_name=None, canvas=None,
             
             # fig.show()
             # plt.show(block=True)        
-        
-        if plot_powerspect is True:
-            print("in")
-            fig = plt.figure()
-            
-            channels = np.arange(64)+1
-            for channel in channels:
-                channel_data = dataobject.slice_data(slicing={'ADC Channel': channel})
-                plt.subplot(8,8,channel)
-                color = 'black'
-                if 'MPPC' in channel_data.coordinate('Detector type')[0]:
-                    color = 'tab:green'
-                if 'SM' in channel_data.coordinate('Fibre ID')[0][0]:
-                    color = 'tab:blue'
-                if ('Null' in channel_data.coordinate('Fibre ID')[0][0]) or ('Unknown' in channel_data.coordinate('Fibre ID')[0][0]):
-                    color = 'tab:red'
-                if ("L" in channel_data.coordinate('Fibre ID')[0][0]):
-                    color = 'tab:purple'
-                if ("R" in channel_data.coordinate('Fibre ID')[0][0]):
-                    color = 'tab:orange'
-                ps = np.abs(np.fft.fft(channel_data.data))**2
-        
-                time_step = channel_data.coordinate('Time')[0][1]- channel_data.coordinate('Time')[0][0]
-                freqs = np.fft.fftfreq(channel_data.data.size, time_step)
-                idx = np.argsort(freqs)
-                newfreq = freqs[idx]
-                newps = ps[idx]
-                newps = newps[np.where(newfreq>0)]
-                newfreq = newfreq[np.where(newfreq>0)]
-        
-                plt.plot(newfreq, newps,
-                         color = color, alpha=0.75, label=channel_data.coordinate('Detector type')[0][0]+str(channel)+"-"+channel_data.coordinate('Fibre ID')[0][0].split('-')[-1] )
-                plt.ylim([np.min(newps)*0.8, np.max(newps)*1.2])
-                try:
-                    plt.yscale('log')
-                    plt.xscale('log')
-                except:
-                    pass
-                plt.ylabel('')
-                plt.tick_params(axis='y', direction='in', pad=-22)
-                plt.xlabel('')
-                if channel < 56:
-                    plt.xticks([])
-                plt.legend()
-                plt.show(block=False)
-                plt.pause(0.001)
-            #plt.get_current_fig_manager().full_screen_toggle()
-            fig.text(0.5, 0.04, 'Frequency (Hz)', ha='center')
-            fig.text(0.04, 0.5, 'Power spectrum', va='center', rotation='vertical')
-            # fig.tight_layout(rect=[0.05, 0.05, 0.95, 0.95])
-            fig.subplots_adjust(wspace=0,hspace=0)
-            fig.show()
-            plt.show(block=True)
     else:
         resample = int(resample)
         if resample == 0:
@@ -327,6 +275,7 @@ def onclick_all(dataobject, axes, plotindex_to_channel, event):
             plt.xlabel('Time (s)')
             #plt.legend()
             plt.tight_layout()
+            plt.show()
         channel += 1
   
 def smooth(y,box_pts):
@@ -334,8 +283,142 @@ def smooth(y,box_pts):
     y_smooth=np.convolve(y,box,mode='same')
     return np.array(y_smooth)
 
+def get_spectrogram(channel_data, time_resolution, timestep=None,
+                    freq_max=None):
+    if timestep is None:
+        timestep = time_resolution/10
+    freq_min = 0
+    if freq_max is None:
+        freq_max = 10000
+    fft_data = copy.deepcopy(channel_data)
+    time_vec = copy.deepcopy(channel_data.coordinate('Time')[0])
+    new_time_step = time_vec[1]-time_vec[0]
+    # print(new_time_step)
+    # new_time_step = new_time_step[0]
+    sampling = int(timestep/new_time_step)
+    time_vec = time_vec[::sampling]
+    time_vec2 = time_vec+time_resolution
+    time_vec = time_vec[np.where(time_vec2<=np.max(channel_data.coordinate('Time')[0]))]
+    time_vec2 = time_vec2[np.where(time_vec2<=np.max(channel_data.coordinate('Time')[0]))]
+    for index in range(0,len(time_vec)):
+        time_step = channel_data.slice_data(slicing={'Time': flap.Intervals(time_vec[index],time_vec2[index])})
+        fourier = np.fft.fft(time_step.data-np.mean(time_step.data))
+        n = time_step.data.size
+        timestep = time_step.coordinate('Time')[0][1]-time_step.coordinate('Time')[0][0]
+        freq = np.fft.fftfreq(n, d=timestep)
+        fourier = fourier[np.where((freq>=freq_min)*(freq<freq_max))]
+        freq = freq[np.where((freq>=freq_min)*(freq<freq_max))]
+        if index == 0:
+            fft_data.data = np.zeros([len(time_vec),len(fourier)])
+        fourier = [x for _,x in sorted(zip(freq,fourier))]
+        fsize = min(len(fourier), np.shape(fft_data.data)[1])
+        fft_data.data[index,:fsize] = np.absolute(fourier[:fsize])
+        fft_data.data[index,:fsize] = fft_data.data[index,:fsize]/np.max(fft_data.data[index,:fsize])
+        if index%(len(time_vec)//20) == 0:
+            print(f"{int(index/len(time_vec)*100)}%")
+    fsize = min(len(freq), np.shape(fft_data.data)[1])
+    freq=np.sort(freq)
+    norm_data = abs(np.transpose(fft_data.data)/np.nanmax(channel_data.data, axis=0))**2
+    return time_vec, freq, norm_data
+
+def filter_dataobject(dataobject, flow, fhigh):
+    time_vec = copy.deepcopy(dataobject.coordinate('Time')[0])
+    time_step = time_vec[1]-time_vec[0]
+    sos = signal.ellip(8, 1, 100, [flow, fhigh], btype="bandpass",\
+                        fs=1/time_step, output='sos')
+    new_dataobject = copy.copy(dataobject)
+    new_dataobject.data[:] = signal.sosfilt(sos, new_dataobject.data[:])
+    return new_dataobject
+
+def plot_spectrogram(exp_id, channel, timeres=0.1, timestep=0.01,
+                     timerange=None, flow=0, fhigh=None, plot_smoothening=0.5,
+                     canvas=None):
+    flap.config.read()
+    
+    print(f"Reading {channel} for {exp_id}")
+    
+    dataobject = flap.get_data('W7X_ABES', name=channel,
+                               coordinates={'Time':timerange},
+                               options={"Amplitude calibration": False},
+                               exp_id=exp_id,
+                               object_name='f{exp_id}/{channel}')
+    try:
+        spatcal = flap_w7x_abes.ShotSpatCal(exp_id)
+        try:
+            spatcal.generate_shotdata()
+        except FileExistsError:
+            pass
+        spatcal.read()
+        r = spatcal.data["Device R"][np.where(spatcal.data["Channel name"] == channel)][0]
+        print("Spatial data obtained")
+    except ValueError as e:
+        print(f"Unable to read spatial calibration: {e}")
+        r=None
+
+    
+    d_beam_on=flap.get_data('W7X_ABES',
+                            exp_id=exp_id,
+                            name='Chopper_time',
+                            coordinates={'Time':timerange},
+                            options={'State':{'Chop': 0, 'Defl': 0}},\
+                            object_name='Beam_on',
+                            )
+    
+    beam_on = dataobject.slice_data(slicing={'Sample':d_beam_on})
+    beam_on = beam_on.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
+        
+    if fhigh is not None and flow>0:
+        print(f"Filtering for [{flow}Hz,{fhigh}Hz]")
+        beam_on = filter_dataobject(beam_on, flow=flow, fhigh=fhigh)
+    
+    print(f"Obtaining spectrogram")
+    flap_w7x_abes.regenerate_time_sample(beam_on)
+    
+    # dataobject.plot(axes='Time', options={'All':True}, plot_options={'marker': 'o'})
+    # d_beam_on.plot(plot_type='scatter', axes=['Time', plt.ylim()[1]], options={'Force': True,'All': True})
+    # beam_on.plot(axes='Time', options={'All':True}, plot_options={'marker': 'o'})
+
+    time_vec, freq, norm_data = get_spectrogram(beam_on, timeres, timestep=timestep, freq_max=None)
+    
+    print(f"Plotting spectrogram")
+    if canvas == None:
+        fig = plt.figure(figsize=(4,4))
+        fig.show()
+        plt.pcolormesh(time_vec, freq/1000, np.sqrt((norm_data[:freq.shape[0]-1,:time_vec.shape[0]-1])**plot_smoothening))
+        if r is not None:
+            plt.title(f"{exp_id}/{channel} R={r}m\nTimeres: {timeres}s Freq:[{flow}Hz,{fhigh}Hz]")
+        else:
+            plt.title(f"{exp_id}/{channel}\nTimeres: {timeres}s Freq:[{flow}Hz,{fhigh}Hz]")
+        plt.xlabel("Time [s]")
+        plt.ylabel("Frequency [kHz]")
+        plt.tight_layout()
+        fig.canvas.draw_idle()
+        fig.canvas.flush_events()
+    else:
+        fig=canvas.fig
+        ax = canvas.fig.add_subplot(1,1,1)
+        ax.pcolormesh(time_vec, freq/1000, np.sqrt((norm_data[:freq.shape[0]-1,:time_vec.shape[0]-1])**plot_smoothening))
+        if r is not None:
+            canvas.fig.suptitle(f"{exp_id}/{channel} R={r}m\nTimeres: {timeres}s Freq:[{flow}Hz,{fhigh}Hz]")
+        else:
+            canvas.fig.suptitle(f"{exp_id}/{channel}\nTimeres: {timeres}s Freq:[{flow}Hz,{fhigh}Hz]")
+        ax.set_xlabel("Time [s]")
+        ax.set_ylabel("Frequency [kHz]")
+        fig.canvas.draw_idle()
+        fig.canvas.flush_events()
+
 if __name__ == '__main__':
-    # plot_shot("T20240806.018")
-    plot_shot("20241105.053", plot_rawdata=True, plot_powerspect=False, resample=0)
+    # plot_shot("20241127.070", plot_rawdata=True, plot_powerspect=False, resample=0)
+
+    exp_id = "20250227.026"
+    timerange = None
+    channel = "ABES-24"
+    timeres = 0.1
+    timestep = 0.01
+    plot_smoothening = 0.5
+    flow=10
+    fhigh=10000
+    plot_spectrogram(exp_id, channel, timeres=timeres, timestep=timestep, timerange=timerange,
+                     flow=10, fhigh=10000, plot_smoothening=plot_smoothening)
 
     # globals()[sys.argv[1]](*sys.argv[2:])

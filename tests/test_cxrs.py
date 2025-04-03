@@ -21,7 +21,9 @@ class CXRSPlotter():
         self.shotID=shotID
         self.curr_sample = 0
         self.canvas = canvas
+        self.channelrange=1
         self.plot_cxrs()
+        
 
     def get_data(self):
         datapath = '/data'
@@ -38,7 +40,7 @@ class CXRSPlotter():
             self.get_data()
         
         if setto is not None:
-            self.curr_sample = int((setto-1)/50.0*self.channelrange)
+            self.curr_sample = int((setto-1)/100.0*self.channelrange)
         
         if moveby is not None:
             self.curr_sample += moveby

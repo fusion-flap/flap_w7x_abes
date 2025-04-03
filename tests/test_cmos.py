@@ -22,6 +22,7 @@ class CMOSPlotter():
         self.shotID=shotID
         self.curr_sample = 0
         self.canvas = canvas
+        self.im = None
         self.plot_cmos()
 
     def get_data(self):
@@ -29,18 +30,21 @@ class CMOSPlotter():
         cmos_main.register()
         self.cmos = flap.get_data('W7X_ABES_CMOS', exp_id=self.shotID,
                                   name="QSI", options={"Datapath": datapath})
-        self.samplerange = self.cmos.data.shape[0]
+        self.samplerange = self.cmos.data.shape[0]-1
     
     def plot_cmos(self, setto=None, moveby=None):
     
         if hasattr(self, "cmos") is False:
             self.get_data()
         
+        if moveby is not None:
+            self.curr_sample += moveby
+            setto=None
+
         if setto is not None:
             self.curr_sample = int(setto/100.0*self.samplerange)
         
-        if moveby is not None:
-            self.curr_sample += moveby
+        self.curr_sample = np.min([np.max([0, self.curr_sample]), self.samplerange])
             
         if hasattr(self, "fig") is False:
             if self.canvas is None:
@@ -50,8 +54,10 @@ class CMOSPlotter():
                 self.ax = self.canvas.fig.add_subplot(1,1,1)
         self.ax.set_title(f"{self.shotID} at "+\
                          f"{self.cmos.get_coordinate_object('Time').start+self.cmos.get_coordinate_object('Time').step[0]*self.curr_sample}s")
-    
-        self.ax.imshow(self.cmos.data[self.curr_sample,::4,::4], cmap="gray")
+        if self.im == None:
+            self.im = self.ax.imshow(self.cmos.data[self.curr_sample,::4,::4], cmap="gray")
+        else:
+            self.im.set_array(self.cmos.data[self.curr_sample,::4,::4])
         self.ax.set_xticks([])
         self.ax.set_yticks([])
 

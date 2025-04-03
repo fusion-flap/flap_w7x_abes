@@ -96,34 +96,34 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
         beam_log_lastminutes.data['HV Ex Meas Voltage'].plot(options={"All points": True}, plot_options={"label":"Extractor"})
         plt.title('Accelerator voltages')
         plt.tick_params(right=True, left=True, bottom=True, top=True)
-        plt.legend()
+        plt.legend(prop={'size': 6})
     else:
         axcurr = canvas.fig.add_subplot(gs[0:2,2:4], sharex=ax)
         plot_logdata_on_axis(beam_log_lastminutes.data['HV Em Meas Voltage'], axcurr, label="Emitter")
         plot_logdata_on_axis(beam_log_lastminutes.data['HV Ex Meas Voltage'], axcurr, label="Extractor")
         axcurr.tick_params(right=True, left=True, bottom=True, top=True)
         axcurr.set_title('Accelerator voltages')
-        axcurr.legend()
+        axcurr.legend(prop={'size': 6})
 
     
     if canvas == None:
         plt.subplot(gs[2:4,0:2],sharex=ax)
         beam_log_lastminutes.data['TC Oven Bottom'].plot(options={"All points": True}, plot_options={"label":"Bottom", "color":"tab:red"})
-        beam_log_lastminutes.data['TC Oven Top'].plot(options={"All points": True}, plot_options={"label":"Top", "color":"tab:purple"})
+        beam_log_lastminutes.data['TC 3'].plot(options={"All points": True}, plot_options={"label":"Top", "color":"tab:purple"})
         beam_log_lastminutes.data['TC Torus Side Cone'].plot(options={"All points": True}, plot_options={"label":"Torus side", "color":"tab:pink"})
         beam_log_lastminutes.data['TC Emit Side Cone'].plot(options={"All points": True}, plot_options={"label":"Emitter side", "color":"tab:brown"})
         plt.title('Neutralizer temperatures')
         plt.tick_params(right=True, left=True, bottom=True, top=True)
-        plt.legend()
+        plt.legend(prop={'size': 6})
     else:
         axcurr = canvas.fig.add_subplot(gs[2:4,0:2], sharex=ax)
         plot_logdata_on_axis(beam_log_lastminutes.data['TC Oven Bottom'], axcurr, label="Bottom", color="tab:red")
-        plot_logdata_on_axis(beam_log_lastminutes.data['TC Oven Top'], axcurr, label="Top", color="tab:purple")
+        plot_logdata_on_axis(beam_log_lastminutes.data['TC 3'], axcurr, label="Top", color="tab:purple")
         plot_logdata_on_axis(beam_log_lastminutes.data['TC Torus Side Cone'], axcurr, label="Torus side", color="tab:pink")
         plot_logdata_on_axis(beam_log_lastminutes.data['TC Emit Side Cone'], axcurr, label="Emitter side", color= "tab:brown")
         axcurr.tick_params(right=True, left=True, bottom=True, top=True)
         axcurr.set_title('Neutralizer temperatures')
-        axcurr.legend()
+        axcurr.legend(prop={'size': 6})
 
     if canvas == None:
         plt.subplot(gs[2:4,2:4],sharex=ax)
@@ -131,14 +131,14 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
         beam_log_lastminutes.data['HV Ex Meas Current'].plot(options={"All points": True}, plot_options={"label":"Extractor"})
         plt.tick_params(right=True, left=True, bottom=True, top=True)
         plt.title('HV PS currents')
-        plt.legend()
+        plt.legend(prop={'size': 6})
     else:
         axcurr = canvas.fig.add_subplot(gs[2:4,2:4], sharex=ax)
         plot_logdata_on_axis(beam_log_lastminutes.data['HV Em Meas Current'], axcurr, label="Emitter")
         plot_logdata_on_axis(beam_log_lastminutes.data['HV Ex Meas Current'], axcurr, label="Extractor")
         axcurr.tick_params(right=True, left=True, bottom=True, top=True)
         axcurr.set_title('HV PS currents')
-        axcurr.legend()
+        axcurr.legend(prop={'size': 6})
 
     if canvas == None:
         plt.subplot(gs[4:6,0:2],sharex=ax)
@@ -151,7 +151,7 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
         plt.yticks([1e-7, 1e-6, 1e-5, 1e-4, 1e-3])
         plt.ylim([1e-7,1e-3])
         plt.tick_params(right=True, left=True, bottom=True, top=True)
-        plt.legend()
+        plt.legend(prop={'size': 6})
     else:
         axcurr = canvas.fig.add_subplot(gs[4:6,0:2], sharex=ax)
         plot_logdata_on_axis(beam_log_lastminutes.data['Vap Press Oven Bottom'], axcurr, label="Bottom", color="tab:red")
@@ -163,7 +163,7 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
         axcurr.set_yscale("log")
         axcurr.set_yticks([1e-7, 1e-6, 1e-5, 1e-4, 1e-3])
         axcurr.set_ylim([1e-7,1e-3])
-        axcurr.legend()
+        axcurr.legend(prop={'size': 6})
         
     if canvas == None:
         plt.subplot(gs[4:6,2:4],sharex=ax)
@@ -171,7 +171,7 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
         temp = copy.deepcopy(beam_log_lastminutes.data['Extractor overcurrent'])
         # temp.data = -temp.data
         temp.plot(options={"All points": True}, plot_options={"label":"Extractor"})
-        plt.legend()
+        plt.legend(prop={'size': 6})
         plt.tick_params(right=True, left=True, bottom=True, top=True)
         plt.title('Extra currents')
     else:
@@ -180,7 +180,7 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
         plot_logdata_on_axis(beam_log_lastminutes.data['Extractor overcurrent'], axcurr, label="Extractor")
         axcurr.tick_params(right=True, left=True, bottom=True, top=True)
         axcurr.set_title('Extra currents')
-        axcurr.legend()
+        axcurr.legend(prop={'size': 6})
         
     if canvas == None:
         plt.subplot(gs[6:8,0:2],sharex=ax)
@@ -208,7 +208,7 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
         plt.yscale('log')
         plt.title('Vacuum pressure')
         plt.tick_params(right=True, left=True, bottom=True, top=True)
-        plt.legend()
+        plt.legend(prop={'size': 6})
     else:
         plot_logdata_on_axis(highvac1, axcurr, color="tab:green", label="HighVac1")
         plot_logdata_on_axis(highvac2, axcurr, color="tab:green", label="HighVac2", ls="dashed")
@@ -216,7 +216,7 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
         axcurr.set_title('Vacuum Pressure')
         axcurr.set_yscale("log")
         axcurr.tick_params(right=True, left=True, bottom=True, top=True)
-        axcurr.legend()
+        axcurr.legend(prop={'size': 6})
 
     if canvas == None:
         plt.subplot(gs[6:8,2:4],sharex=ax)
@@ -237,13 +237,13 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
     if canvas == None:    
         data1.plot(options={"All points": True}, plot_options={"label":"Gate Valve Open", "color":"tab:green"})
         plt.tick_params(right=True, left=True, bottom=True, top=True)
-        plt.legend()
+        plt.legend(prop={'size': 6})
         plt.title('Beam current')
     else:
         plot_logdata_on_axis(data1, axcurr, color="tab:green", label="Gate Valve Open")
         axcurr.set_title('Beam current')
         axcurr.tick_params(right=True, left=True, bottom=True, top=True)
-        axcurr.legend()
+        axcurr.legend(prop={'size': 6})
     
     
     if canvas == None:
@@ -267,10 +267,12 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
         plt.tick_params(right=True, left=True, bottom=True, top=True)
         plt.xlim([0,5])
         plt.title('Child-Langmuir')
+        plt.legend(ncol=3, prop={'size': 6})
     else:
         axcurr.tick_params(right=True, left=True, bottom=True, top=True)
         axcurr.set_xlim([0,5])
         axcurr.set_title('Child-Langmuir')
+        axcurr.legend(ncol=3, prop={'size': 6})
     
     if canvas == None:
         plt.subplot(gs[2:4,4:6], sharex=ax)
@@ -311,7 +313,7 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
         plt.plot(beam_log_lastminutes.data["Extracted charge"].get_coordinate_object("Time").values,
                  beam_log_lastminutes.data["Extracted charge"].data,
                  color="tab:blue", label = f"Last {last_minutes}min")
-        plt.legend()
+        plt.legend(prop={'size': 6})
         plt.title("Extracted charge from emitter (+1mC)")
         plt.xlim([np.min(beam_log_lastminutes.data["Extracted charge"].get_coordinate_object("Time").values),
                   np.max(beam_log_lastminutes.data["Extracted charge"].get_coordinate_object("Time").values)])
@@ -325,7 +327,7 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
         axcurr.set_xlim([np.min(beam_log_lastminutes.data["Extracted charge"].get_coordinate_object("Time").values),
                      np.max(beam_log_lastminutes.data["Extracted charge"].get_coordinate_object("Time").values)])
         axcurr.tick_params(right=True, left=True, bottom=True, top=True)
-        axcurr.legend()
+        axcurr.legend(prop={'size': 6})
     
     if canvas == None:
         plt.subplot(gs[4:6,4:6], sharex=ax)
@@ -349,14 +351,14 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
         plt.ylabel(f"Current [{beam_log_lastminutes.data['FC1 Resistor Current mA'].data_unit.unit}]")
         plt.title("Faraday cup currents")
         plt.tick_params(right=True, left=True, bottom=True, top=True)
-        plt.legend()
+        plt.legend(prop={'size': 6})
     else:
         axcurr.plot(fc1_reltime, fc1_data, label="FC1", color="tab:olive")
         axcurr.set_xlabel(f"Time [{beam_log_lastminutes.data['FC1 Resistor Current mA'].get_coordinate_object('Time').unit.unit}]")
         axcurr.set_ylabel(f"Current [{beam_log_lastminutes.data['FC1 Resistor Current mA'].data_unit.unit}]")
         axcurr.set_title("Faraday cup currents")
         axcurr.tick_params(right=True, left=True, bottom=True, top=True)
-        axcurr.legend()
+        axcurr.legend(prop={'size': 6})
     
     if canvas == None:
         plt.subplot(gs[6:8,4:6])
@@ -386,9 +388,9 @@ def plot_logdata_on_axis(logdata, ax, label=None, color=None, ls=None):
 
 
 if __name__ == "__main__":
-    # overview_plot("20240924", last_minutes=20, reference_days=["20240923"])
+    overview_plot("20250306", last_minutes=20, reference_days=["20240923"])
     # overview_plot("20240924", reference_days=["20240923"], material="K")
     #This can be run from command line by running python test_bori_log.py 20240924
-    datetoget=sys.argv[1]
-    overview_plot(datetoget,last_minutes=20, reference_days=["20241021", "20241022"])
-    plt.savefig("/home/apdcam/Measurement/borilog_test.png", dpi=150)
+    # datetoget=sys.argv[1]
+    # overview_plot(datetoget,last_minutes=20, reference_days=["20241021", "20241022"])
+    # plt.savefig("/home/apdcam/Measurement/borilog_test.png", dpi=150)

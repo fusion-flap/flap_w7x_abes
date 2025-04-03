@@ -51,7 +51,7 @@ class BORIMonitor():
                       'HV Ex Meas Voltage':"Voltage:kV",
                       'HV Em Meas Current':"Current:mA",
                       'HV Ex Meas Current':"Current:mA",
-                      'TC Oven Top':"Temperature:C",
+                      'TC 3':"Temperature:C",
                       'TC Oven Bottom':"Temperature:C",
                       'TC Torus Side Cone':"Temperature:C",
                       'TC Emit Side Cone':"Temperature:C",
@@ -66,6 +66,7 @@ class BORIMonitor():
                       'Emit Shutter':"n.a.:n.a",
                       'Neut Shut Closed':"n.a.:n.a",
                       'PB Feedback-Open':"n.a.:n.a"}
+                      # "WaterFlow l/min": "Flow rate:l/min"}
         if self.date is not None:
             t,d,u = read_date_tdms(data_names=list(data_names.keys()),startdate=self.date,datapath=self.datapath)
             reftime = np.datetime64(self.date)
@@ -303,10 +304,10 @@ class BORIMonitor():
             axis.legend()
     
     def get_vap_pressure(self, material="Na"):
-        datatemp = copy.deepcopy(self.data['TC Oven Top'])
+        datatemp = copy.deepcopy(self.data['TC 3'])
         datatemp.data_unit.name = "Pressure"
         datatemp.data_unit.unit = "mbar"
-        datatemp.data = vap_pressure(self.data['TC Oven Top'].data, material=material)
+        datatemp.data = vap_pressure(self.data['TC 3'].data, material=material)
         datatemp.name = "Vap Press Oven Top"
         self.data["Vap Press Oven Top"] = copy.deepcopy(datatemp)
         datatemp.data = vap_pressure(self.data['TC Oven Bottom'].data, material=material)
@@ -430,6 +431,11 @@ def find_files(startdate=None,starttime='0000',start_datetime=None,
             with TdmsFile.open(fname) as tdms_file:                    
 #                tdms_version =  tdms_file.properties['Version']
                 try:
+                    # print(tdms_file.__dict__)
+                    # print(np.asarray(tdms_file.__dict__))
+                    # print(np.asarray(tdms_file['RTmonitor-7']['TC Oven Bottom']))
+                    # print(np.asarray(tdms_file['RTmonitor-11']['Emit Actual Setpoint']))
+                    # asfd
                     ch_t = tdms_file['MonitorData']['TimeStamp']
                     file_start_datetime_from_file = ch_t[0] + np.timedelta64(_UTC_offset_minutes, 'm')
                     file_end_datetime_from_file = ch_t[-1] + np.timedelta64(_UTC_offset_minutes, 'm')
@@ -687,23 +693,26 @@ def read_exp_tdms(data_names, exp_id,datapath='/data/W7X/APDCAM'):
     tdms_files = [filename for filename in os.listdir(dirname) if ("tdms" in filename and "tdms_index" not in filename)]
     all_data = dict()
     for file in tdms_files:
-        with TdmsFile.open(os.path.join(dirname,file)) as tdms_file:
-            for group in tdms_file.groups():
-                currtime =  group['TimeStamp'][:]
-                #getting the times
-                if 'time_vect' not in locals():
-                    time_vect = currtime
-                else:
-                    time_vect = np.concatenate([time_vect, currtime])
-                # print([groupname.path.split("/")[2] for groupname in group.channels()])
-                #getting the data
-                for data in data_names:
-                    currdata =  group[data][:]
+        try:
+            with TdmsFile.open(os.path.join(dirname,file)) as tdms_file:
+                for group in tdms_file.groups():
+                    currtime =  group['TimeStamp'][:]
                     #getting the times
-                    if data not in all_data.keys():
-                        all_data[data] = currdata
+                    if 'time_vect' not in locals():
+                        time_vect = currtime
                     else:
-                        all_data[data] = np.concatenate([all_data[data], currdata])
+                        time_vect = np.concatenate([time_vect, currtime])
+                    # print([groupname.path.split("/")[2] for groupname in group.channels()])
+                    #getting the data
+                    for data in data_names:
+                        currdata =  group[data][:]
+                        #getting the times
+                        if data not in all_data.keys():
+                            all_data[data] = currdata
+                        else:
+                            all_data[data] = np.concatenate([all_data[data], currdata])
+        except Exception as e:
+            print(f"Failed to read {tdms_file}")
     data_unit = []
     #Sorting the time vector
     for key in all_data.keys():
@@ -773,7 +782,7 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
 #    plt.rcParams['suptitle.fontsize'] = 10
     
     data_names = ['Emit Current A','HV Em Meas Voltage','HV Ex Meas Voltage','HV Em Meas Current','HV Ex Meas Current',
-                  'TC Oven Top','TC Oven Bottom','TC Torus Side Cone','TC Emit Side Cone','FC1 in','FC2 in','FC Polarity',
+                  'TC 3','TC Oven Bottom','TC Torus Side Cone','TC Emit Side Cone','FC1 in','FC2 in','FC Polarity',
                   'FC1 Resistor Current mA','FC2 Resistor Current mA','VG HighVac1','VG HighVac2',
                   'Neut Shut Closed']
     t,d,u = read_data(data_names=data_names,startdate=startdate,starttime=starttime,endtime=endtime,datapath=datapath)
@@ -854,9 +863,9 @@ def plot_beamdata(startdate=None,starttime=None,endtime=None,enddate=None,datapa
     if (len(ind) > 0):
         plt.plot(time,np.clip(d_dict['TC Oven Bottom'],20,300))
         legend.append('Oven')
-    ind = np.nonzero(np.logical_and(d_dict['TC Oven Top'] > 20, d_dict['TC Oven Top'] < 300))[0]
+    ind = np.nonzero(np.logical_and(d_dict['TC 3'] > 20, d_dict['TC 3'] < 300))[0]
     if (len(ind) > 0):
-        plt.plot(time,np.clip(d_dict['TC Oven Top'],20,300))
+        plt.plot(time,np.clip(d_dict['TC 3'],20,300))
         legend.append('Top')
     ind = np.nonzero(np.logical_and(d_dict['TC Torus Side Cone'] > 20, d_dict['TC Torus Side Cone'] < 300))[0]
     if (len(ind) > 0):

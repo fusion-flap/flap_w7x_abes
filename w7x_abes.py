@@ -520,11 +520,13 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
 
 
     # These are values [microsec] determined from the signals
-    switch_time = 3/Decimal(1000000)
+    switch_time = 7/Decimal(2000000)
     switch_time_sample = round(switch_time / config['APDCAM_sampletime'])
     if (config['APDCAM_f_ADC'] == Decimal(20e6)):
         if (config['APDCAM_f_sample'] == Decimal(2e6)):
-            instrument_delay = -9/Decimal(1000000)
+            instrument_delay = -30/Decimal(1000000)
+            # instrument_delay = -9/Decimal(1000000)
+            # instrument_delazy= -17/3-1/3*period time[microsec]
         elif (config['APDCAM_f_sample'] == Decimal(1e6)):
             instrument_delay = -6/Decimal(1000000)
         else:
@@ -1563,7 +1565,7 @@ def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,signals='ABES-[
                 del curr_channels
                 gc.collect()
                 results = results + pool.map(partial_proc_func, channel_data)
-                print('Multichannel signal processing finished '+str(len(results)/num_of_channels*100)+'%')
+                print('Multichannel signal processing finished '+str(int(len(results)/num_of_channels*100))+'%')
         for channel_processed_data in results:
             if not ("processed_data" in locals()):
                 processed_data = channel_processed_data
