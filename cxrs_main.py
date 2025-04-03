@@ -125,7 +125,7 @@ def cxrs_add_coordinate(data_object,
         exp_spatcal = spatcal.ShotSpatCalCXRS(exp_id, options=_options)
     try:
         exp_spatcal.read(options=_options)
-    except OSError:
+    except (OSError, IOError):
         # if the file does not exist
         exp_spatcal.generate_shotdata(options={'Plot': False, 'Overwrite': False, "Shot spatcal dir": _options["Shot spatcal dir"]})
         exp_spatcal.read(options=_options)
