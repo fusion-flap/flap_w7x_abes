@@ -1162,7 +1162,8 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         OUTPUT: The background subtracted A-BES data
     """
 
-    options_default = {'Average Chopping Period': True}
+    options_default = {'Average Chopping Period': True,
+                       'Deflection': 0}
     options = {**options_default, **options}
 
     # Obtaining the chopper data
@@ -1174,7 +1175,7 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,signals=
         o['Datapath'] = options['Datapath']
     if 'W7X_ABES' not in flap.list_data_sources():
         register()
-    o.update({'State':{'Chop': 0, 'Defl': 0}})
+    o.update({'State':{'Chop': 0, 'Defl': options['Deflection']}})
 
     if timerange is None:
         timerange = [np.min(dataobject.coordinate('Time')[0]), np.max(dataobject.coordinate('Time')[0])]

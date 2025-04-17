@@ -22,8 +22,10 @@ def read_fibre_config(exp_id=None, year=None):
         currdir = os.path.dirname(os.path.abspath(__file__))
         if int(exp_id[:4]) <= 2023:
             year = 2021 
+        elif int(exp_id[:4]) <= 2024:
+             year = 2021
         else:
-            year = 2024
+            year = 2025
     config_file = os.path.join(currdir, 'spatcal', str(year), 'cxrs_fiber_patchconfig.dat')
     
     # reading the data
@@ -107,7 +109,8 @@ def plot_fibre_config(patch_oc_spectf):
                 locations[naming[side_oc_id]+str(fibers)] = [starter_loc[0]+(fibers)%2, starter_loc[1]+(fibers-1)//2]
 
     from matplotlib import pyplot as plt
-    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple', 'NE':'tab:pink'}
+    plt.figure(figsize=[12,9])
+    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'red', 'Z':'chocolate', 'NE':'tab:pink', 'BES':'gold'}
     pointid=0
     x = [xstep*locations[channel][0] for channel in locations.keys()]
     y = [ystep*locations[channel][1] for channel in locations.keys()]
@@ -121,26 +124,27 @@ def plot_fibre_config(patch_oc_spectf):
         except Exception as e:
             try:
                 if "BR" in patch_oc_spectf[str(channel)].split('.')[0]:
-                    t = plt.text(xstep*locations[channel][0]-0.5, ystep*locations[channel][1], f"{channel}/{patch_oc_spectf[str(channel)].split('.')[0]}", c="white", backgroundcolor="black")
+                    t = plt.text(xstep*locations[channel][0]-0.5, ystep*locations[channel][1], f"{channel}/{patch_oc_spectf[str(channel)].split('.')[0]}", c="white", backgroundcolor="black", weight="bold")
                     t.set_bbox(dict(facecolor='black', alpha=0.25))
                 else:
                     plt.text(xstep*locations[channel][0]-0.5, ystep*locations[channel][1], f"{channel}/N.A.", c="black")
             except Exception as e:
-                    t = plt.text(xstep*locations[channel][0]-0.5, ystep*locations[channel][1], f"{channel}/BR1", c="white", backgroundcolor="black")
+                    t = plt.text(xstep*locations[channel][0]-0.5, ystep*locations[channel][1], f"{channel}/BR1", c="white", backgroundcolor="black", weight="bold")
                     t.set_bbox(dict(facecolor='black', alpha=0.25))
 
         pointid += 1
-    plt.text(0,-2*ystep,"INBOARD")
-    plt.text(0,46*ystep,"OUTBOARD")
+    plt.text(0,-2*ystep,"INBOARD", weight="bold")
+    plt.text(0,46*ystep,"OUTBOARD", weight="bold")
     plt.axis('equal')
     plt.xlim([-5,5])
     plt.axis("off")
-    plt.text(5, 0, 'Optical channel / Alkali fiber number', c=color['A'])
-    plt.text(5, 1, 'Optical channel / Helium fiber number', c=color['H'])
-    plt.text(5, 2, 'Optical channel / Helium Filterscope fiber number', c=color['HF'])
-    plt.text(5, 3, 'Optical channel / Zeff fiber number', c=color['Z'])
-    plt.text(5, 4, 'Optical channel / Neon fiber number', c=color['NE'])
-    t = plt.text(5, 5, 'BR1 - detached or broken at port / BR2 - broken form port to patchbox', c="white")
+    plt.text(5, 0, 'Optical channel / Alkali fiber number', c=color['A'], weight="bold")
+    plt.text(5, 1, 'Optical channel / Helium fiber number', c=color['H'], weight="bold")
+    plt.text(5, 2, 'Optical channel / Helium Filterscope fiber number', c=color['HF'], weight="bold")
+    plt.text(5, 3, 'Optical channel / Zeff fiber number', c=color['Z'], weight="bold")
+    plt.text(5, 4, 'Optical channel / Neon fiber number', c=color['NE'], weight="bold")
+    plt.text(5, 5, 'Optical channel / BES fiber number', c=color['BES'], weight="bold")
+    t = plt.text(5, 6, 'BR1 - detached or broken at port / BR2 - broken form port to patchbox', c="white", weight="bold")
     t.set_bbox(dict(facecolor='black', alpha=0.25))
     plt.tight_layout()
     # plt.gca().invert_yaxis()
@@ -148,16 +152,16 @@ def plot_fibre_config(patch_oc_spectf):
 
 def plot_patchpanel_spectrometer_config(spect_config):
     from matplotlib import pyplot as plt
-    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple', 'NE':'tab:pink', 'BR2':'white'}
-    plt.figure(figsize=[13,5])
+    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'red', 'Z':'chocolate', 'NE':'tab:pink', 'BES':'gold', 'BR2':'white'}
+    plt.figure(figsize=[15,6])
     for key in spect_config.keys():
         stringkey = str(key)
         if "N.A" not in stringkey:
             panel = int(stringkey.split(".")[0])
             location = int(stringkey.split(".")[1])
-            plt.scatter(panel*10+(location-1)%8*1.1-10, -location//8, alpha=0)
-            t = plt.text(panel*10+(location-1)%8*1.1-10, -location//8, str(location)+"/"+spect_config[key],
-                         color=color[spect_config[key].split('.')[0]])
+            plt.scatter(panel*11+(location-1)%8*1.2-10, -location//8, alpha=0)
+            t = plt.text(panel*11+(location-1)%8*1.2-10, -location//8, str(location)+"/"+spect_config[key],
+                         color=color[spect_config[key].split('.')[0]], weight="bold")
             if "BR" in spect_config[key]:
                     t.set_bbox(dict(facecolor='black', alpha=0.25))
 
@@ -168,8 +172,8 @@ def plot_patchpanel_spectrometer_config(spect_config):
     
 def plot_patchpanel_optical_channel_config(spect_config, patchp_config):
     from matplotlib import pyplot as plt
-    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'tab:red', 'Z':'tab:purple', 'NE':'tab:pink', 'BR2':'white'}
-    plt.figure(figsize=[12,5])
+    color = {'A':'tab:blue', 'H':'tab:green', 'HF': 'red', 'Z':'chocolate', 'NE':'tab:pink', 'BES':'gold', 'BR2':'white'}
+    plt.figure(figsize=[12,6])
     for key in patchp_config.keys():
         stringkey = str(key)
         if ("S" not in stringkey) and ("BR1" not in stringkey):
@@ -181,15 +185,15 @@ def plot_patchpanel_optical_channel_config(spect_config, patchp_config):
             if key in spect_config.keys():
                 if spect_config[key].split('.')[0] != "BR2":
                     plt.text(panel*10+(location-1)%8, -location//8, str(location)+"/"+patchp_config[key],
-                             color=color[spect_config[key].split('.')[0]])
+                             color=color[spect_config[key].split('.')[0]], weight="bold")
                 else:
                     t = plt.text(panel*10+(location-1)%8, -location//8, str(location)+"/BR2",
-                             color=color[spect_config[key].split('.')[0]])
+                             color=color[spect_config[key].split('.')[0]], weight="bold")
                     t.set_bbox(dict(facecolor='black', alpha=0.25))
 
             else:
                 plt.text(panel*10+(location-1)%8, -location//8, str(location)+"/"+patchp_config[key],
-                          color="black")
+                          color="black", weight="bold")
     plt.title("Patchpanel locations/Optical channels")
     plt.axis('equal')
     plt.tight_layout()
