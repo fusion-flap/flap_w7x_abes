@@ -34,8 +34,10 @@ class ShotSpatCal(flap.DataObject):
             self.calibration_id = "2018"
         elif int(shotyear) < 2024:
             self.calibration_id = "2021"
-        else:
+        elif int(shotyear) < 2025:
             self.calibration_id = "2024"
+        else:
+            self.calibration_id = "2025"
 
     def full_calib(self, options={}):
         ''' Performs a spatial calibration for a given shot
@@ -330,7 +332,7 @@ class ShotSpatCal(flap.DataObject):
             plt.subplot(1, 3, 1)
             plt.title("Location on CMOS")
             plt.scatter(fibre_coords_im[0],
-                        fibre_coords_im[1], color='tab:red')
+                        fibre_coords_im[1], color='red')
             plt.plot(np.asarray([beam_im[0, 0], beam_im[1, 0]]), [
                      beam_im[0, 1], beam_im[1, 1]], color='tab:blue')
             plt.scatter(beam_im[0, 0], beam_im[0, 1], color='tab:blue')
@@ -340,12 +342,12 @@ class ShotSpatCal(flap.DataObject):
             points = np.sort(
                 np.sqrt(fibre_coords_xyz[0]**2+fibre_coords_xyz[1]**2))
             points = fibre_coords_beam
-            plt.scatter(points[0], points[1], label='new', color="tab:red")
+            plt.scatter(points[0], points[1], label='new', color="red")
             # Plotting the machine coordinates
             plt.subplot(1, 3, 3)
             plt.title("Location in real space")
             plt.scatter(fibre_coords_xyz[0],
-                        fibre_coords_xyz[1], color='tab:red')
+                        fibre_coords_xyz[1], color='red')
             plt.plot([beam_start[0], beam_end[0]], [
                         beam_start[1], beam_end[1]], color='tab:blue')
             plt.scatter(beam_start[0], beam_start[1], color='tab:blue')
@@ -709,10 +711,10 @@ class ShotSpatCalCXRS(ShotSpatCal):
 
         clusters = ["A", "B","C","D","E","F","G","H","I","J",]
         if options['Plot'] is True:
-            colors = {'A':'tab:blue', 'H':'xkcd:grass green', 'HF': 'tab:red',
-                      'Z':'tab:purple', "NE": 'tab:pink', "BR2":"white", "BR1":"white"}
+            colors = {'A':'tab:blue', 'H':'xkcd:grass green', 'HF': 'red',
+                      'Z':'chocolate', "NE": 'tab:pink', "BES":"gold", "BR2":"white", "BR1":"white"}
             edgecolors = {'A':None, 'H':None, 'HF': None,
-                      'Z':None, 'NE':None, "BR2":"black", "BR1":"black"}
+                      'Z':None, 'NE':None, "BES": None, "BR2":"black", "BR1":"black"}
             
             
             plt.figure()
@@ -743,11 +745,11 @@ class ShotSpatCalCXRS(ShotSpatCal):
                         plt.text(curr_chan_cent[0]-7, curr_chan_cent[1]+3, key[0], color='black')
                     # if key == "H4" or key == "J2" or key == "B4" or key == "J1":
                     #     print(key)
-                    #     plt.scatter(curr_chan_cent[0], curr_chan_cent[1], color='tab:red')
+                    #     plt.scatter(curr_chan_cent[0], curr_chan_cent[1], color='red')
                     # else:     
                     plt.scatter(curr_chan_cent[0], curr_chan_cent[1], color='gray', alpha=0.5)
             # plt.scatter(fibre_coords_im[0],
-            #         fibre_coords_im[1], color='tab:red')
+            #         fibre_coords_im[1], color='red')
             index = 0
             for channel in object_dict['Channels']:
                 if str(channel).split('.')[0] == "H":
@@ -782,7 +784,7 @@ class ShotSpatCalCXRS(ShotSpatCal):
             plt.subplot(1, 3, 3)
             plt.title("Location in real space")
             # plt.scatter(fibre_coords_xyz[0],
-            #             fibre_coords_xyz[1], color='tab:red')
+            #             fibre_coords_xyz[1], color='red')
             index = 0
             for channel in object_dict['Channels']:
                 if str(channel).split('.')[0] == "H":
@@ -1579,7 +1581,7 @@ class CalcCalibration:
             for key in self.cxrs_chan_cent:
                 if 'ALL' not in image_params[0]:
                     plt.scatter(self.cxrs_chan_cent[key][1][0][-2], self.cxrs_chan_cent[key][1][0][-1],
-                                color='tab:red', marker='x')
+                                color='red', marker='x')
                     if self.cxrs_chan_cent[key][0][0] == 'H' or self.cxrs_chan_cent[key][0][0] == 'N':
                         # plt.text(self.cxrs_chan_cent[key][1][0][-2], self.cxrs_chan_cent[key][1][0][-1],
                         #          self.cxrs_chan_cent[key][0], color='white')
