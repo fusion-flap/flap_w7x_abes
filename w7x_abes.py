@@ -1002,8 +1002,6 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                                                  values=signal_proc,
                                                  dimension_list=[1])
                                  )
-    print(coord)
-    print(signal_proc)
 
     data_title = "W7-X ABES data"
     if (data_arr.ndim == 1):
@@ -1167,7 +1165,8 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,
     """
 
     options_default = {'Average Chopping Period': True,
-                       'Off-axis Correction':False}
+                       'Off-axis Correction':False,
+                       'Deflection': 0}
     options = {**options_default, **options}
 
     # Obtaining the chopper data
@@ -1179,7 +1178,7 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,
         o['Datapath'] = options['Datapath']
     if 'W7X_ABES' not in flap.list_data_sources():
         register()
-    o.update({'State':{'Chop': 0, 'Defl': 0}})
+    o.update({'State':{'Chop': 0, 'Defl': options['Deflection']}})
 
     if timerange is None and samplerange is None:
         if "Sample" not in dataobject.coordinate_names():

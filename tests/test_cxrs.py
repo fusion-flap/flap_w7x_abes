@@ -80,8 +80,8 @@ class CXRSPlotter():
         
 
 if __name__ == "__main__":
-    shotID = '20240926.027'
-    plot_signal = True
+    shotID = '20250312.091'
+    plot_signal = False
     if plot_signal == True:
         plotter = CXRSPlotter(shotID)
         plotter.plot_cxrs()
@@ -103,7 +103,7 @@ if __name__ == "__main__":
         a = flap_w7x_abes.ShotSpatCalCXRS(shotID)
         a.generate_shotdata(options={'Plot':True, 'Overwrite':True})
     
-    read_spatcal = False
+    read_spatcal = True
     if read_spatcal is True:
         a = flap_w7x_abes.ShotSpatCalCXRS(shotID)
         a.read()
@@ -113,13 +113,17 @@ if __name__ == "__main__":
         index = 0
         for channel in a.data["Channel name"]:
             # print(f"{channel} \t {a.data['Device x'][index]} \t {a.data['Device y'][index]}")
-            data[channel] = [a.data['Device x'][index], a.data['Device y'][index], np.sqrt(a.data['Device x'][index]**2+a.data['Device y'][index]**2)]
+            data[channel] = np.asarray([a.data['Device x'][index], a.data['Device y'][index], 0])
             index += 1
             
         channels = sorted(data.keys())
-        for channel in channels:
-            print(f"{channel}\t{data[channel]}")
-            
+        with open("cxrs_spatcal", "w") as f:
+            f.write("fiber\t [x[m] y[m] z[m]]\n")
+            for channel in channels:
+                # if len(channel)<5:
+                #     f.write(f"{channel}\t\t{data[channel]}\n")
+                # else:
+                    f.write(f"{channel}\t{data[channel]}\n")
     get_cxrs_data = False
     if get_cxrs_data is True:
         shotID= '20240926.027'

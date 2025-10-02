@@ -14,7 +14,7 @@ import numpy as np
 #         from nptdms_mod import TdmsFile
 # except ModuleNotFoundError:
 #     from flap_w7x_abes.nptdms_mod import TdmsFile
-from nptdms import TdmsFile  
+# from nptdms import TdmsFile  
   
 import datetime
 import os

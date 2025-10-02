@@ -211,13 +211,13 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,30),test=F
             off_end = 0
             options['Resample'] = None
         
-        beam_on_state = {'State':{'Chop': 0, 'Defl': 0},'Start':on_start,'End':on_end}
+        beam_on_state = {'State':{'Chop': 0, 'Defl': 0},'Start':on_start,'End':on_end,'Datapath':options['Datapath']}
         d_beam_on=flap.get_data('W7X_ABES',
                                  exp_id=exp_ID,
                                  name='Chopper_time',
                                  options=beam_on_state
                                  )
-        beam_off_state = {'State':{'Chop': 1, 'Defl': 0},'Start':on_start,'End':on_end}
+        beam_off_state = {'State':{'Chop': 1, 'Defl': 0},'Start':on_start,'End':on_end,'Datapath':options['Datapath']}
         d_beam_off=flap.get_data('W7X_ABES',
                                  exp_id=exp_ID,
                                  name='Chopper_time',
@@ -238,11 +238,11 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,30),test=F
             data['Measurement end'] = float(d.info['Config']['APDCAM_sampletime'] * d.info['Config']['APDCAM_samplenumber']) + data['Measurement start']
             d_on = d.slice_data(slicing={'Time':d_beam_on},
                                 summing={'Rel. Sample in int(Time)':'Mean'},
-                                options={'Regenerate':True}
+                                options={'Regenerate':True,'Partial intervals':False}
                                 )
             d_off = d.slice_data(slicing={'Time':d_beam_off},
                                  summing={'Rel. Sample in int(Time)':'Mean'},
-                                 options={'Regenerate':True}
+                                 options={'Regenerate':True,'Partial intervals':False}
                                  )
             d_off = d_off.slice_data(slicing={'Time':d_on},
                                      options={'Interpolation':'Linear'}
@@ -278,7 +278,8 @@ def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,30),test=F
         data['Mean signal'] = mean_signal * 1000
         data['Max signal'] = d_max * 1000
         data['Max signal channel'] = channels_str[max_loc[1]]
-        data['Max signal time'] = d_on.get_coordinate_object("Time").values[max_loc[0]]
+#        data['Max signal time'] = d_on.get_coordinate_object("Time").values[max_loc[0]]
+        data['Max signal time'] =  d_on.coordinate('Time')[0][max_loc[0]]
         timescale = d_on.coordinate('Time')[0][ind]
         s = np.sum(sig,axis=1)
         if (np.max(s) <= 0):
