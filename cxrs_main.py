@@ -78,9 +78,9 @@ def w7x_abes_cxrs_get_data(exp_id=None, data_name=None, no_data=False, options=N
                                                  data_name = f"{data_source.split('DATASTREAM')[0]}PARLOG/parms/IsoPlaneControl/config/centralWavelength/").data)
     grating = int(np.mean(webapi.get_data(exp_id,
                                       data_name = f"{data_source.split('DATASTREAM')[0]}PARLOG/parms/IsoPlaneControl/config/gratingNumber/").data))
-    grating_dict={0: "1200g_per_mm", 
+    grating_dict={2: "1200g_per_mm", 
                   1: "1800g_per_mm",
-                  2: "2400g_per_mm"}
+                  0: "2400g_per_mm"}
     slit_width = np.mean(webapi.get_data(exp_id,
                                          data_name = f"{data_source.split('DATASTREAM')[0]}PARLOG/parms/IsoPlaneControl/config/slitWidth/").data)
     

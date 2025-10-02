@@ -123,10 +123,11 @@ def summary_line(ABES_data=None, W7X_data=None):
             txt += f" ... APD voltage: {(ABES_data['APD voltage'])}"
             txt += f" ... MPPC voltage: {(ABES_data['MPPC voltage'])}"
             txt += f" ... Clock source: {(ABES_data['Clock source'])}"
-            txt += f" ... Chopper period: {(ABES_data['Chopper period'])}"
+            if "Camera" not in txt:
+                txt += f" ... Chopper period: {(ABES_data['Chopper period'])}"
     return txt
  
-def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,26),test=False, extended=False):
+def exp_summary(exp_ID,timerange=None,datapath=None,channels=range(10,30),test=False, extended=False):
     """
     Return a single line summary of the experiment and a dictionaty with data.
 

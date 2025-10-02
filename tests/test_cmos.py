@@ -30,6 +30,18 @@ class CMOSPlotter():
         cmos_main.register()
         self.cmos = flap.get_data('W7X_ABES_CMOS', exp_id=self.shotID,
                                   name="QSI", options={"Datapath": datapath})
+        
+        
+        cmos_on = self.cmos.get_chopstate()
+        cmos_on.data = cmos_on.data.astype(float)
+        cmos_off = self.cmos.get_chopstate(chop=1)
+        cmos_off.data = cmos_off.data.astype(float)
+        for timeindex in range(cmos_on.data.shape[0]):
+            cmos_on.data[timeindex, :, :] = cmos_on.data[timeindex,:,:]-cmos_off.data[min([timeindex,cmos_off.data.shape[0]-1]),:,:]
+            cmos_on.data[timeindex, :, :] -= np.min(cmos_on.data[timeindex, :, :])
+            cmos_on.data[timeindex, :, :] /= np.max(cmos_on.data[timeindex, :, :])
+        self.cmos = cmos_on
+        
         self.samplerange = self.cmos.data.shape[0]-1
     
     def plot_cmos(self, setto=None, moveby=None):
@@ -58,6 +70,9 @@ class CMOSPlotter():
             self.im = self.ax.imshow(self.cmos.data[self.curr_sample,::4,::4], cmap="gray")
         else:
             self.im.set_array(self.cmos.data[self.curr_sample,::4,::4])
+            # self.im = self.ax.imshow(self.cmos.data[self.curr_sample,::4,::4], cmap="gray")
+
+
         self.ax.set_xticks([])
         self.ax.set_yticks([])
 
@@ -68,7 +83,8 @@ class CMOSPlotter():
         else:
             self.fig.canvas.draw_idle()
             self.fig.canvas.flush_events()
-        
+            self.fig.canvas.draw_idle()
+            self.fig.canvas.flush_events()
 
 if __name__ == "__main__":
     shotID = "20241105.018"

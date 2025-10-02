@@ -53,11 +53,12 @@ class CXRSPlotter():
                 self.ax = self.canvas.fig.add_subplot(1,1,1)
               
         self.ax.cla()    
-        self.ax.set_title(f"{self.shotID}  background subtracted CXRS at "+\
+        self.ax.set_title(f"{self.shotID}  raw CXRS at "+\
                          f"{int(self.cxrs.get_coordinate_object('Device R').values[self.curr_sample]*1000)/1000.0}m")
         beam_on = self.cxrs.data[::2,self.curr_sample,:]
         beam_off = self.cxrs.data[1::2,self.curr_sample,:]
-        signal = beam_on[:beam_off.shape[0],:]-beam_off
+        signal = beam_on[:beam_off.shape[0],:]#-beam_off
+        
         signal -= np.min(np.abs(signal))
         norm_signal = signal.transpose()
         newmat = (np.ones(norm_signal.shape)*np.arange(norm_signal.shape[1])*np.max(norm_signal)/4).transpose()

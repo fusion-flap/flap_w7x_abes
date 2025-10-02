@@ -109,7 +109,7 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
     if canvas == None:
         plt.subplot(gs[2:4,0:2],sharex=ax)
         beam_log_lastminutes.data['TC Oven Bottom'].plot(options={"All points": True}, plot_options={"label":"Bottom", "color":"tab:red"})
-        beam_log_lastminutes.data['TC 3'].plot(options={"All points": True}, plot_options={"label":"Top", "color":"tab:purple"})
+        beam_log_lastminutes.data['TC Oven Top'].plot(options={"All points": True}, plot_options={"label":"Top", "color":"tab:purple"})
         beam_log_lastminutes.data['TC Torus Side Cone'].plot(options={"All points": True}, plot_options={"label":"Torus side", "color":"tab:pink"})
         beam_log_lastminutes.data['TC Emit Side Cone'].plot(options={"All points": True}, plot_options={"label":"Emitter side", "color":"tab:brown"})
         plt.title('Neutralizer temperatures')
@@ -118,7 +118,7 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
     else:
         axcurr = canvas.fig.add_subplot(gs[2:4,0:2], sharex=ax)
         plot_logdata_on_axis(beam_log_lastminutes.data['TC Oven Bottom'], axcurr, label="Bottom", color="tab:red")
-        plot_logdata_on_axis(beam_log_lastminutes.data['TC 3'], axcurr, label="Top", color="tab:purple")
+        plot_logdata_on_axis(beam_log_lastminutes.data['TC Oven Top'], axcurr, label="Top", color="tab:purple")
         plot_logdata_on_axis(beam_log_lastminutes.data['TC Torus Side Cone'], axcurr, label="Torus side", color="tab:pink")
         plot_logdata_on_axis(beam_log_lastminutes.data['TC Emit Side Cone'], axcurr, label="Emitter side", color= "tab:brown")
         axcurr.tick_params(right=True, left=True, bottom=True, top=True)
@@ -388,9 +388,10 @@ def plot_logdata_on_axis(logdata, ax, label=None, color=None, ls=None):
 
 
 if __name__ == "__main__":
-    overview_plot("20250306", last_minutes=20, reference_days=["20240923"])
+    # overview_plot("20250306", last_minutes=20, reference_days=["20240923"])
     # overview_plot("20240924", reference_days=["20240923"], material="K")
     #This can be run from command line by running python test_bori_log.py 20240924
     # datetoget=sys.argv[1]
     # overview_plot(datetoget,last_minutes=20, reference_days=["20241021", "20241022"])
     # plt.savefig("/home/apdcam/Measurement/borilog_test.png", dpi=150)
+    overview_plot(exp_id="20250513.051")

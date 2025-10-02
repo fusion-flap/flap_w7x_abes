@@ -300,14 +300,17 @@ def get_spectrogram(channel_data, time_resolution, timestep=None,
     time_vec2 = time_vec+time_resolution
     time_vec = time_vec[np.where(time_vec2<=np.max(channel_data.coordinate('Time')[0]))]
     time_vec2 = time_vec2[np.where(time_vec2<=np.max(channel_data.coordinate('Time')[0]))]
+    
     for index in range(0,len(time_vec)):
         time_step = channel_data.slice_data(slicing={'Time': flap.Intervals(time_vec[index],time_vec2[index])})
+        start = time.time()
         fourier = np.fft.fft(time_step.data-np.mean(time_step.data))
-        n = time_step.data.size
-        timestep = time_step.coordinate('Time')[0][1]-time_step.coordinate('Time')[0][0]
-        freq = np.fft.fftfreq(n, d=timestep)
+        if index == 0 or index==len(time_vec-1):
+            timestep = time_step.coordinate('Time')[0][1]-time_step.coordinate('Time')[0][0]
+            n = time_step.data.size
+            freq = np.fft.fftfreq(n, d=timestep)
+            freq = freq[np.where((freq>=freq_min)*(freq<freq_max))]
         fourier = fourier[np.where((freq>=freq_min)*(freq<freq_max))]
-        freq = freq[np.where((freq>=freq_min)*(freq<freq_max))]
         if index == 0:
             fft_data.data = np.zeros([len(time_vec),len(fourier)])
         fourier = [x for _,x in sorted(zip(freq,fourier))]
@@ -331,8 +334,8 @@ def filter_dataobject(dataobject, flow, fhigh):
     return new_dataobject
 
 def plot_spectrogram(exp_id, channel, timeres=0.1, timestep=0.01,
-                     timerange=None, flow=0, fhigh=None, plot_smoothening=0.5,
-                     canvas=None):
+                     timerange=None, flow=0, fhigh=None,
+                     canvas=None, mode="Standard"):
     flap.config.read()
     
     print(f"Reading {channel} for {exp_id}")
@@ -363,9 +366,11 @@ def plot_spectrogram(exp_id, channel, timeres=0.1, timestep=0.01,
                             options={'State':{'Chop': 0, 'Defl': 0}},\
                             object_name='Beam_on',
                             )
+    print("Signal obtained")
     
     beam_on = dataobject.slice_data(slicing={'Sample':d_beam_on})
     beam_on = beam_on.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
+    beam_on.data = beam_on.data-np.min(beam_on.data)
         
     if fhigh is not None and flow>0:
         print(f"Filtering for [{flow}Hz,{fhigh}Hz]")
@@ -378,13 +383,28 @@ def plot_spectrogram(exp_id, channel, timeres=0.1, timestep=0.01,
     # d_beam_on.plot(plot_type='scatter', axes=['Time', plt.ylim()[1]], options={'Force': True,'All': True})
     # beam_on.plot(axes='Time', options={'All':True}, plot_options={'marker': 'o'})
 
-    time_vec, freq, norm_data = get_spectrogram(beam_on, timeres, timestep=timestep, freq_max=None)
+    time_vec, freq, norm_data = get_spectrogram(beam_on, timeres, timestep=timestep, freq_max=fhigh)
     
     print(f"Plotting spectrogram")
+    datatoplot =  norm_data[:freq.shape[0]-1,:time_vec.shape[0]-1]
+    if mode == "Fluctuation":
+        orig_relevant_time_window = np.where(beam_on.data>np.mean(beam_on.data)/2)
+        relevant_time_window = np.where((time_vec>np.min(beam_on.coordinate("Time")[0][orig_relevant_time_window]))*\
+                                        (time_vec<np.max(beam_on.coordinate("Time")[0][orig_relevant_time_window])))
+        datatoplot2 = (datatoplot-(np.min(datatoplot[relevant_time_window], axis=1)*np.ones(datatoplot.shape)))
+        # datatoplot = np.log(datatoplot2-np.min(datatoplot2))
+        datatoplot = np.log(datatoplot2-np.min(datatoplot2)+1)
+    elif mode == "Smoothen":
+        datatoplot = datatoplot**0.25
+    elif mode == "Logarithmic":
+        datatoplot = np.log(datatoplot)
     if canvas == None:
         fig = plt.figure(figsize=(4,4))
         fig.show()
-        plt.pcolormesh(time_vec, freq/1000, np.sqrt((norm_data[:freq.shape[0]-1,:time_vec.shape[0]-1])**plot_smoothening))
+        if mode == "Logarithmic":
+            plt.pcolormesh(time_vec, freq/1000, datatoplot, vmin=np.nanmedian(datatoplot)-np.nanvar(datatoplot)*2, vmax=np.nanmedian(datatoplot)+np.nanvar(datatoplot)*2)
+        else:
+            plt.pcolormesh(time_vec, freq/1000, datatoplot)
         if r is not None:
             plt.title(f"{exp_id}/{channel} R={r}m\nTimeres: {timeres}s Freq:[{flow}Hz,{fhigh}Hz]")
         else:
@@ -397,28 +417,35 @@ def plot_spectrogram(exp_id, channel, timeres=0.1, timestep=0.01,
     else:
         fig=canvas.fig
         ax = canvas.fig.add_subplot(1,1,1)
-        ax.pcolormesh(time_vec, freq/1000, np.sqrt((norm_data[:freq.shape[0]-1,:time_vec.shape[0]-1])**plot_smoothening))
+        # ax.pcolormesh(time_vec, freq/1000, np.log(datatoplot-np.min(datatoplot)+1))
+        if mode == "Logarithmic":
+            ax.pcolormesh(time_vec, freq/1000, datatoplot, vmin=np.median(datatoplot)-np.var(datatoplot)*2, vmax=np.median(datatoplot)+np.var(datatoplot)*2)
+        else:
+            ax.pcolormesh(time_vec, freq/1000, datatoplot)
         if r is not None:
             canvas.fig.suptitle(f"{exp_id}/{channel} R={r}m\nTimeres: {timeres}s Freq:[{flow}Hz,{fhigh}Hz]")
         else:
             canvas.fig.suptitle(f"{exp_id}/{channel}\nTimeres: {timeres}s Freq:[{flow}Hz,{fhigh}Hz]")
         ax.set_xlabel("Time [s]")
         ax.set_ylabel("Frequency [kHz]")
+        if fhigh is not None and flow>0:
+            ax.set_ylim([flow/1000, fhigh/1000])
+        
         fig.canvas.draw_idle()
         fig.canvas.flush_events()
 
 if __name__ == '__main__':
     # plot_shot("20241127.070", plot_rawdata=True, plot_powerspect=False, resample=0)
 
-    exp_id = "20250227.026"
+    exp_id = "20250320.010"
     timerange = None
-    channel = "ABES-24"
+    channel = "ABES-19"
     timeres = 0.1
-    timestep = 0.01
+    timestep = 0.2
     plot_smoothening = 0.5
     flow=10
     fhigh=10000
     plot_spectrogram(exp_id, channel, timeres=timeres, timestep=timestep, timerange=timerange,
-                     flow=10, fhigh=10000, plot_smoothening=plot_smoothening)
+                     flow=10, fhigh=10000, mode="Fluctuation")
 
     # globals()[sys.argv[1]](*sys.argv[2:])
