@@ -525,6 +525,7 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
         if (config['APDCAM_f_sample'] == Decimal(2e6)):
             instrument_delay = -9/Decimal(1000000)
             # instrument_delay = -14/Decimal(1000000)
+            instrument_delay = -28/Decimal(1000000)
             # instrument_delay = -30/Decimal(1000000)
             # instrument_delazy= -17/3-1/3*period time[microsec]
         elif (config['APDCAM_f_sample'] == Decimal(1e6)):

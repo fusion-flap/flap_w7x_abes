@@ -10,3 +10,4 @@ from .plot_power import plot_power
 from .show_bes import *
 from .chopper_parameters import chopper_parameters
 from .clean_abes import get_clean_abes,plot_clean_abes
+from .apdcam_patchplot import APDCAMPanel
