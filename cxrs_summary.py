@@ -11,7 +11,9 @@ ToDO:
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.gridspec import GridSpec
-
+from matplotlib.patches import Rectangle
+from matplotlib import cm
+import pickle
 import numpy as np
 import math
 
@@ -21,34 +23,23 @@ import flap_w7x_abes
 flap_w7x_abes.register() 
 
 def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
-                 list_result=True,min_spectral_noiselevel=5,min_modulation=5,min_mod_SNR=3):
+                 list_result=True,min_spectral_noiselevel=5,min_modulation=5,min_mod_SNR=3,savefile='ABES_CXRS_save.dat',
+                 show=True):
     """
     Finds lines in the ABES CXRS spectrum integrated for all fibres and times. Calculates the time evolulution of 
     the line intensities in each fibre and line. Selects the lines, fibres and time intervals where the intensity
     is modulated in correlation with beam modulation. 
     
-    Works only with slow camera sync chopping.
+    Works only with slow camera sync chopping when consequitive spectra are beam-on, beam-off.
     
     The algorithm is the following.
     - We add all spectra in all optical channels and find spectral lines in it.
     - In each fibre we determine the intensity of each line as a function of time and subtract an offset before the plasma.
+    - We calculate the sum of intensity after multiplying with 1, -1, 1, -1,... This is the amplitude of the change at the modulation frequency, 
+      it gives the modulation amplitude.
+    - We calculate the sum of intensity after multiplying with 1, 1, -1, -1, 1, 1, -1, -1... This is the amplitude of the change at 2 times the 
+      modulation frequency. This is considered as the error of modulation.
     
-    This is the old algorithm, not the actual:
-
-    - We calculate the autocovariance function up to <tau_max> time lag of the line intensity in <integration_time> long time interval sliding 
-      through the whole measeurement time. With this we assume the alkali beam modulation and the spectroscopy camera exposure are synchronized
-      and every second spectrum contains CX signal from the beam.
-    - In an ideal case the autocovariance function of a fully modulated line is P,0, P, 0, ..., where P is the modulation amplitude squared.
-      A constant passive line intensity would add an offset to this. A modulated passive line would add some correlation function falling as a 
-      function of time lag. 
-    - We take the beam-times of the signal and interpolate for all timepoints. We use this to approximate the autovariance function of the 
-      passive line intensity.
-    - We subtract the passive autocovariance function from the full autocovariance function so as to determine the autocovariance function 
-      of the active line intensity.
-    - In an ideal case P/2, -P/2, P/2,-P/2 .. remains, where P is the power of the active line intensity modulation
-    - We multiply the remaining autocovariance function with 1,-1,1,-1,... and take the mean times 2 to get P.
-    - The relative line modulation amplitude is sqrt(P)/mean(signal)
-    - We assess the error of P by calculating the variance of P * [1,-1,1,-1,..]. From the error of P we asses the error of the relative modulation.
 
     Parameters
     ----------
@@ -69,14 +60,17 @@ def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
     min_modulation : float, optional
         The minimum relative modulation amplitude [%] to list the line, time interval and channel as modulated.
         The default is 5.
-    min_mid_SNR : float
+    min_mod_SNR : float
         The minimum Signal-to-Noise ratio to list the line, time interval and channel as modulated.
+    savefile : str
+        The file where data will be saved.
+    show : Plot the result using show_modulation()
         
         
     Returns
     -------
     active_line_list: list
-        A list of dictiooaries, each describing one case when the correlation is good enough.
+        A list of dictionaries, each describing one case when the correlation is good enough.
 
     """
        
@@ -112,8 +106,12 @@ def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
     print('Kernel length:{:d}'.format(kernel_length))
     kernel = np.ones(kernel_length) / kernel_length
 
+    res = {}
     for line_i in range(len(w_line_global)):
+        res_line = {}
         for i_ch in range(len(optical_channels)): 
+            if (optical_channels[i_ch] == 'N.A.'):
+                continue
             print('Wavelength: {:5.1f}nm, channel:{:s}'.format(w_line_global[line_i],optical_channels[i_ch]),flush=True)
             if (test):
                 line_ax.cla()
@@ -135,11 +133,12 @@ def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
 
             line_data_smooth = np.convolve(line_data[:,line_i,i_ch],kernel,mode='valid')
             mask = ((np.arange(len(line_data[:,line_i,i_ch])) + 1) % 2) * 2 - 1
-            line_data_mod = np.convolve((line_data[:,line_i,i_ch] * mask),kernel,mode='valid') * 2
+            line_data_mod = np.convolve((line_data[:,line_i,i_ch] * mask),kernel,mode='valid') * 2 
             mask1 = np.sign((np.arange(len(line_data[:,line_i,i_ch])) % 4) - 1.8)
             # This is the error estimate
-            line_data_mod1 = np.abs(np.convolve((line_data[:,line_i,i_ch] * mask1),kernel,mode='valid') * 2)
+            line_data_mod_error = np.abs(np.convolve((line_data[:,line_i,i_ch] * mask1),kernel,mode='valid') * 2)
             t_smooth = np.convolve(t,kernel,mode='valid')
+            smooth_tres = tres * len(kernel)
             if (test):
                 signal_ax.cla()
                 plt.sca(signal_ax)
@@ -149,142 +148,207 @@ def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
                 plt.title('Wavelength: {:5.1f}nm, channel:{:s}'.format(w_line_global[line_i],optical_channels[i_ch]))
                 mod_ax.cla()
                 plt.sca(mod_ax)
-                plt.plot(t_smooth,np.clip(line_data_mod / line_data_smooth * 100,-100,100))
-                plt.plot(t_smooth,np.clip(line_data_mod1 / line_data_smooth * 100,-100,100))
+                plt.plot(t_smooth,np.clip(line_data_mod / line_data_smooth  * 100,-100,100))
+                plt.plot(t_smooth,np.clip(line_data_mod_error / line_data_smooth * 100,-100,100))
                 plt.plot(plt.xlim(),[0,0],color='black',linestyle='dotted')
                 plt.ylim(-105,105)
                 plt.legend(['Modulation','Modulation error'])
                 plt.show()
                 plt.pause(0.5)
-                
-         
-#             mean_smooth_0 = np.convolve(line_data[:-tau_max,line_i,i_ch],kernel,mode='valid')
-# #            norm_0 = np.sqrt(np.convolve((line_data[kernel_length // 2 : -(kernel_length // 2) - tau_max,line_i,i_ch] - mean_smooth_0) ** 2,kernel,mode='valid'))
-#             t_corr = np.convolve(np.convolve(t[:- tau_max],kernel,mode='valid'),kernel,mode='valid')
-#             # This will contain the correlation as a function of time
-#             corr = np.zeros((tau_max + 1, len(t_corr)),dtype='float')
-#             for i_tau in range(0,tau_max + 1):
-#                 mean_smooth = np.convolve(line_data[i_tau : line_data.shape[0] - (tau_max - i_tau),line_i,i_ch],kernel,mode='valid')
-# #                norm = np.sqrt(np.convolve((line_data[kernel_length // 2 + i_tau : -(kernel_length // 2) - tau_max + i_tau,line_i,i_ch] - mean_smooth) ** 2,kernel,mode='valid'))
-#                 c = np.convolve((line_data[kernel_length // 2 : -(kernel_length // 2) - tau_max,line_i,i_ch] - mean_smooth_0) \
-#                                   * (line_data[kernel_length // 2 + i_tau: -(kernel_length // 2) - tau_max + i_tau,line_i,i_ch] - mean_smooth),kernel,mode='valid')
-#                 corr[i_tau,:] = c #/ (norm_0 * norm)
-#             if (False):
-#                 # Fitting a curve to the autocovariance function to determine background plasma correlations
-#                 tau = np.arange(tau_max + 1)
-#                 order = 1
-#                 if (tau_max > 5):
-#                     order = 2
-#                 corr_fit_poly = np.polynomial.polynomial.polyfit(tau, corr, deg=order, full = False)
-#                 fitcurves = np.zeros(corr.shape,dtype='float')
-#                 x = np.broadcast_to(np.arange(tau_max + 1),corr.shape[::-1]).transpose()
-#                 for i in range(order + 1):
-#                     fitcurves += corr_fit_poly[i,:] * x ** i 
-#                 CXRS_corr = corr - fitcurves
-#             if (True):
-#                 # Interpolating beam-off time to whole time and calculating autocovariance of passive light
-#                 beam_off_data = line_data[1::2,line_i,i_ch]
-#                 beam_off_data_interpol = np.interp(t, t[1::2], beam_off_data)
-#                 mean_smooth_0_passive = np.convolve(beam_off_data_interpol[:-tau_max],kernel,mode='valid')
-#                 corr_passive = np.zeros((tau_max + 1, len(t_corr)),dtype='float')
-#                 for i_tau in range(0,tau_max + 1):
-#                     mean_smooth_passive = np.convolve(beam_off_data_interpol[i_tau : beam_off_data_interpol.shape[0] - (tau_max - i_tau)],kernel,mode='valid')
-#                     c = np.convolve((beam_off_data_interpol[kernel_length // 2 : -(kernel_length // 2) - tau_max] - mean_smooth_0_passive) \
-#                                       * (beam_off_data_interpol[kernel_length // 2 + i_tau: -(kernel_length // 2) - tau_max + i_tau] - mean_smooth_passive),kernel,mode='valid')
-#                     corr_passive[i_tau,:] = c
-#                 CXRS_corr = corr - corr_passive 
-#                 fitcurves = corr_passive
+                            
+            res_line[optical_channels[i_ch]] = {'w':w_line_global[line_i],
+                                                'och':optical_channels[i_ch],
+                                                'ch' : channels[i_ch],
+                                                'time':t_smooth,
+                                                'tres':smooth_tres,
+                                                'amp': line_data_smooth,
+                                                'line_data' : line_data_smooth,
+                                                'line_mod' : line_data_mod,
+                                                'line_mod_error' : line_data_mod_error,                                             
+                                                't': t_smooth,
+                                                'R': R[i_ch],
+                                                'x': X[i_ch],
+                                                'y': Y[i_ch]
+                                                }
+                                                
             
-#             mask = np.broadcast_to(1 - (np.arange(tau_max + 1,dtype=int) % 2 ) * 2,corr.shape[::-1]).transpose()
-#             P = np.clip(np.mean(CXRS_corr * mask,axis=0),0,None)
-#             P_error = np.sqrt(np.mean(((CXRS_corr * mask) - P) ** 2,axis=0))
-#             CXRS_rel_mod = np.sqrt(P) / mean_smooth_0[kernel_length // 2 : -(kernel_length // 2)]
-#             CXRS_rel_mod_error = np.clip(np.sqrt(P) - np.sqrt(P - P_error) / mean_smooth_0[kernel_length // 2 : -(kernel_length // 2)],0,None)
-# #            CXRS_rel_mod_error = np.clip(np.sqrt(P_error) / mean_smooth_0[kernel_length // 2 : -(kernel_length // 2)],0,None)
-# #            if (estimate_error):
-# #                error_kernel_length = int(round(integration_time / (t[1] - t[0]))) // 4 * 2 + 1
-#             #     error_kernel_length = kernel_length
-#             #     if (error_kernel_length < 3):
-#             #         raise ValueError('Integration time is too short for CXRS modulation error estimation.')
-#             #     error_kernel = np.ones(error_kernel_length) / error_kernel_length
-#             #     CXRS_rel_smooth = np.convolve(CXRS_rel_mod,error_kernel,mode='valid')
-#             #     extend_len = (len(CXRS_rel_mod) - len(CXRS_rel_smooth))
-#             #     CXRS_rel_smooth = np.concatenate((np.full(extend_len // 2,CXRS_rel_smooth[0]),CXRS_rel_smooth,np.full(extend_len - extend_len // 2,CXRS_rel_smooth[-1])))
-#             #     CXRS_rel_error = np.sqrt(np.convolve((CXRS_rel_mod - CXRS_rel_smooth) ** 2,error_kernel,mode='valid') / error_kernel_length)
-#             #     CXRS_rel_error = np.concatenate((np.full(extend_len // 2,CXRS_rel_error[0]),CXRS_rel_error,np.full(extend_len - extend_len // 2,CXRS_rel_error[-1])))
-#             # else:
-#             #      CXRS_rel_error = None
+            ind = np.nonzero(np.logical_and(line_data_mod > line_data_mod_error * min_mod_SNR,
+                                            line_data_mod > min_modulation
+                                            )
+                             )[0]
+            if (len(ind) != 0):  
+                ind_ind = 0
+                while ind_ind < len(ind):
+                    start_ind = ind[ind_ind]
+                    diff_ind = np.diff(ind[ind_ind:])
+                    ind_diff = np.nonzero(diff_ind > 1)[0]
+                    if (len(ind_diff) == 0):
+                        stop_ind = ind[-1]
+                        ind_ind = len(ind)
+                    else:
+                        stop_ind = ind[ind_ind:][ind_diff[0]]
+                        ind_ind += ind_diff[0] + 1
+                    active_line_list.append({'w':w_line_global[line_i],
+                                             'och':optical_channels[i_ch],
+                                             'ch' : channels[i_ch],
+                                             'trange':[t_smooth[start_ind],t_smooth[stop_ind]],
+                                             'amp': line_data_smooth,
+                                             't': t_smooth,
+                                             'R': R[i_ch],
+                                             'x': X[i_ch],
+                                             'y': Y[i_ch]
+                                             }
+                                            )  
+            res[w_line_global[line_i]] = res_line
             
-#             if (test_corr):
-#                 plt.figure(correlation_plot.number)    
-#                 plt.clf()
-#                 plt.subplot(3,2,1)
-#                 absmax = max([abs(np.amax(corr)),abs(np.amin(corr))])
-#                 plt.imshow(corr,aspect='auto',extent=[min(t_corr),max(t_corr),0,tau_max],origin='lower',cmap='bwr',vmin=-absmax,vmax=absmax)
-#                 plt.title('Correlations')
-#                 plt.xlabel('Time [s]')
-#                 plt.ylabel('tau')
-#                 plt.subplot(3,2,2)
-#                 plt.imshow(fitcurves,aspect='auto',extent=[min(t_corr),max(t_corr),0,tau_max],origin='lower',cmap='bwr',vmin=-absmax,vmax=absmax)
-#                 plt.title('Fitted correlations')
-#                 plt.xlabel('Time [s]')
-#                 plt.ylabel('tau')
-#                 plt.subplot(3,2,3)
-#                 plt.imshow(CXRS_corr,aspect='auto',extent=[min(t_corr),max(t_corr),0,tau_max],origin='lower',cmap='bwr',vmin=-absmax,vmax=absmax)
-#                 plt.title('Correlation with beam modulation')
-#                 plt.xlabel('Time [s]')
-#                 plt.ylabel('tau')
-#                 plt.subplot(3,2,4)
-#                 if (CXRS_rel_mod_error is not None):
-#                     plt.errorbar(t_corr,CXRS_rel_mod * 100, yerr=CXRS_rel_mod_error * 100)
-# #                    plt.plot(t_corr,CXRS_rel_smooth * 100)
-#                 else:
-#                     plt.plot(t_corr,CXRS_rel_mod * 100)
-#                 plt.title('Relative CXRS modulation')
-#                 plt.xlabel('Time [s')
-#                 plt.ylabel('[%]')
-#                 plt.ylim(0,105)
-#                 plt.suptitle("W: {:5.1f}, ch: {:s}".format(w_line_global[line_i],optical_channels[i_ch]))
-#                 plt.subplot(3,2,5)
-#                 plt.plot(t,line_data[:,line_i,i_ch])
-#                 plt.xlabel('Time [s')
-#                 plt.title('Line intensity')
-#                 plt.tight_layout()
-#                 plt.show()
-#                 plt.pause(1)
-#                 pass
-           
+    
+    if (savefile is not None):
+        with open(savefile,"wb") as f:
+            pickle.dump([exp_id,res],f)
+    
+    if (show):
+        show_modulation(res=res,title=exp_id)
             
-            
-            # if (len(ind) != 0):  
-            #     start_ind = ind[0]
-            #     while start_ind < ind[-1]:
-            #         diff_ind = np.diff(ind[start_ind:])
-            #         ind_diff = np.nonzero(diff_ind > 1)[0]
-            #         if (len(ind_diff) == 0):
-            #             stop_ind = ind[-1]
-            #         else:
-            #             stop_ind = ind[ind_diff[0] - 1]
-            #         active_line_list.append({'w':w_line_global[i],
-            #                                  'och':optical_channels[i_ch],
-            #                                  'ch' : channels[i_ch],
-            #                                  'trange':[t_corr[start_ind],t_corr[stop_ind]],
-            #                                  'c_1':c_1,
-            #                                  'c_2':c_2,
-            #                                  'c_time': t_corr,
-            #                                  'amp': line_data[:,i,i_ch],
-            #                                  't': t,
-            #                                  'R': R[i_ch],
-            #                                  'x': X[i_ch],
-            #                                  'y': Y[i_ch]
-            #                                  }
-            #                                 )  
-            #         start_ind = stop_ind + 1
     if (list_result):
         for l in active_line_list:
-            print("Wavelength: {:5.1f}nm, Optical Ch: {:s}, time range: [{:4.1f},{:4.1f}]".format(l['w'],l['och'],*l['trange']))                
+            print("Wavelength: {:5.1f}nm, Optical Ch: {:s}, channel: {:d}, R:{:5.3f}, time range: [{:4.1f},{:4.1f}]".format(l['w'],l['och'],l['ch'],l['R'],*l['trange']))                
     return active_line_list
 
+def show_modulation(res=None,file=None,min_mod_SNR=3,min_modulation=5,R_range=[6.1,6.3],
+                    trange=None,mod_range=[0,100],title=None):
+    """
+    Plot the modulation of the lines as a function of time and R. Will sum up the signals 
+    in all fibres located at the same R.
+    Only plots data where the modulation of the line is at least <min_modulation> and
+    the Signal to Noise Ratio of the modulation is at least <min_mod_SNR>.
+
+    Parameters
+    ----------
+    res : dict, optional
+        The result returned by cxrs_summary() . The default is None.
+    file :str, optional
+        File name with the data written by cxrs_summary(). The default is None.
+        If res is None and file is not None data will be read from the file.
+    min_mod_SNR : float, optional
+        The minimum Signal to Noise Ratio of the modulation to plot. The default is 3.
+    min_modulation : float, optional
+        The minimum modulation for plotting in %. The default is 5.
+    R_range : list of two floats, optional
+        The major radius range of the plot. The default is [6.1,6.3].
+    trange : list of two floats, optional
+        The time range of the plot in second. The default is None, it will plot all data.
+    mod_range : lst of two floats, optional
+        The modulation range for the plot in %. The default is [0,100].
+    title :str, optional
+        The title of the plot. The default is None, in this case the exp_id and the plot parameters will be listed.modulation
+
+    Returns
+    -------
+    None.
+
+    """
+    if ((res is None) and (file is not None)):
+        with open(file,"rb") as f:
+            exp_id,res = pickle.load(f)
+            if (title is None):
+                _title = 'Line modulations. min_modulation={:f}%, min_mod_SNR={:f}   experiment: {:s}.'.format(min_modulation,min_mod_SNR,exp_id)
+    else:
+        _title = title
+            
+    good_wl = []
+    if (trange is not None):
+        _trange = trange
+    else:
+        _trange = [1e4,-1]
+    for w in res.keys():
+        for f in res[w].keys():
+            ind = np.nonzero(np.logical_and(res[w][f]['line_mod'] > res[w][f]['line_mod_error'] * min_mod_SNR,
+                                            res[w][f]['line_mod'] / res[w][f]['line_data'] * 100 > min_modulation
+                                            )
+                                            )[0]
+            if (len(ind) > 0):
+                good_wl.append(w)
+                _trange[0] = min([_trange[0],min(res[w][f]['time'])])
+                _trange[1] = max([_trange[1],max(res[w][f]['time'])])
+                break        
+    if (len(good_wl) == 0):
+        print("No modulation was found.")
+    n_wl = len(good_wl)
+    fig = plt.figure(figsize=(20,15))
+    
+    if (n_wl <= 4):
+        nc = n_wl
+        nr = 1
+    else:
+        nc = int(round(math.sqrt(n_wl)))
+        nr = n_wl // nc
+        if (n_wl % nc != 0):
+            nr += 1
+    fibre_image_size = 2.5 # mm
+    for i,w in enumerate(good_wl):    
+        # This will collect the intensity and modulation as a function of R
+        mod_amp = []
+        amp = []
+        err_amp = []
+        plot_R = []
+        for f in res[w].keys():
+            append = True
+            if (len(plot_R) > 0):
+                if (np.min(np.abs(np.array(plot_R) - res[w][f]['R'])) < fibre_image_size * 1e-3 / 2):
+                    ind = np.argmin(np.abs(np.array(plot_R) - res[w][f]['R']))
+                    mod_amp[ind] += res[w][f]['line_mod']
+                    amp[ind] += res[w][f]['line_data']
+                    err_amp[ind] += res[w][f]['line_mod_error']
+                    append = False
+            if (append):
+                plot_R.append(res[w][f]['R'])
+                mod_amp.append(res[w][f]['line_mod'])
+                amp.append(res[w][f]['line_data'])
+                err_amp.append(res[w][f]['line_mod_error'])
+                    
+        ax = plt.subplot(nr,nc,i+1)
+        plt.xlim(*_trange)
+        plt.xlabel('Time [s]')
+        plt.ylim(*R_range)
+        plt.ylabel('R [cm]')
+        plt.title("{:5.1f}nm".format(w))
+        time = res[w][next(iter(res[w]))]['time']
+        tres = res[w][next(iter(res[w]))]['tres']
+        for iR,R in enumerate(plot_R):
+            rel_mod = mod_amp[iR] / amp[iR] * 100
+            ind = np.nonzero(np.logical_and(mod_amp[iR] > err_amp[iR] * min_mod_SNR,
+                                            rel_mod > min_modulation
+                                            )
+                             )[0]
+            c_ind = np.clip((rel_mod - mod_range[0]) /( mod_range[1] - mod_range[0]),0,1)
+            for ii in ind:
+                patch = Rectangle((time[ii] - tres / 2,R - fibre_image_size * 1e-3 / 2),
+                                                     width = tres,
+                                                     height = fibre_image_size * 1e-3,
+                                                     color = (1,1-float(c_ind[ii]),1-float(c_ind[ii]))
+                                                     )
+                ax.add_patch(patch)
+             
+    
+    if (_title is not None):
+        plt.suptitle(_title)
+    
+    plt.subplots_adjust(left=0.05, bottom=0.1, right=0.95, top=0.85, hspace=0.1)
+    #plt.tight_layout()    
+    
+    # Adding a custom colorscale
+    ax_color = fig.add_subplot([0.1,0.9,0.84,0.02])
+    plt.xlim(*mod_range)
+    plt.xlabel('Modulation [%]')
+    plt.ylim(0,1)
+    plt.yticks([])
+    plt.title('Modulation scale')
+    nc = 100
+    for i in range(nc):
+        patch = Rectangle((i/nc*100, 0), width=100/nc , height = 1, color=(1,1-i/nc,1-i/nc))
+        ax_color.add_patch(patch)
+    
+    plt.show()
 
 def test_proc(exp_id):
     d = flap.get_data('W7X_ABES_CXRS', exp_id=exp_id,name="QSI_CXRS")
@@ -419,8 +483,10 @@ def find_lines(wavelength,data,test=True,new_figure=True,linewidth=0.05,fit_orde
             
 plt.close('all')   
 # cxrs_summary('20230316.072',min_line_amp=0.1,integration_time=6)
-#cxrs_summary('20250401.026',integration_time=1,linewidth=0.1,test_spectrum=True,test_corr=True,tau_max=4)   # 529 nm
-#cxrs_summary('20250403.018',integration_time=1,linewidth=0.1)  # 530 nm
+#cxrs_summary('20250401.026',integration_time=1,linewidth=0.2,test=True)   # 529 nm
+cxrs_summary('20250403.018',integration_time=2,linewidth=0.2,test=True)  # 530 nm
 #cxrs_summary('20240926.028',integration_time=1,linewidth=0.1,test_spectrum=True,test_corr=True,tau_max=4)  # 529 nm
-cxrs_summary('20250402.028',integration_time=2,linewidth=0.02,test=True,min_spectral_noiselevel=150)   # 584 nm  Na line
-#cxrs_summary('20250402.064',integration_time=1,linewidth=0.05,test_spectrum=True,test_corr=True,tau_max=4)   # 585 nm
+#cxrs_summary('20250402.028',integration_time=4,linewidth=0.2,test=False,min_spectral_noiselevel=150)   # 584 nm  Na line
+#cxrs_summary('20250402.064',integration_time=4,linewidth=0.2,test=True,min_spectral_noiselevel=30)   # 585 nm
+
+show_modulation(file='ABES_CXRS_save.dat')

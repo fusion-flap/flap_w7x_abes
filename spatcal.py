@@ -145,9 +145,16 @@ class ShotSpatCal(flap.DataObject):
             data = np.zeros(len(channel_names))
             index = 0
             for channel in channel_names:
-                data[index] = (self.data[coord_name])[np.where(
-                    self.data["Channel name"] == str(channel))[0][0]]
-                index = index+1
+                if (channel == 'N.A.'):
+                    data[index] = 0
+                    index = index + 1
+                    continue
+                try:
+                    data[index] = (self.data[coord_name])[np.where(
+                        self.data["Channel name"] == str(channel))[0][0]]
+                    index = index+1
+                except IndexError:
+                    raise ValueError("channel {:s} is not found in calibration file.".format(channel))
         else:
             data = self.data[coord_name]
 
