@@ -24,7 +24,7 @@ flap_w7x_abes.register()
 
 def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
                  list_result=True,min_spectral_noiselevel=5,min_modulation=5,min_mod_SNR=3,savefile='ABES_CXRS_save.dat',
-                 show=True):
+                 show=True,offset_sample=0):
     """
     Finds lines in the ABES CXRS spectrum integrated for all fibres and times. Calculates the time evolulution of 
     the line intensities in each fibre and line. Selects the lines, fibres and time intervals where the intensity
@@ -64,7 +64,14 @@ def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
         The minimum Signal-to-Noise ratio to list the line, time interval and channel as modulated.
     savefile : str
         The file where data will be saved.
-    show : Plot the result using show_modulation()
+    show : bool
+        Plot the result using show_modulation()
+    offset_sample : int or range of int
+        The sample(s) to subtract for the time evolution of the intensity as offset
+        First sample: 0
+        Last sample: -1
+        Mean of last 3 samples: np.array([-3,-2,-1])
+    
         
         
     Returns
@@ -129,7 +136,7 @@ def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
                                                     summing={'Wavelength':'Mean'}
                                                     ).data
             # Offset correction
-            line_data[:,line_i,i_ch] -= line_data[0,line_i,i_ch]
+            line_data[:,line_i,i_ch] -= np.mean(line_data[offset_sample,line_i,i_ch])
 
             line_data_smooth = np.convolve(line_data[:,line_i,i_ch],kernel,mode='valid')
             mask = ((np.arange(len(line_data[:,line_i,i_ch])) + 1) % 2) * 2 - 1
@@ -484,9 +491,9 @@ def find_lines(wavelength,data,test=True,new_figure=True,linewidth=0.05,fit_orde
 plt.close('all')   
 # cxrs_summary('20230316.072',min_line_amp=0.1,integration_time=6)
 #cxrs_summary('20250401.026',integration_time=1,linewidth=0.2,test=True)   # 529 nm
-cxrs_summary('20250403.018',integration_time=2,linewidth=0.2,test=True)  # 530 nm
+cxrs_summary('20250403.018',integration_time=2,linewidth=0.2,test=True,offset_sample=np.array([-2,-1]))  # 530 nm
 #cxrs_summary('20240926.028',integration_time=1,linewidth=0.1,test_spectrum=True,test_corr=True,tau_max=4)  # 529 nm
 #cxrs_summary('20250402.028',integration_time=4,linewidth=0.2,test=False,min_spectral_noiselevel=150)   # 584 nm  Na line
 #cxrs_summary('20250402.064',integration_time=4,linewidth=0.2,test=True,min_spectral_noiselevel=30)   # 585 nm
 
-show_modulation(file='ABES_CXRS_save.dat')
+#show_modulation(file='ABES_CXRS_save.dat')
