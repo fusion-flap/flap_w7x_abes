@@ -22,9 +22,42 @@ import flap_w7x_abes
 
 flap_w7x_abes.register() 
 
+def proc_cxrs(list_file='cxrs_wavelength.txt',linewidth=0.05,integration_time=3,list_result=False,min_modulation=10,min_mod_SNR=3,savefile='ABES_CXRS_proc.dat',
+                 show=False,offset_sample=None,R_range=[6.1,6.3]):
+    
+    with open(list_file,"rt") as f:
+        lines = f.readlines()
+    for l in lines:
+        exp_id = l.split()[0]
+        wavelength = float(l.split()[1])
+        if (wavelength < 100):
+            continue
+        print(exp_id,flush=True)
+        datafile = exp_id+'_CXRS_mod.dat'
+        try:
+            res = cxrs_summary(exp_id,linewidth=linewidth,test=False,integration_time=integration_time,
+                             list_result=False,min_modulation=min_modulation,min_mod_SNR=min_mod_SNR,savefile=datafile,
+                             show=False,offset_sample=offset_sample
+                             )
+        except Exception as e:
+            res = []
+            print('  Error:'+str(e),flush=True)
+        if (len(res) != 0):
+            print('  Modulation found.',flush=True)
+            plt.close('all')
+            show_modulation(file=datafile,min_mod_SNR=min_mod_SNR,min_modulation=min_modulation,R_range=R_range,
+                        trange=None,mod_range=[0,100],title=None
+                        )
+            plt.savefig(exp_id+'_CXRS_mod.png')
+        else:
+            print('  Modulation not found.',flush=True)
+
+            
+                
+
 def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
                  list_result=True,min_spectral_noiselevel=5,min_modulation=5,min_mod_SNR=3,savefile='ABES_CXRS_save.dat',
-                 show=True,offset_sample=0):
+                 show=True,offset_sample=None,verbose=False):
     """
     Finds lines in the ABES CXRS spectrum integrated for all fibres and times. Calculates the time evolulution of 
     the line intensities in each fibre and line. Selects the lines, fibres and time intervals where the intensity
@@ -66,11 +99,14 @@ def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
         The file where data will be saved.
     show : bool
         Plot the result using show_modulation()
-    offset_sample : int or range of int
-        The sample(s) to subtract for the time evolution of the intensity as offset
+    offset_sample : None, int or range of int
+        If None then will subtact the minimum of the signal
+        Else the sample(s) to subtract for the time evolution of the intensity as offset
         First sample: 0
         Last sample: -1
         Mean of last 3 samples: np.array([-3,-2,-1])
+    verbose: bool
+        Print the wavelength and channel for each line as processing
     
         
         
@@ -110,16 +146,19 @@ def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
     line_data = np.zeros((len(t),len(w_line_global),len(optical_channels)))
     active_line_list = []
     kernel_length = int(round(integration_time / (t[1] - t[0]))) // 4 * 4
-    print('Kernel length:{:d}'.format(kernel_length))
+    #print('Kernel length:{:d}'.format(kernel_length))
     kernel = np.ones(kernel_length) / kernel_length
 
     res = {}
+    if (len(w_line_global) == 0):
+        print("   No lines found.")
     for line_i in range(len(w_line_global)):
         res_line = {}
         for i_ch in range(len(optical_channels)): 
             if (optical_channels[i_ch] == 'N.A.'):
                 continue
-            print('Wavelength: {:5.1f}nm, channel:{:s}'.format(w_line_global[line_i],optical_channels[i_ch]),flush=True)
+            if (verbose):
+                print('Wavelength: {:5.1f}nm, channel:{:s}'.format(w_line_global[line_i],optical_channels[i_ch]),flush=True)
             if (test):
                 line_ax.cla()
                 plt.sca(line_ax)
@@ -136,7 +175,10 @@ def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
                                                     summing={'Wavelength':'Mean'}
                                                     ).data
             # Offset correction
-            line_data[:,line_i,i_ch] -= np.mean(line_data[offset_sample,line_i,i_ch])
+            if (offset_sample is None):
+                line_data[:,line_i,i_ch] -= np.min(line_data[:,line_i,i_ch])
+            else:
+                line_data[:,line_i,i_ch] -= np.mean(line_data[offset_sample,line_i,i_ch])
 
             line_data_smooth = np.convolve(line_data[:,line_i,i_ch],kernel,mode='valid')
             mask = ((np.arange(len(line_data[:,line_i,i_ch])) + 1) % 2) * 2 - 1
@@ -180,7 +222,7 @@ def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
                                                 
             
             ind = np.nonzero(np.logical_and(line_data_mod > line_data_mod_error * min_mod_SNR,
-                                            line_data_mod > min_modulation
+                                            line_data_mod / line_data_smooth * 100 > min_modulation
                                             )
                              )[0]
             if (len(ind) != 0):  
@@ -199,8 +241,10 @@ def cxrs_summary(exp_id,linewidth=0.05,test=True,integration_time=1,
                                              'och':optical_channels[i_ch],
                                              'ch' : channels[i_ch],
                                              'trange':[t_smooth[start_ind],t_smooth[stop_ind]],
-                                             'amp': line_data_smooth,
-                                             't': t_smooth,
+                                             'amp': line_data_smooth[start_ind:stop_ind + 1],
+                                             'mod': line_data_mod[start_ind:stop_ind + 1],
+                                             'error': line_data_mod_error[start_ind:stop_ind + 1],
+                                             't': t_smooth[start_ind:stop_ind + 1],
                                              'R': R[i_ch],
                                              'x': X[i_ch],
                                              'y': Y[i_ch]
@@ -365,7 +409,7 @@ def test_proc(exp_id):
     for i in range(len(w)):
         print("{:5.1f}[nm]: {:7.1f}".format(w[i],a[i]))
     
-def find_lines(wavelength,data,test=True,new_figure=True,linewidth=0.05,fit_order=None,auto_offset=True,min_noiselevel=5):
+def find_lines(wavelength,data,test=True,new_figure=True,linewidth=0.03,fit_order=None,auto_offset=True,min_noiselevel=5):
     """
     Finds spectral lines in a spectrum. 
     The expected FWHM linewidth is used as inpupt parameter, 
@@ -446,6 +490,7 @@ def find_lines(wavelength,data,test=True,new_figure=True,linewidth=0.05,fit_orde
             fitdata = np.mean(bin_edges[ind_max:ind_max+2])
             data_proc -= fitdata
             noiselevel -= fitdata
+            noiselevel *= 10
             auto_offset_value  = fitdata
         else:
             auto_offset_value = None
@@ -467,18 +512,30 @@ def find_lines(wavelength,data,test=True,new_figure=True,linewidth=0.05,fit_orde
         ind = np.nonzero(data_proc[act_ind:] > noiselevel)[0]
         if (len(ind) == 0):
             break
+        ind_linestart = ind[0]
         ind_diff = np.diff(ind)
         ind_lineend = np.nonzero(ind_diff > 1)[0]
         if (len(ind_lineend) == 0):
             ind_lineend = len(ind)
         else:
             ind_lineend = ind_lineend[0] - 1
+        ind_max = data_proc[act_ind + ind_linestart : act_ind + ind_lineend]
         if ((ind_lineend < linewidth / w_res * 10) and (ind_lineend > linewidth / w_res / 2)):
-            line_data = data_proc[act_ind + ind[0] : act_ind + ind[0] + ind_lineend]
-            line_w = wavelength_smooth[act_ind + ind[0] : act_ind + ind[0] + ind_lineend]
+            line_data = data_proc[act_ind + ind_linestart : act_ind + ind[0] + ind_lineend]
+            line_w = wavelength_smooth[act_ind + ind_linestart : act_ind + ind_linestart + ind_lineend]
             linelist.append(np.sum(line_w * line_data) / np.sum(line_data))
             line_amp_list.append(np.max(line_data))
-        act_ind += ind[0] + ind_lineend + 2
+        elif (ind_lineend > linewidth / w_res / 2):
+            # This might be multiple lines, looking for maxima. Each maximum is considered as a line
+            ldat = data_proc[act_ind + ind_linestart : act_ind + ind_linestart + ind_lineend]  
+            ind_max = np.nonzero(np.logical_and(ldat[1:-1] > ldat[0:-2],
+                                                ldat[1:-1] > ldat[2:]
+                                                )
+                                 )[0]
+            for i_max in ind_max:
+                linelist.append(wavelength_smooth[act_ind + ind_linestart + i_max + 1])
+                
+        act_ind += ind_linestart + ind_lineend + 2
     if (test):
         if (len(linelist) != 0):
             for w in linelist:
@@ -491,9 +548,11 @@ def find_lines(wavelength,data,test=True,new_figure=True,linewidth=0.05,fit_orde
 plt.close('all')   
 # cxrs_summary('20230316.072',min_line_amp=0.1,integration_time=6)
 #cxrs_summary('20250401.026',integration_time=1,linewidth=0.2,test=True)   # 529 nm
-cxrs_summary('20250403.018',integration_time=2,linewidth=0.2,test=True,offset_sample=np.array([-2,-1]))  # 530 nm
+#cxrs_summary('20250403.018',integration_time=2,linewidth=0.2,test=True,offset_sample=np.array([-2,-1]))  # 530 nm
 #cxrs_summary('20240926.028',integration_time=1,linewidth=0.1,test_spectrum=True,test_corr=True,tau_max=4)  # 529 nm
 #cxrs_summary('20250402.028',integration_time=4,linewidth=0.2,test=False,min_spectral_noiselevel=150)   # 584 nm  Na line
 #cxrs_summary('20250402.064',integration_time=4,linewidth=0.2,test=True,min_spectral_noiselevel=30)   # 585 nm
 
 #show_modulation(file='ABES_CXRS_save.dat')
+
+proc_cxrs(list_file='cxrs_wavelength_part.txt')
