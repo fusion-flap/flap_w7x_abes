@@ -1853,7 +1853,7 @@ class CalcCalibration:
 
     def calc_apdcam_cmos_transform(self, flip_horizontally):
 
-        if int(self.calibration_id) == 2021:
+        if int(self.calibration_id) == 2021 or int(self.calibration_id) == 2024 or int(self.calibration_id) == 2025:
             # reading the corresponding optical channels
             channels = ["20", "39", "38", "1", "2", "3"]
 
@@ -1915,7 +1915,18 @@ class CalcCalibration:
             a0 = np.mean([opt_chan_2021[channel]-opt_chan_2018[channel]
                          for channel in channels], axis=0)
             b0 = 0
-            starter = np.array([a0[0], a0[1], b0])
+            
+            #get a good starter value
+            error_func = partial(transform_error, opt_chan_2018, opt_chan_2021)           
+            error_old= np.inf
+            for a0curr in np.arange(int(a0[0]) - 50,int(a0[0]) + 50):
+                for a1curr in np.arange(int(a0[1]) - 50, int(a0[1]) + 50):
+                    for b in np.arange(b0-45, b0+45):
+                        error = error_func([a0curr, a1curr, b*np.pi/180])
+                        if error < error_old:
+                            error_old = error
+                            starter = np.array([a0curr, a1curr, b*np.pi/180])
+            
             error_func = partial(transform_error, opt_chan_2018, opt_chan_2021)
             trans = minimize(error_func, starter, method='Powell')
             a = [trans['x'][0], trans['x'][1]]
