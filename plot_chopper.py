@@ -7,7 +7,7 @@ Created on Mon Oct 14 14:38:14 2024
 """
 
 import matplotlib.pyplot as plt
-
+import numpy as np
 
 import flap
 import flap_w7x_abes
@@ -77,5 +77,6 @@ def plot_chopper(exp_ID, signal='ABES-15', timerange=None, resample="", datapath
                                       end_shift=on_end
                                       )
 
-# plt.close('all')
-# plot_chopper('20230315.025',signal='ABES-24',timerange=[1,1.001],resample=None)
+if __name__ == "__main__":
+    plt.close('all')
+    plot_chopper('20230315.025',signal='ABES-24',timerange=[1,1.001],resample=None)

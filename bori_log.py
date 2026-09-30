@@ -7,14 +7,14 @@ Created on Sun Oct 10 21:15:27 2021
 
 import matplotlib.pyplot as plt
 import numpy as np
-# try:
-#     try:
-#         from .nptdms_mod import TdmsFile
-#     except ImportError:
-#         from nptdms_mod import TdmsFile
-# except ModuleNotFoundError:
-#     from flap_w7x_abes.nptdms_mod import TdmsFile
-# from nptdms import TdmsFile  
+try:
+    try:
+        from .nptdms_mod import TdmsFile
+    except ImportError:
+        from nptdms_mod import TdmsFile
+except ModuleNotFoundError:
+    from flap_w7x_abes.nptdms_mod import TdmsFile
+from nptdms import TdmsFile  
   
 import datetime
 import os
@@ -71,7 +71,9 @@ class BORIMonitor():
                       "- Chopper Control V": "Voltage:V",
                       "+ Aiming Control (tor) V": "Voltage:V",
                       "+ Aiming Control (pol) V": "Voltage:V",
-                      "- Aiming Control (pol) V": "Voltage:V"}
+                      "- Aiming Control (pol) V": "Voltage:V",
+                      "TC Plate Poloidal": "Temperature:C",
+                      "TC Plate Toroidal": "Temperature:C"}
                       # "WaterFlow l/min": "Flow rate:l/min"}
         if self.date is not None:
             t,d,u = read_date_tdms(data_names=list(data_names.keys()),startdate=self.date,datapath=self.datapath)
@@ -695,8 +697,16 @@ def page_list(file):
     
     
 def read_exp_tdms(data_names, exp_id,datapath='/data/W7X/APDCAM'):
-    dirname = os.path.join(datapath,exp_id)
-    tdms_files = [filename for filename in os.listdir(dirname) if ("tdms" in filename and "tdms_index" not in filename)]
+    try:
+        try:
+            dirname = os.path.join(datapath,exp_id)
+            tdms_files = [filename for filename in os.listdir(dirname) if ("tdms" in filename and "tdms_index" not in filename)]
+        except FileNotFoundError:
+            tdms_files = [filename for filename in os.listdir(datapath) if ("tdms" in filename and "tdms_index" not in filename)]
+            tdms_files = [filename for filename in tdms_files if exp_id in filename]
+            dirname = datapath
+    except FileNotFoundError:
+        raise FileNotFoundError(f"No tdms data in either {datapath} or {dirname}")
     all_data = dict()
     for file in tdms_files:
         try:
@@ -718,7 +728,7 @@ def read_exp_tdms(data_names, exp_id,datapath='/data/W7X/APDCAM'):
                         else:
                             all_data[data] = np.concatenate([all_data[data], currdata])
         except Exception as e:
-            print(f"Failed to read {tdms_file}")
+            print(f"Failed to read {os.path.join(dirname,file): {str(e)}}")
     data_unit = []
     #Sorting the time vector
     for key in all_data.keys():

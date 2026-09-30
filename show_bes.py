@@ -434,18 +434,134 @@ def plot_spectrogram(exp_id, channel, timeres=0.1, timestep=0.01,
         fig.canvas.draw_idle()
         fig.canvas.flush_events()
 
+def check_chopper(exp_ID, start_delay=0, end_delay=0, time_window = None, channel=None, options={}):
+    ''' A very basic program to check whether the start and end delay settings for the chopper match the data
+    INPUT: start_delay/end_delay - the delay values in us for the chopper
+           time_window - the time_window to be plotted, if None, than the whole shot is plotted
+           channel - the channel for which
+           options['Canvas']: if this is given, then the canvas object will be used for plotting
+    OUTPUT: A plot showing either the beam on or the beam off chopper information and the shot data
+    '''
+    
+    if "ABES-" in channel:
+        channel = int(channel.split("ABES-")[1])
+
+    try:
+        options_default ={'Amplitude calibration': flap.config.get("Module W7X_ABES","Amplitude calibration", evaluate=True),
+                          'Scaling': flap.config.get("Module W7X_ABES","Scaling"),
+                          'Amplitude calib. path': flap.config.get("Module W7X_ABES","Amplitude calib. path"),
+                          'Datapath': flap.config.get("Module W7X_ABES", "Datapath"),
+                          'Spatial calibration': False,
+                          'Canvas': None}
+    except ValueError as e:
+        print(e)
+        options_default ={'Amplitude calibration': False,
+                          'Scaling': "Volt",
+                          'Amplitude calib. path': None,
+                          'Datapath': "/data",
+                          'Spatial calibration': False,
+                          'Canvas': None}
+    options = {**options_default, **options}
+
+    if time_window is not None:
+        if (type(time_window) is list):
+            _coordinates = []
+            c_name = "Time"
+            _coordinates = flap.Coordinate(name=c_name,c_range=time_window)
+        else:
+            _coordinates = time_window
+        
+        print(type(_coordinates))
+
+        
+        data = flap_w7x_abes.w7x_abes_get_data(data_name=f'ABES-{channel}',
+                             exp_id=exp_ID,
+                             coordinates=_coordinates,
+                             options={'Amplitude calibration': options["Amplitude calibration"],
+                                      'Amplitude calib. path': options["Amplitude calib. path"],
+                                      'Datapath': options["Datapath"],
+                                      'Scaling': options["Scaling"],
+                                      "Start delay": start_delay,
+                                      "End delay": end_delay})
+    else:
+        data = flap_w7x_abes.w7x_abes_get_data(data_name=f'ABES-{channel}',
+                             exp_id=exp_ID,
+                             options={'Amplitude calibration': options["Amplitude calibration"],
+                                      'Amplitude calib. path': options["Amplitude calibration"],
+                                      'Scaling': options["Scaling"],
+                                      'Datapath': options["Datapath"],
+                                      "Start delay": start_delay,
+                                      "End delay": end_delay})
+    if time_window is not None:
+        d_beam_on=flap_w7x_abes.w7x_abes_get_data(exp_id=data.exp_id,data_name='Chopper_time',
+                             options={'State':{'Chop': 0, 'Defl': 0}, 'Start delay': start_delay, 'End delay': end_delay, 'Datapath': options["Datapath"]}, coordinates=_coordinates)
+        d_beam_off=flap_w7x_abes.w7x_abes_get_data(exp_id=data.exp_id,data_name='Chopper_time',
+                             options={'State':{'Chop': 1, 'Defl': 0}, 'Start delay': start_delay, 'End delay': end_delay, 'Datapath': options["Datapath"]}, coordinates=_coordinates)
+    else:
+        d_beam_on=flap_w7x_abes.w7x_abes_get_data(exp_id=data.exp_id,data_name='Chopper_time',
+                             options={'State':{'Chop': 0, 'Defl': 0}, 'Start delay': start_delay, 'End delay': end_delay, 'Datapath': options["Datapath"]})
+        d_beam_off=flap_w7x_abes.w7x_abes_get_data(exp_id=data.exp_id,data_name='Chopper_time',
+                             options={'State':{'Chop': 1, 'Defl': 0}, 'Start delay': start_delay, 'End delay': end_delay, 'Datapath': options["Datapath"]})
+
+
+    plot_points_max = 10000
+    sampling = int(len(data.data)/plot_points_max)
+    if sampling < 2:
+        plot_data_min = data.data
+        plot_data_max = data.data
+        plot_time = data.coordinate('Time')[0]
+    else:
+        time_array = np.array_split(data.coordinate('Time')[0], plot_points_max)
+        plot_time = np.asarray([np.mean(time_vect) for time_vect in time_array])
+        data_array = np.array_split(data.data, plot_points_max)
+        plot_data_min = np.asarray([np.min(data_vect) for data_vect in data_array])
+        plot_data_max = np.asarray([np.max(data_vect) for data_vect in data_array])
+
+    if options['Canvas'] is None:
+        plt.fill_between(plot_time, plot_data_min, plot_data_max, color ='blue')
+        # plt.plot(plot_time, plot_data_max, color ='blue')
+        if len(d_beam_off.coordinate('Time')[0])<100:
+            plot_id = d_beam_on.plot(axes=['Time', max(data.data)], plot_type='scatter', plot_options = {'color':'blue', 'label': 'Beam on'})
+            d_beam_off.plot(axes=['Time', max(data.data)], plot_type='scatter', plot_id=plot_id, plot_options = {'color':'red', 'label': 'Beam off'})
+            plt.legend()
+
+        plt.show()
+    else:
+        options['Canvas'].fig.clf()
+        options['Canvas'].axes = options['Canvas'].fig.add_subplot(111)
+        options['Canvas'].axes.fill_between(plot_time, plot_data_min, plot_data_max,color ='navy')
+        # options['Canvas'].axes.plot(plot_time, plot_data_max, color ='blue')
+        if len(d_beam_off.coordinate('Time')[0])<100:
+            lines = options['Canvas'].axes.plot(d_beam_on.coordinate('Time'), [np.max(data.data)]*len(d_beam_on.coordinate('Time')), ':', color='green', label='Beam on', lw=2)
+            plt.setp(lines[1:], label="_")
+            lines = options['Canvas'].axes.plot(d_beam_off.coordinate('Time'), [np.max(data.data)]*len(d_beam_off.coordinate('Time')), color='red', label='Beam off', lw=2)
+            plt.setp(lines[1:], label="_")
+            options['Canvas'].axes.legend()
+        options['Canvas'].axes.set_ylabel('Signal [V]')
+        options['Canvas'].axes.set_xlabel('Time [s]')
+        options['Canvas'].axes.set_title(f'Data for channel ABES-{channel}')
+        options['Canvas'].fig.tight_layout()
+        options['Canvas'].draw()
+    del data
+    del d_beam_off
+    del d_beam_on
+
+
 if __name__ == '__main__':
     # plot_shot("20241127.070", plot_rawdata=True, plot_powerspect=False, resample=0)
 
-    exp_id = "20250320.010"
-    timerange = None
-    channel = "ABES-19"
-    timeres = 0.1
-    timestep = 0.2
-    plot_smoothening = 0.5
-    flow=10
-    fhigh=10000
-    plot_spectrogram(exp_id, channel, timeres=timeres, timestep=timestep, timerange=timerange,
-                     flow=10, fhigh=10000, mode="Fluctuation")
+    # exp_id = "20250320.010"
+    # timerange = None
+    # channel = "ABES-19"
+    # timeres = 0.1
+    # timestep = 0.2
+    # plot_smoothening = 0.5
+    # flow=10
+    # fhigh=10000
+    # plot_spectrogram(exp_id, channel, timeres=timeres, timestep=timestep, timerange=timerange,
+    #                  flow=10, fhigh=10000, mode="Fluctuation")
 
     # globals()[sys.argv[1]](*sys.argv[2:])
+    
+    check_chopper("20260930.083", start_delay=0, end_delay=0, time_window = [1,1.001], channel="ABES-13", options={})
+

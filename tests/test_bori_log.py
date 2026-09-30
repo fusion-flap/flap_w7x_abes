@@ -36,9 +36,10 @@ def overview_plot(date=None, exp_id=None, reference_days=[], last_minutes=None, 
             logtext += f'CALCULATED RESISTANCE R_emit={int(beam_log.em_resistance)}MOhm  R_ext={int(beam_log.ex_resistance)}MOhm\n'
         except:
             logtext += f'CALCULATED RESISTANCE R_emit=NaN MOhm  R_ext=NaN MOhm\n'
-
+        
         beam_log.em_resistance = 82
-        beam_log.ex_resistance = 72
+        # beam_log.ex_resistance = 72
+        beam_log.ex_resistance = 280.5 # due to possible leakage
 
     if last_minutes is not None:
         beam_log_lastminutes = beam_log.slice_time(last_minutes)

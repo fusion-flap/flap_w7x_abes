@@ -42,7 +42,7 @@ def abes_get_config(xml):
             retval['Date'] = xml.head.attrib['Date']
         except KeyError:
             raise ValueError("Invalid config file head format.")
-    if (retval['version'] != '1.0'):    
+    if (retval['version'] != '1.0'):
         retval['TriggerTime'] = Decimal(xml.get_element('System','TriggerTime')['Value'])
     else:
         retval['TriggerTime'] = Decimal(xml.get_element('APDCAM','Trigger')['Value'])
@@ -176,6 +176,196 @@ def abes_get_config(xml):
                 signal_name = 'ABES-0' + signal_name[5:]
         return signal_name
 
+
+    # Ordering the channel list
+    ch_list, adc_list, fibre_list,det_type_list = zip(*sorted(zip(ch_list,
+                                                                  adc_list,
+                                                                  fibre_list,
+                                                                  det_type_list),
+                                                      key=sortkey))
+    retval['ADC_list'] = list(adc_list)
+    retval['signal_list'] = list(ch_list)
+    retval['fibre_list'] = list(fibre_list)
+    retval['det_type_list'] = list(det_type_list)
+
+    return retval
+
+def read_geri_settings(geri_settings_file: str):
+    
+    settings = {"apdcam": dict(),
+                "beam": dict(),
+                "status": dict(),
+                "chopper":dict(),
+                "cmoscam":dict(),
+                "general":dict(),
+                "optics":dict(),
+                "spectrometer":dict(),
+                "system":dict(),
+                "valve":dict()}
+    
+    if os.path.exists(geri_settings_file) is False:
+        raise ValueError(f"No geri settings file found under {geri_settings_file}")
+
+    with open(geri_settings_file, "rt") as f:
+        for line in f:
+            line = line.strip('\n')
+            sep = line.find("=")
+            prefix = line[:sep]
+            setting_type, setting = prefix.strip().split(".")
+            suffix = line[sep+1:].strip()
+            
+            if suffix.lower() == "none":
+                val = None
+            elif suffix.lower() == "true":
+                val = True
+            elif suffix.lower() == "false":
+                val = False
+            else:
+                try:
+                    val = int(suffix)
+                except ValueError:
+                    try:
+                        val = float(suffix)
+                    except ValueError:
+                        val = str(suffix)
+            
+            settings[setting_type][setting] = val
+    return settings
+
+def abes_get_geri_settings(geri_settings_file):
+    settings = read_geri_settings(geri_settings_file)
+    
+    retval = {}
+    
+    retval['version'] = '1.0'
+    try:
+        retval['ShotID'] = os.path.basename(geri_settings_file).split("_geri-settings.py")[0]
+    except KeyError:
+        raise ValueError("Invalid config file head format.")
+    if (retval['version'] != '1.0'):    
+        raise ValueError("Invalid config file head format.")
+    retval['TriggerTime'] = settings['general']['trigger_time']
+    # Micrometer settings for spatial calibration
+    retval['H-Micrometer'] = settings['system']['apd_h_micrometer']
+    retval['V-Micrometer'] = settings['system']['apd_v_micrometer']
+
+    retval['APDCAM_state'] = settings['apdcam']['status']
+    if (retval['APDCAM_state'] == 1):
+        ADCDiv = settings['apdcam']["adc_div"]
+        ADCMult = settings['apdcam']["adc_mult"]
+        retval['APDCAM_f_ADC'] = Decimal(20e6) * ADCMult / ADCDiv
+        samplediv = Decimal(settings['apdcam']["samplediv"])
+        retval['APDCAM_f_sample'] = retval['APDCAM_f_ADC'] / samplediv
+        retval['APDCAM_sampletime'] = Decimal(1.) / retval['APDCAM_f_sample']
+        retval['APDCAM_samplenumber'] = int(xml.get_element('APDCAM', 'SampleNumber')['Value'])
+        retval['APDCAM_bits'] = int(settings['apdcam']["adc_res"])
+        trigger = Decimal(settings['general']['trigger_time'])
+        if (trigger < 0):
+            trigger = Decimal(0)
+        retval['APDCAM_starttime'] = trigger + retval['TriggerTime']
+        mask1 = int(xml.get_element('APDCAM', 'ChannelMask1')['Value'],16)
+        mask2 = int(xml.get_element('APDCAM', 'ChannelMask2')['Value'],16)
+        mask3 = int(xml.get_element('APDCAM', 'ChannelMask3')['Value'],16)
+        mask4 = int(xml.get_element('APDCAM', 'ChannelMask4')['Value'],16)
+        chmask = mask1 + (mask2 << 32) + (mask3 << 64) + (mask4 << 96)
+        retval['APDCAM_chmask'] = chmask
+        retval['APDCAM_bias1'] = float(settings['apdcam']['hv1_set'])
+        retval['APDCAM_bias2'] = float(settings['apdcam']['hv2_set'])
+        retval['APDCAM_det_temp'] = float(settings['apdcam']['detector_temp_set'])
+        s = int(settings['apdcam']['clock_source'])
+        
+        if (s == 1):
+            retval['APDCAM_clock_source'] = 'External'
+        else:
+            retval['APDCAM_clock_source'] = 'Internal'
+
+    chopmode = int(settings['chopper']['mode'])
+    clk = xml.get_element('Chopper','BaseClockFrequency')
+    clk_freq = Decimal(clk['Value'])
+    if (clk['Unit'] == 'Hz'):
+        pass
+    elif (clk['Unit'] == 'kHz'):
+        clk_freq = clk_freq * Decimal(1000)
+    elif (clk['Unit'] == 'MHz'):
+        clk_freq = clk_freq * Decimal(1E6)
+    else:
+        raise ValueError("Unknown chopper clock frequency unit.")
+    retval['Chopper clock'] = clk_freq
+    if (chopmode == 1):
+        retval['Chopper mode'] = 'Camera'
+        retval['CMOS exptime'] = Decimal(settings['cmoscam']['exptime'])
+        retval['CMOS frametime'] = Decimal(settings['frametime'])
+        retval['CMOS frame number'] = int(xml.get_element('CMOS','FrameNumber')['Value'])
+    else:
+        retval['Chopper mode'] = 'Timed'
+    if (retval['version'] != '1.0'):    
+        sch = settings['chopper']['scheme_file_contents'].replace("<EQ>", "=")
+        if (chopmode == 0):
+            retval['Chopper period'] = Decimal(settings['chopper']['period_time']) \
+                                         /Decimal(1000000)
+    else:
+        pol_enable = int(xml.get_element('Chopper','PolEnable')['Value'])
+        tor_enable = int(xml.get_element('Chopper','TorEnable')['Value'])
+        if ((tor_enable == 1) and (pol_enable == 1)):
+            raise ValueError("Toroidal and Poloidal chopper is enabled at the same time. Cannot handle this.")
+        sch = ""
+        if (tor_enable == 1):
+            if (int(xml.get_element('Chopper','TorStartTimeCLK')['Value'] )!= 0) :
+                raise ValueError("Toroidal chopper start time not 0, cannot handle.")
+            retval['Chopper period'] = (int(xml.get_element('Chopper','TorOnTimeCLK')['Value']) 
+                                       + int(xml.get_element('Chopper','TorOffTimeCLK')['Value'])) / clk_freq
+            if (retval['Chopper mode'] == 'Camera'):
+                sch = "[General] <NL>Name = Cam_Chop <NL>[Frame 1] <NL>Chopper = 1 <NL>Deflection = 0 <NL>[Frame 2] <NL>Chopper = 0 <NL>Deflection = 0" 
+            else:
+                period = int(xml.get_element('Chopper','TorOnTimeCLK')['Value']) + int(xml.get_element('Chopper','TorOnTimeCLK')['Value'])
+                phase1 = float(xml.get_element('Chopper','TorOnTimeCLK')['Value']) / float(period) * 100
+                phase2 = float(xml.get_element('Chopper','TorOffTimeCLK')['Value']) / float(period) * 100
+                sch = "[General] <NL>Name=Simple fast <NL>"
+                sch += "[Phase 1] <NL>Length = "+str(int(round(phase1)))+" <NL>Chopper = 0 <NL>Deflection = 0 <NL>"
+                sch += "[Phase 2] <NL>Length = "+str(int(round(phase2)))+" <NL>Chopper = 1 <NL>Deflection = 0 <NL>"
+        if (pol_enable == 1):
+            if (int(xml.get_element('Chopper','PolStartTimeCLK')['Value']) != 0) :
+                raise ValueError("Poloidal chopper start time not 0, cannot handle.")
+            retval['Chopper period'] = (int(xml.get_element('Chopper','PolOnTimeCLK'))['Value'] 
+                                       + int(xml.get_element('Chopper','PolOffTimeCLK')['Value'])) / clk_freq
+            if (retval['Chopper mode'] == 'Camera'):
+                sch = "[General] <NL>Name = Cam_Chop <NL>[Frame 1] <NL>Chopper = 0 <NL>Deflection = 1 <NL>[Frame 2] <NL>Chopper = 0 <NL>Deflection = 0" 
+            else:
+                period = int(xml.get_element('Chopper','PolOnTimeCLK')['Value']) + int(xml.get_element('Chopper','PolOnTimeCLK')['Value'])
+                phase1 = float(xml.get_element('Chopper','PolOnTimeCLK')['Value']) / float(period) * 100
+                phase2 = float(xml.get_element('Chopper','PolOffTimeCLK')['Value']) / float(period) *100
+                sch = "[General] <NL>Name=Simple fast <NL>"
+                sch += "[Phase 1] <NL>Length = "+str(int(round(phase1)))+" <NL>Chopper = 0 <NL>Deflection = 0 <NL>"
+                sch += "[Phase 2] <NL>Length = "+str(int(round(phase2)))+" <NL>Chopper = 0 <NL>Deflection = 1 <NL>"
+    sch.replace("\n","")
+    sch = sch.split('<NL>')
+    retval['Chopper scheme'] = sch
+    ch_list = []
+    fibre_list = []
+    det_type_list = []
+    adc_list = []
+    for i in range(64):
+        try:
+            ch = settings['optics'][f'adc{i+1}']
+            adc_list.append(i + 1)
+            ch_arr = ch.split('-')
+            if ((ch_arr[0][0] >= '1') and (ch_arr[0][0] <= '9')):
+                ch_arr[0] = 'ABES-' + ch_arr[0]
+            ch_list.append(ch_arr[0])
+            fibre_list.append(ch_arr[1])
+            if (len(ch_arr) > 2):
+                det_type_list.append(ch_arr[2])
+            else:
+                det_type_list.append(' ')
+        except Exception:
+            pass
+
+    def sortkey(in_string):
+        signal_name = in_string[0]
+        if (signal_name[0:5] == 'ABES-'):
+            if (len(signal_name[5:]) == 1):
+                signal_name = 'ABES-0' + signal_name[5:]
+        return signal_name
 
     # Ordering the channel list
     ch_list, adc_list, fibre_list,det_type_list = zip(*sorted(zip(ch_list,
@@ -523,9 +713,11 @@ def chopper_timing_data_object(config, options, read_samplerange=None):
     switch_time_sample = round(switch_time / config['APDCAM_sampletime'])
     if (config['APDCAM_f_ADC'] == Decimal(20e6)):
         if (config['APDCAM_f_sample'] == Decimal(2e6)):
-            instrument_delay = -9/Decimal(1000000)
+            # instrument_delay = -9/Decimal(1000000)
             # instrument_delay = -14/Decimal(1000000)
-            # instrument_delay = -30/Decimal(1000000)
+            # instrument_delay = -28/Decimal(1000000)
+            instrument_delay = -4/Decimal(1000000)
+            instrument_delay = -4/Decimal(1000000)
             # instrument_delazy= -17/3-1/3*period time[microsec]
         elif (config['APDCAM_f_sample'] == Decimal(1e6)):
             instrument_delay = -6/Decimal(1000000)
@@ -690,7 +882,10 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
            Resample data to this sample frequency
         'Spatial calibration': bool
            True: Attempt spatial calibration, add device coordinates
-            
+        'Off-axis Backgound Correction': bool
+           True: do a correction of the background using the signals on the L/R channels (might be necessary for sodium neutralization)
+        'Correct for discharges': bool
+           If the beam had a lot of discharges, the signal in the diagnostic can jump around during the slow modulation
         For further options see Chopper_times see chopper_timing_data()
 
     """
@@ -709,6 +904,7 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
                        'Spatial calibration': False,
                        'Spatial calib. path': 'spatcal',
                        'Partial intervals': False,
+                       'Correct for discharges': False,
                        'Resample' : None
                        }
     _options = flap.config.merge_options(default_options,options,data_source='W7X_ABES')
@@ -757,8 +953,8 @@ def w7x_abes_get_data(exp_id=None, data_name=None, no_data=False, options=None, 
         else:
             _coordinates = coordinates
         for coord in _coordinates:
-            if (type(coord) is not flap.Coordinate):
-                raise TypeError("Coordinate description should be flap.Coordinate.")
+            if (type(coord) is not flap.Coordinate) and (type(coord) is not flap.coordinate.Coordinate):
+                raise TypeError(f"Coordinate description should be flap.Coordinate, not {type(coord)}")
             if ((coord is None) or (coord.c_range is None)):
                 continue
             if (coord.unit.name == 'Time'):
@@ -1140,7 +1336,7 @@ def regenerate_time_sample(d):
 
 def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,
                             samplerange=None, signals='ABES-1',
-                            on_options=None, off_options=None, test=None, options={}):
+                            on_options=None, off_options=None, bgm=None, test=None, options={}):
     """ Calculate signals in beam on and beam/off phases of the measurement and
         correct the beam-on phases with the beam-off. The result is "ABES" and "ABES_back" data object
         in the FLAP storage.
@@ -1154,6 +1350,7 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,
             timerange: Time range to process. Default is all times.
             on_options: Options for the  for the get_data function when beam_on is read
             off_options: Options for the get_data function when beam_off is read
+            bgm: should be a dataobject of how the background modulation could be corrected using the sidechannels
             test: Plot test plots if True
             options:
                 Average Chopping Period: Whether the data should be averaged for a single chopper time period. Per 
@@ -1161,14 +1358,14 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,
                                          of the beam on state is saved. This could be useful if slow beam chopping is
                                          used and the background signal is reasonably constant relative to the analyzed
                                          process.
+                Correct for discharges: beam discharges can ;ead to peaks in the signals and mess up the calculations
+                                        for slow modulated operation if we average for the chopping
         OUTPUT: The background subtracted A-BES data
     """
 
     options_default = {'Average Chopping Period': True,
-                       'Off-axis Correction':False,
                        'Deflection': 0}
     options = {**options_default, **options}
-
     # Obtaining the chopper data
     if dataobject is not None:
         exp_id = dataobject.exp_id
@@ -1252,12 +1449,10 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,
         d = flap.slice_data('ABES',slicing={'Sample':d_beam_off})
         d = d.slice_data(summing={'Rel. Sample in int(Sample)':'Mean'})
         regenerate_time_sample(d)
-        
-        if options["Off-axis correction"] is True:
-            raise NotImplementedError("Off-axis correction not implemented if input is not a dataobject")
-        
-        flap.add_data_object(d,'ABES_off')
+
+        flap.add_data_object(d,'ABES_off')        
         flap.slice_data('ABES_off',slicing={'Time':flap.get_data_object('ABES_on')},options={'Inter':'Linear'},output_name='ABES_back')
+
         # Ensuring that only those samples are kept which also have a background
         #    flap.slice_data('ABES_on',slicing={'Start Sample in int(Sample)':flap.get_data_object('ABES_off_resampled')},options={'Inter':'Linear'},output_name='ABES_on')
         if (test):
@@ -1271,10 +1466,12 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,
          
         d=flap.get_data_object('ABES_on')
         d_back = flap.get_data_object('ABES_back')
+        # if bgm is not None: #backgroudn correction with the L and R channels
+        #     d_back.data *= bgm.slice_data(slicing={"Device R": d_back}).data
         d.data -= d_back.data
         
-        
-        #add electrc noise using offset data
+        #_------------------------
+        # add electrc noise using offset data
         del o['State']
         if 'Signal name' in dataobject.coordinate_names():
             try:
@@ -1301,17 +1498,17 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,
                     d.error = np.sqrt(d.error**2+electric_noise)
                 elif options['Average Chopping Period'] is True:
                     standard_error = np.array([8.52008759e-03, 6.05577881e-03, 5.61784578e-03, 4.01606559e-03,
-                           4.80343614e-03, 4.96760886e-03, 4.31857827e-03, 4.61216619e-03,
-                           5.07540636e+00, 5.77341359e+00, 5.17886695e+00, 6.67524467e+00,
-                           4.10515027e+00, 3.20796480e+00, 4.06675798e+00, 4.07734300e+00,
-                           4.09595980e+00, 3.70180586e+00, 4.78968865e+00, 3.76662174e+00,
-                           4.02454327e+00, 3.90762905e+00, 5.00180528e+00, 3.25465952e+00,
-                           4.32225647e+00, 3.23294377e+00, 5.75256366e+00, 4.56699600e+00,
-                           5.02907424e+00, 4.54773953e+00, 6.10916503e+00, 4.75039061e+00,
-                           3.76776202e+00, 5.17901390e+00, 4.44659086e+00, 6.81016910e+00,
-                           7.95957335e+00, 1.45460916e+01, 1.10220756e+01, 1.85718833e+01])
+                            4.80343614e-03, 4.96760886e-03, 4.31857827e-03, 4.61216619e-03,
+                            5.07540636e+00, 5.77341359e+00, 5.17886695e+00, 6.67524467e+00,
+                            4.10515027e+00, 3.20796480e+00, 4.06675798e+00, 4.07734300e+00,
+                            4.09595980e+00, 3.70180586e+00, 4.78968865e+00, 3.76662174e+00,
+                            4.02454327e+00, 3.90762905e+00, 5.00180528e+00, 3.25465952e+00,
+                            4.32225647e+00, 3.23294377e+00, 5.75256366e+00, 4.56699600e+00,
+                            5.02907424e+00, 4.54773953e+00, 6.10916503e+00, 4.75039061e+00,
+                            3.76776202e+00, 5.17901390e+00, 4.44659086e+00, 6.81016910e+00,
+                            7.95957335e+00, 1.45460916e+01, 1.10220756e+01, 1.85718833e+01])
                     d.error = np.sqrt(d.error**2+standard_error)
-
+         #_------------------------
 #        flap.add_data_object(d,'ABES')
 
 #        # error approximation
@@ -1335,11 +1532,13 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,
             
         return d
     else:
+        
 
         # in this case the passed dataobject is used and only the chopper data is obtained from file
         #there is sometimes some weird slicing error, probably  due to rounding, that is to be corrected in the following
         while np.min(d_beam_on.coordinate("Sample")[0]) < np.min(dataobject.coordinate("Sample")[0]):
                 d_beam_on.get_coordinate_object("Sample").start += d_beam_on.get_coordinate_object("Sample").step[0]
+        
         dataobject_beam_on = dataobject.slice_data(slicing={'Sample': d_beam_on})
 
         # For dataobject_beam_on.data the 0 dimension is along a constant 'Start Time in int(Time)' and 
@@ -1357,6 +1556,9 @@ def proc_chopsignals_single(dataobject=None, exp_id=None,timerange=None,
 
         dataobject_background = dataobject_beam_off.slice_data(slicing={'Time': dataobject_beam_on},
                                                                options={'Inter': 'Linear'})
+        # if bgm is not None: #backgroudn correction with the L and R channels
+        #     dataobject_background.data *= bgm.slice_data(slicing={"Device R": dataobject}).data
+            
         if test is True:
             from matplotlib import pyplot as plt
             import time
@@ -1552,29 +1754,48 @@ def chopped_signals(exp_ID,timerange=None,signals='ABES-[1-40]',datapath=None,ba
     
 def proc_chopsignals(dataobject=None, exp_id=None,timerange=None,
                      samplerange=None, signals='ABES-[1-40]', on_options=None,
-                     off_options=None, test=None, options={}):
+                     off_options=None, off_axis_background_correction=False,
+                     test=None, options={}):
     """ Calculate signals in beam on and beam/off phases of the measurement and
         correct the beam-on phases with the beam-off. Further information in the comments of 
         proc_chopsignals_single
     """
+    options_default = {'Average Chopping Period': True,
+                       'Correct for discharges': False,
+                       'Deflection': 0}
+    options = {**options_default, **options}
+    
     naming_conventions = ["Channel", "Signal name", "Device R", "Beam axis"]
     channel_naming = []
     for name in naming_conventions:
         if name in dataobject.coordinate_names():
             channel_naming.append(name)
     
+    off_axis_background_correction = True
+    if off_axis_background_correction is True: 
+        #In this case the signals on the L and R channels are used to correct for variatiosn on the background
+        #This might be necessary for a slow modulated beam using sodium neutralization
+        bgm =  calculate_background_variation(dataobject=dataobject, exp_id=exp_id, timerange=timerange,\
+                                              samplerange=samplerange, on_options=on_options, off_options=off_options,\
+                                              options=options)
+    else:
+        bgm = None
+    
 #    if len(channel_naming)==0:
     # Added S. Zoletnik 9 Aug 2024
     if (len(dataobject.shape) == 1):
-       processed_data = proc_chopsignals_single(dataobject=dataobject, timerange=timerange,
+       processed_data = proc_chopsignals_single(dataobject=dataobject,
+                                                timerange=timerange,
                                                 samplerange=samplerange,
                                                 test=test, on_options=on_options,
-                                                off_options=off_options,  options=options)
+                                                off_options=off_options, bgm=bgm, options=options)
     else:
         # The channels are processed in parallel
-        partial_proc_func = partial(proc_chopsignals_single, timerange=timerange, samplerange=samplerange,
+        partial_proc_func = partial(proc_chopsignals_single,
+                                    timerange=timerange,
+                                    samplerange=samplerange,
                                     test=test, on_options=on_options,
-                                    off_options=off_options,  options=options)
+                                    off_options=off_options,  bgm=bgm, options=options)
         channels = dataobject.get_coordinate_object(channel_naming[0]).values
         num_of_channels = len(channels)
         divide_to = 10
@@ -1622,14 +1843,22 @@ def process_chopped_dataobject(dataobject, options={}):
     dataobject - the channel data sliced with a chopper DataObject
     options 'Average Chopping Period' - boolean,  whether to average the date
                                         over a chopping interval
+            'Correct for dischages' - whether to correct for discahrges in the
+                                      injector, leading to spikes (only relevant if we average)
     '''
-    options_default = {'Average Chopping Period': True}
+    options_default = {'Average Chopping Period': True,
+                       'Correct for dischages': False}
     options = {**options_default, **options}
     if options['Average Chopping Period'] is True:
         #calculating the error of the beam on part
         reltime_coord = dataobject.get_coordinate_object("Rel. Time in int(Sample)")
         reltime_size = dataobject.data.shape[reltime_coord.dimension_list[0]]
-        average = np.nanmean(dataobject.data, axis=reltime_coord.dimension_list[0], keepdims=True)
+        options['Correct for dischages'] = False
+        if options['Correct for dischages'] is True:
+            # tried implementing a low pass filter to remove the <0.01s effects, but was pretty useles. So, I just stick with the median:
+            average = np.nanmedian(dataobject.data, axis=reltime_coord.dimension_list[0], keepdims=True)
+        else:
+            average = np.nanmean(dataobject.data, axis=reltime_coord.dimension_list[0], keepdims=True)
         beam_on_error = np.nanmean((dataobject.data-average)**2, axis = reltime_coord.dimension_list[0])/(reltime_size-1)
         dataobject.get_coordinate_object("Rel. Time in int(Sample)").dimension_list=[]
         dataobject.get_coordinate_object("Rel. Sample in int(Sample)").dimension_list=[]
@@ -1826,7 +2055,139 @@ def write_chopshift(shotID, start, end):
             fout.write(dataout)
     os.remove(location+'old')
 
-  
+def read_sidechannels(exp_id, coord_dict, average_LR=True):
+    right=flap.get_data('W7X_ABES',
+                    exp_id=exp_id,
+                    name='R*',
+                    coordinates=coord_dict,
+                    options={"Datapath":"/data",
+                            "Amplitude calibration":False,
+                            "Spatial calibration": True,
+                            "Scaling": "Volt"},
+                    object_name='right',
+                    )
+    left=flap.get_data('W7X_ABES',
+                    exp_id=exp_id,
+                    name='L*',
+                    coordinates=coord_dict,
+                    options={"Datapath":"/data",
+                            "Amplitude calibration":False,
+                            "Spatial calibration": True,
+                            "Scaling": "Volt"},
+                    object_name='left',
+                    )
+    
+    
+    new_dataobject = copy.deepcopy(right)
+    if right.get_coordinate_object("Device R").dimension_list == [1]: # spatial_coord == [1]
+        newdata = np.concatenate([right.data.transpose(),left.data.transpose()]).transpose()
+    else:
+        newdata = np.concatenate([right.data,left.data])
+    new_dataobject.data = newdata
+    new_dataobject.shape = newdata.shape
+    for coordinate in right.coordinate_names():
+        if right.get_coordinate_object(coordinate).dimension_list == right.get_coordinate_object("Device R").dimension_list:
+            coord_r = right.get_coordinate_object(coordinate)
+            coord_l = left.get_coordinate_object(coordinate)
+            newcoord = copy.deepcopy(coord_r)
+            newcoord.values = np.concatenate([coord_r.values,
+                                              coord_l.values])
+            newcoord.shape = newcoord.values.shape
+            new_dataobject.del_coordinate(coordinate)
+            new_dataobject.add_coordinate_object(newcoord)   
+    
+    if average_LR is True:
+        #averaging along the perpendicular axis if the disatnce between major radii of the channels is below 0.5cm
+        r_values = np.flip(np.asarray(sorted(new_dataobject.get_coordinate_object("Device R").values)))
+        new_r = []
+        data = []
+        skipnext = False
+        for index, r_value in enumerate(r_values[:-1]-r_values[1:]): #going through the distance
+            if r_value<5e-3:
+                skipnext = True
+                new_r += [r_values[index]]
+                data += [(new_dataobject.data[:,index]+new_dataobject.data[:,index+1])/2]
+            elif skipnext is False:
+                new_r += [r_values[index]]
+                data += [new_dataobject.data[:,index]]
+            else:
+                skipnext = False
+        final_dataobject = new_dataobject.slice_data(slicing={"Device R": new_r})
+        final_dataobject.data = np.asarray(data).transpose()
+    else:
+        final_dataobject = new_dataobject
+    return final_dataobject
+                
+
+def calculate_background_variation(dataobject=None, exp_id=None, timerange=None,\
+                                   samplerange=None, on_options=None, off_options=None, options={}):
+
+    # Obtaining the chopper data
+    if dataobject is not None:
+        exp_id = dataobject.exp_id
+    
+    if on_options is not None:
+        o = copy.deepcopy(on_options)
+    else:
+        o = dict()
+    if 'Datapath' in options.keys():
+        o['Datapath'] = options['Datapath']
+    if 'W7X_ABES' not in flap.list_data_sources():
+        register()
+    o.update({'State':{'Chop': 0, 'Defl': options['Deflection']}})
+
+    if timerange is None and samplerange is None:
+        if "Sample" not in dataobject.coordinate_names():
+            timerange = [np.min(dataobject.coordinate('Time')[0]), np.max(dataobject.coordinate('Time')[0])]
+            coord_dict = {'Time':timerange}
+        else:
+            samplerange = [np.min(dataobject.coordinate('Sample')[0]), np.max(dataobject.coordinate('Sample')[0])]
+            coord_dict = {'Sample':samplerange}
+    elif timerange is not None:
+        coord_dict = {'Time':timerange}
+    else:
+        coord_dict = {'Sample':samplerange}
+    
+    d = read_sidechannels(exp_id, coord_dict)
+    
+    chop_beam_on=flap.get_data('W7X_ABES',
+                               exp_id=exp_id,
+                               name='Chopper_time',
+                               coordinates=coord_dict,
+                               options=o,
+                               object_name='Beam_on',
+                               )
+    
+    o.update({'State':{'Chop': 1, 'Defl': options['Deflection']}})
+    chop_beam_off=flap.get_data('W7X_ABES',
+                            exp_id=exp_id,
+                            name='Chopper_time',
+                            coordinates=coord_dict,
+                            options=o,\
+                            object_name='Beam_off',
+                            )
+    
+    for index, signalname in enumerate(d.get_coordinate_object("Signal name").values):
+        
+        chdata = d.slice_data(slicing={"Signal name": signalname})
+        
+        d_withbeam = chdata.slice_data(slicing={'Sample':chop_beam_on})
+        d_withoutbeam = chdata.slice_data(slicing={'Sample':chop_beam_off})
+               
+        
+        d_withbeam_mean = d_withbeam.slice_data(summing={"Rel. Sample in int(Sample)":"Mean"})
+        d_withoutbeam_mean = d_withoutbeam.slice_data(summing={"Rel. Sample in int(Sample)":"Mean"})
+        d_withoutbeam_mean_interp = d_withoutbeam_mean.slice_data(slicing={'Time': d_withbeam_mean}, options={'Inter': 'Linear'})
+
+        background_multiplier_curr = d_withbeam_mean.data/d_withoutbeam_mean_interp.data
+
+        if index == 0:
+            background_multiplier = d.slice_data(slicing={'Time': d_withbeam_mean}, options={'Inter': 'Linear'})
+        background_multiplier.data[:, index] = background_multiplier_curr
+
+    return background_multiplier
+
+
 def register(data_source=None):
     flap.register_data_source('W7X_ABES', get_data_func=w7x_abes_get_data, add_coord_func=add_coordinate)
     from .cxrs_main import w7x_abes_cxrs_get_data, cxrs_add_coordinate

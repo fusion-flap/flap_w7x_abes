@@ -498,7 +498,8 @@ def find_experiment(search_dict,datafile='exp_summaries.dat',list_keys='True'):
         
 if __name__ == '__main__':
     pass
-    # out = exp_summary('20250312.099')
+    out = exp_summary('20260924.077', datapath="/data")
+    print(out)
     # df = 'c:/Users/Zoletnik/OneDrive - energia.mta.hu/Megosztott dokumentumok - FPL/Projects/Experiments/W7-X/ABES/op21/Log/exp_summaries_2023.dat'
     # print(find_experiment({"Chopper mode":'Timed',
     #                         'Beam on time':[1e-6,1e-5],
