@@ -19,9 +19,13 @@ from . import spatcal
 
 #functions to add to the cmos dataobject
 class CMOS_data(flap.DataObject):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.datapath = "/data"
+
     def get_chopstate(self,chop=0, defl=0):
         # chop 0 is the beam on, chop = 1 is the beam off
-        o={'State':{'Chop': chop, 'Defl': defl}}
+        o={'State':{'Chop': chop, 'Defl': defl}, "Datapath":os.path.dirname(self.datapath)}
         d_beam_st=flap.get_data('W7X_ABES',
                                 exp_id=self.exp_id,
                                 name='Chopper_time',
@@ -120,6 +124,7 @@ def w7x_abes_cmos_get_data(exp_id=None, data_name="CMOS", no_data=False, options
     d = CMOS_data(data_array=image_array, data_unit=unit,
                   coordinates=[time_coord], exp_id=exp_id,
                   data_title='CMOS', data_shape=image_array.shape)
+    d.datapath = datapath
     
     if _options['Spatial calibration'] is True:
         # Getting the spatial calibration
