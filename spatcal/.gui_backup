@@ -1,0 +1,56 @@
+gui version 2.0
+active tab	1
+tabWidget/tab_0/layout/grid_0/HV1_set_value	
+tabWidget/tab_0/layout/grid_0/HV2_set_value	
+tabWidget/tab_0/layout/grid_0/clock_menu	0
+tabWidget/tab_0/layout/grid_0/det_temp_set_value	
+tabWidget/tab_0/layout/grid_0/sampling_menu	1
+tabWidget/tab_0/layout/grid_1/exptime_value	
+tabWidget/tab_0/layout/grid_1/frametime_value	
+tabWidget/tab_0/layout/grid_2/ID_set_value	
+tabWidget/tab_0/layout/grid_3/measuremode_menu	0
+tabWidget/tab_0/layout/grid_3/offset_set_value	
+tabWidget/tab_0/layout/grid_3/shotlength_set_value	
+tabWidget/tab_0/layout/grid_4/exptime_value	
+tabWidget/tab_0/layout/grid_4/grating_menu	0
+tabWidget/tab_0/layout/grid_4/slit_value	
+tabWidget/tab_0/layout/grid_4/trigger_menu	0
+tabWidget/tab_0/layout/grid_4/wavelength_value	
+tabWidget/tab_0/layout/grid_5/HV1_set_value	
+tabWidget/tab_0/layout/grid_5/HV2_set_value	
+tabWidget/tab_0/layout/grid_5/chopm_set_value	
+tabWidget/tab_0/layout/grid_5/chopp_set_value	
+tabWidget/tab_0/layout/grid_5/command_menu	0
+tabWidget/tab_0/layout/grid_5/polaimm_set_value	
+tabWidget/tab_0/layout/grid_5/polaimp_set_value	
+tabWidget/tab_0/layout/grid_5/toraimm_set_value	
+tabWidget/tab_0/layout/grid_5/toraimp_set_value	
+tabWidget/tab_0/layout/grid_6/mode_menu	-1
+tabWidget/tab_0/layout/grid_6/period_set_value	
+tabWidget/tab_0/layout/grid_6/timer_menu	0
+tabWidget/tab_1/tabWidget/tab_0/date	
+tabWidget/tab_1/tabWidget/tab_0/exp_id	
+tabWidget/tab_1/tabWidget/tab_0/lastminutes	
+tabWidget/tab_1/tabWidget/tab_0/refday	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_0/expid	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_1/channel	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_1/exp_id	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_1/timemax	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_1/timemin	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_2/channel	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_2/exp_id	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_2/fmax	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_2/fmin	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_2/plot_mode_menu	0
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_2/timemax	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_2/timemin	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_2/timeres	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_2/timestep	
+tabWidget/tab_1/tabWidget/tab_1/tabWidget/tab_3/expid	
+tabWidget/tab_1/tabWidget/tab_2/expid	20261001.040
+tabWidget/tab_1/tabWidget/tab_3/expid	
+tabWidget/tab_1/tabWidget/tab_4/exp_id	
+tabWidget/tab_1/tabWidget/tab_5/exp_id	
+tabWidget/tab_1/tabWidget/tab_5/priority	
+tabWidget/tab_1/tabWidget/tab_5/timeres	
+tabWidget/tab_1/tabWidget/tab_5/todo_list_curr_exp_id	

@@ -1,0 +1,4 @@
+#This file describes the Li-beam beam direction
+#Two points are listed along the beam in x,y,z [m] tokamak coordinates
+1.965348 6.048720 0
+1.903544 5.858508 0
