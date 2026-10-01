@@ -363,10 +363,14 @@ class ShotSpatCal(flap.DataObject):
     
     def calc_chan_range(self, options=dict()):
         # to calculate the areas where the channels are detecting on the CMOS image for a given micrometer setting
+        try:
+            datapath = flap.config.get("Module W7X_ABES", "Datapath")
+        except ValueError:
+            datapath = None
         options_default = {
             'Spatial calib source dir': os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                      'spatcal'),
-            'Datapath': flap.config.get("Module W7X_ABES", "Datapath"),
+            'Datapath': datapath,
             'Noise limit': 100,
             'Flip horizontally': False}
         options = {**options_default, **options}

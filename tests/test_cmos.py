@@ -23,14 +23,17 @@ class CMOSPlotter():
         self.curr_sample = 0
         self.canvas = canvas
         self.im = None
+        self.show_channels = False
+        self.full_res = False
         self.plot_cmos()
 
     def get_data(self):
-        datapath = '/data'
+        self.datapath = '/data'
         cmos_main.register()
         self.cmos = flap.get_data('W7X_ABES_CMOS', exp_id=self.shotID,
-                                  name="QSI", options={"Datapath": datapath})
+                                  name="QSI", options={"Datapath": self.datapath})
         
+        self.get_channel_locations()
         
         cmos_on = self.cmos.get_chopstate()
         cmos_on.data = cmos_on.data.astype(float)
@@ -44,10 +47,16 @@ class CMOSPlotter():
         
         self.samplerange = self.cmos.data.shape[0]-1
     
-    def plot_cmos(self, setto=None, moveby=None):
+    def plot_cmos(self, setto=None, moveby=None, show_channels=None, full_resolution=None):
     
         if hasattr(self, "cmos") is False:
             self.get_data()
+        
+        if show_channels is not None:
+            self.show_channels = show_channels
+        
+        if full_resolution is not None:
+            self.full_res = full_resolution
         
         if moveby is not None:
             self.curr_sample += moveby
@@ -66,10 +75,31 @@ class CMOSPlotter():
                 self.ax = self.canvas.fig.add_subplot(1,1,1)
         self.ax.set_title(f"{self.shotID} at "+\
                          f"{self.cmos.get_coordinate_object('Time').start+self.cmos.get_coordinate_object('Time').step[0]*self.curr_sample}s")
-        if self.im == None:
-            self.im = self.ax.imshow(self.cmos.data[self.curr_sample,::4,::4], cmap="gray")
+        
+        if self.show_channels is True:
+            beamimage = copy.deepcopy(self.cmos.data[self.curr_sample,:,:])
+            beamimage[np.where(self.chanimage>0)] = beamimage[np.where(self.chanimage>0)]/2
+            fullimage = np.zeros((beamimage.shape[0], beamimage.shape[1], 3))
+            fullimage[:,:,0] = beamimage
+            fullimage[:,:,2] = beamimage
+            fullimage[:,:,1] = self.chanimage+beamimage
         else:
-            self.im.set_array(self.cmos.data[self.curr_sample,::4,::4])
+            beamimage = copy.deepcopy(self.cmos.data[self.curr_sample,:,:])
+            fullimage = np.zeros((beamimage.shape[0], beamimage.shape[1], 3))
+            fullimage[:,:,0] = beamimage
+            fullimage[:,:,2] = beamimage
+            fullimage[:,:,1] = beamimage
+
+
+        if self.full_res is True:
+            toplot = fullimage
+        else:
+            toplot = fullimage[::4,::4,:]
+
+        if self.im == None:
+            self.im = self.ax.imshow(toplot)
+        else:
+            self.im.set_array(toplot)
             # self.im = self.ax.imshow(self.cmos.data[self.curr_sample,::4,::4], cmap="gray")
 
 
@@ -85,12 +115,42 @@ class CMOSPlotter():
             self.fig.canvas.flush_events()
             self.fig.canvas.draw_idle()
             self.fig.canvas.flush_events()
+    
+    def get_channel_locations(self):
+        a = flap_w7x_abes.ShotSpatCal(self.shotID)
+        try:
+            a.read()
+        except:
+            a.generate_shotdata(options={'Plot': False, 'Overwrite': True})
+            a.read()
+        chimages = a.calc_chan_range(options={"Datapath": self.datapath})
+        import numpy as np
+        firstimage = 1
+        image = []
+        for key in chimages.keys():
+            currimage = copy.deepcopy(chimages[key])
+            currimage[np.where(chimages[key]<np.median(chimages[key])/2)] = np.nan
+            currimage*= 255/np.nanmax(currimage)
+            if firstimage == 1:
+                firstimage = 0
+            image += [currimage]
+        for index, currimage in enumerate(image):
+            currimage[560:600,751:800]=np.nan
+            currimage[np.where(currimage<np.nanmax(currimage)/5)] = np.nan
+            currimage[np.where(np.isnan(currimage) == False)]=1
+            currimage[np.where(np.isnan(currimage))] = 0
+            if index == 0:
+                toplot = np.sign(np.abs(np.gradient(currimage)[0])+np.abs(np.gradient(currimage)[1]))
+            else:
+                toplot += np.sign(np.abs(np.gradient(currimage)[0])+np.abs(np.gradient(currimage)[1]))
+        toplot[np.where(toplot>0)] = 0.5
+        self.chanimage = toplot
 
 if __name__ == "__main__":
-    shotID = "20241105.018"
-    plotter = CMOSPlotter(shotID)
-    plotter.plot_cmos()
-    plotter.plot_cmos(setto=10)
+    shotID = "20261001.040"
+    # plotter = CMOSPlotter(shotID)
+    # plotter.plot_cmos()
+    # plotter.plot_cmos(setto=10)
     
 
     # # shotID = '20230316.016'
@@ -125,7 +185,7 @@ if __name__ == "__main__":
     # #overview plot of the shot with channel outlines
     # # timeindex = 10
     # # dataplot = cmos.data[timeindex,:,:]
-    # #     a = flap_w7x_abes.ShotSpatCal(shotID)
+    # # a = flap_w7x_abes.ShotSpatCal(shotID)
     # # a.generate_shotdata(options={'Plot': False, 'Overwrite': True})
     # # a.read()
     # # chimages = a.calc_chan_range()
@@ -221,3 +281,42 @@ if __name__ == "__main__":
     # plt.tight_layout()
     # plt.subplots_adjust(wspace=0, hspace=0)
 
+
+
+    a = flap_w7x_abes.ShotSpatCal(shotID)
+    a.generate_shotdata(options={'Plot': False, 'Overwrite': True})
+    a.read()
+    chimages = a.calc_chan_range()
+    import numpy as np
+    firstimage = 1
+    image = []
+    for key in chimages.keys():
+        currimage = copy.deepcopy(chimages[key])
+        currimage[np.where(chimages[key]<np.median(chimages[key])/2)] = np.nan
+        currimage*= 255/np.nanmax(currimage)
+        if firstimage == 1:
+            firstimage = 0
+        image += [currimage]
+    image_backup = copy.deepcopy(image)
+    print("Reading data finished")
+    for index, currimage in enumerate(image):
+        currimage[560:600,751:800]=np.nan
+        currimage[np.where(currimage<np.nanmax(currimage)/5)] = np.nan
+        currimage[np.where(np.isnan(currimage) == False)]=1
+        currimage[np.where(np.isnan(currimage))] = 0
+        if index == 0:
+            toplot = np.sign(np.abs(np.gradient(currimage)[0])+np.abs(np.gradient(currimage)[1]))
+        else:
+            toplot += np.sign(np.abs(np.gradient(currimage)[0])+np.abs(np.gradient(currimage)[1]))
+    toplot[np.where(toplot>0)] = 0.5
+    # toplot[np.where(toplot<1)] = 0
+    
+    plotter = CMOSPlotter(shotID)
+    plotter.plot_cmos(setto=10)
+    beamimage = plotter.cmos.data[plotter.curr_sample,:,:]
+    beamimage[np.where(toplot>0)] = beamimage[np.where(toplot>0)]/2
+    fullimage = np.zeros((beamimage.shape[0], beamimage.shape[1], 3))
+    fullimage[:,:,0] = beamimage
+    fullimage[:,:,2] = beamimage
+    fullimage[:,:,1] = toplot+beamimage
+    plt.imshow(fullimage)
